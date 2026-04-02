@@ -34,37 +34,37 @@ jobs:
       - name: Generate Android project files
         run: python3 $GITHUB_WORKSPACE/build-twa.py
 
-      - name: Build APK
+      - name: Build APK (full output)
         run: |
           cd $HOME/twa
-          gradle assembleRelease --no-daemon --stacktrace 2>&1
-          echo "Exit code: $?"
+          gradle assembleRelease --no-daemon --info 2>&1
+          echo "Gradle exit: $?"
 
       - name: Build AAB
+        if: success()
         run: |
           cd $HOME/twa
-          gradle bundleRelease --no-daemon 2>&1 | tail -20
-          echo "Exit code: $?"
+          gradle bundleRelease --no-daemon 2>&1
 
-      - name: List all build outputs
+      - name: List build outputs
+        if: always()
         run: |
-          echo "=== All APK files ==="
-          find $HOME/twa -name "*.apk" 2>/dev/null || echo "No APK found"
-          echo "=== All AAB files ==="
-          find $HOME/twa -name "*.aab" 2>/dev/null || echo "No AAB found"
-          echo "=== Build output dir ==="
-          find $HOME/twa/app/build/outputs 2>/dev/null || echo "No outputs dir"
+          echo "=== APK files ==="
+          find $HOME/twa -name "*.apk" 2>/dev/null || echo "none"
+          echo "=== AAB files ==="
+          find $HOME/twa -name "*.aab" 2>/dev/null || echo "none"
 
       - name: Collect outputs
+        if: always()
         run: |
           mkdir -p $GITHUB_WORKSPACE/output
           find $HOME/twa -name "*.apk" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
           find $HOME/twa -name "*.aab" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
-          cp $HOME/solar.keystore $GITHUB_WORKSPACE/output/
-          echo "=== Final output files ==="
+          cp $HOME/solar.keystore $GITHUB_WORKSPACE/output/ 2>/dev/null || true
           ls -lh $GITHUB_WORKSPACE/output/
 
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: solar-dashboard-android
