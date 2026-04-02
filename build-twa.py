@@ -22,19 +22,17 @@ def write(path, content):
         f.write(content)
     print(f"  wrote {path}")
 
-# settings.gradle
+# 1. Settings
 write(os.path.join(ROOT, "settings.gradle"), """
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories { google(); mavenCentral() }
-}
 rootProject.name = "SolarDashboard"
 include ":app"
 """)
 
-# app/build.gradle
+# 2. App Build Script (Updated for Gradle 8.x + Android 14)
 write(os.path.join(APP, "build.gradle"), """
-plugins { id 'com.android.application' }
+plugins {
+    id 'com.android.application'
+}
 android {
     namespace "%s"
     compileSdk 34
@@ -42,8 +40,8 @@ android {
         applicationId "%s"
         minSdk 21
         targetSdk 34
-        versionCode 3
-        versionName "1.0.2"
+        versionCode 5
+        versionName "1.0.5"
         manifestPlaceholders = [
             hostName: "%s",
             defaultUrl: "%s",
@@ -63,15 +61,17 @@ android {
         release {
             signingConfig signingConfigs.release
             minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
         }
     }
 }
 dependencies {
     implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
+    implementation "androidx.browser:browser:1.8.0"
 }
 """ % (PKG, PKG, HOST, START_URL, APP_NAME, HOST, KEYSTORE))
 
-# AndroidManifest.xml - THE "QUERIES" FIX
+# 3. AndroidManifest.xml (THE CRASH FIXER)
 write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
@@ -83,21 +83,27 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
     </queries>
 
     <uses-permission android:name="android.permission.INTERNET"/>
-    
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
     <application
         android:label="${launcherName}"
         android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true"
         android:theme="@android:style/Theme.Translucent.NoTitleBar">
         
         <meta-data android:name="asset_statements" android:value="${assetStatements}"/>
 
         <activity android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
-            android:exported="true">
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+            
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="${defaultUrl}"/>
+            
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -119,11 +125,19 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
 </manifest>
 """)
 
-# gradle.properties
+# 4. Support Files
 write(os.path.join(ROOT, "gradle.properties"), "android.useAndroidX=true\nandroid.enableJetifier=true")
-
-# Download icons
 write(os.path.join(RES, "values", "colors.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <resources><color name="colorPrimary">#%s</color></resources>""" % COLOR_HEX)
 
-print("Project files regenerated for Version 3.")
+# 5. Icons
+densities = {"mdpi": "48", "hdpi": "72", "xhdpi": "96", "xxhdpi": "144", "xxxhdpi": "192"}
+for dName, size in densities.items():
+    dst = os.path.join(RES, f"mipmap-{dName}", "ic_launcher.png")
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    try:
+        urllib.request.urlretrieve(f"{ICON_BASE}/icon-{size}.png", dst)
+    except:
+        pass
+
+print("Build script V5 generated successfully.")
