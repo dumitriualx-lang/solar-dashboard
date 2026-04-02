@@ -21,6 +21,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Install Gradle 8.7
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt/
+          sudo ln -sf /opt/gradle-8.7/bin/gradle /usr/local/bin/gradle
+          gradle --version
+
       - name: Install SDK platforms
         run: |
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --channel=0 2>&1 | tail -5
@@ -34,18 +41,17 @@ jobs:
       - name: Generate Android project files
         run: python3 $GITHUB_WORKSPACE/build-twa.py
 
-      - name: Build APK (uses Gradle wrapper = Gradle 8.7)
+      - name: Build APK
         run: |
           cd $HOME/twa
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon 2>&1
+          gradle assembleRelease --no-daemon 2>&1
           echo "Exit: $?"
 
       - name: Build AAB
         if: success()
         run: |
           cd $HOME/twa
-          ./gradlew bundleRelease --no-daemon 2>&1 | tail -20
+          gradle bundleRelease --no-daemon 2>&1 | tail -20
 
       - name: List outputs
         if: always()
