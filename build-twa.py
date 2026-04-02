@@ -18,10 +18,10 @@ def write(path, content):
     with open(path, "w") as f:
         f.write(content)
 
-# 1. Root settings
+# 1. Project settings
 write(os.path.join(ROOT, "settings.gradle"), "include ':app'")
 
-# 2. Build Script
+# 2. Build Script (Targeting Android 14 / API 34)
 write(os.path.join(APP, "build.gradle"), """
 plugins { id 'com.android.application' }
 android {
@@ -31,8 +31,8 @@ android {
         applicationId "%s"
         minSdk 21
         targetSdk 34
-        versionCode 20
-        versionName "1.2.0"
+        versionCode 25
+        versionName "1.2.5"
         manifestPlaceholders = [
             hostName: "%s",
             defaultUrl: "%s",
@@ -60,7 +60,7 @@ dependencies {
 }
 """ % (PKG, PKG, HOST, START_URL, APP_NAME, HOST, KEYSTORE))
 
-# 3. Manifest (Android 14 Fixes)
+# 3. Android Manifest with Security Fixes
 write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <queries><intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent></queries>
@@ -86,4 +86,4 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
 
 write(os.path.join(RES, "values", "colors.xml"), """<?xml version="1.0" encoding="utf-8"?><resources><color name="colorPrimary">#1D9E75</color></resources>""")
 
-print("Files generated.")
+print("Project files generated.")
