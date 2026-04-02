@@ -76,6 +76,7 @@ jobs:
           keyStorePassword: solar2024
 
           keyPassword: solar2024
+          
       - name: Collect outputs
         if: always()
         run: |
