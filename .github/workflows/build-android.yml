@@ -1,0 +1,139 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:        # run manually from the Actions tab
+  push:
+    branches: [ main ]      # also runs automatically on every push
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out the repository
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # 2. Set up Java (required by Android build tools)
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 3. Set up Node.js (required by Bubblewrap)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 4. Install Bubblewrap CLI
+      - name: Install Bubblewrap
+        run: npm install -g @bubblewrap/cli
+
+      # 5. Set up Android SDK command-line tools
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 6. Accept Android SDK licences
+      - name: Accept Android SDK licences
+        run: yes | sdkmanager --licenses || true
+
+      # 7. Write the Bubblewrap project config
+      - name: Write twa-manifest.json
+        run: |
+          cat > twa-manifest.json << 'EOF'
+          {
+            "packageId": "com.dumitriualxlang.solardashboard",
+            "host": "dumitriualx-lang.github.io",
+            "name": "Solar Dashboard",
+            "launcherName": "Solar Dashboard",
+            "display": "standalone",
+            "orientation": "portrait",
+            "themeColor": "#1D9E75",
+            "navigationColor": "#1D9E75",
+            "navigationColorDark": "#1D9E75",
+            "navigationDividerColor": "#1D9E75",
+            "navigationDividerColorDark": "#1D9E75",
+            "backgroundColor": "#1D9E75",
+            "startUrl": "/solar-dashboard/",
+            "iconUrl": "https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-any-512.png",
+            "maskableIconUrl": "https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-512.png",
+            "appVersion": "1.0.0",
+            "appVersionCode": 1,
+            "signingKey": {
+              "path": "android.keystore",
+              "alias": "solar-dashboard"
+            },
+            "isChromeOSOnly": false,
+            "enableNotifications": true,
+            "shortcuts": [
+              {
+                "name": "Live Dashboard",
+                "short_name": "Dashboard",
+                "url": "/solar-dashboard/?page=dashboard",
+                "icons": [{ "src": "https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-any-96.png", "sizes": "96x96" }]
+              },
+              {
+                "name": "Forecast",
+                "short_name": "Forecast",
+                "url": "/solar-dashboard/?page=forecast",
+                "icons": [{ "src": "https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-any-96.png", "sizes": "96x96" }]
+              }
+            ],
+            "generatorApp": "bubblewrap-cli",
+            "webManifestUrl": "https://dumitriualx-lang.github.io/solar-dashboard/manifest.json",
+            "fallbackType": "customtabs",
+            "features": {
+              "locationDelegation": { "enabled": true },
+              "playBilling": { "enabled": false }
+            },
+            "alphaDependencies": { "enabled": false },
+            "enableSiteSettingsShortcut": true,
+            "isSplashScreenFadeOutEnabled": false,
+            "splashScreenFadeOutDuration": 300,
+            "minSdkVersion": 21,
+            "includeDependencyNotice": false
+          }
+          EOF
+
+      # 8. Generate the Android project from the config
+      - name: Generate Android project
+        run: bubblewrap build --skipPwaValidation --manifest ./twa-manifest.json
+
+      # 9. Generate a signing keystore (new key each build — save it as an artifact)
+      - name: Generate signing keystore
+        run: |
+          keytool -genkeypair \
+            -v \
+            -keystore android.keystore \
+            -alias solar-dashboard \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass solar2024 \
+            -keypass solar2024 \
+            -dname "CN=Solar Dashboard, OU=App, O=SolarDashboard, L=Pantelimon, S=Ilfov, C=RO"
+
+      # 10. Build the APK and AAB
+      - name: Build APK and AAB
+        run: |
+          cd android-project 2>/dev/null || true
+          bubblewrap build --skipPwaValidation
+
+      # 11. Find the output files
+      - name: Find build outputs
+        run: |
+          find . -name "*.apk" -o -name "*.aab" 2>/dev/null | head -20
+
+      # 12. Upload APK, AAB and keystore as downloadable artifacts
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: solar-dashboard-android
+          path: |
+            **/*.apk
+            **/*.aab
+            android.keystore
+          retention-days: 30
+          if-no-files-found: warn
