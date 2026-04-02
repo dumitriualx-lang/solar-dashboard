@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, stat, urllib.request, shutil
+import os, urllib.request
 
 HOME = os.path.expanduser("~")
 ROOT = os.path.join(HOME, "twa")
@@ -16,48 +16,29 @@ COLOR_HEX = "FF1D9E75"
 KEYSTORE  = os.path.join(HOME, "solar.keystore")
 ICON_BASE = "https://dumitriualx-lang.github.io/solar-dashboard/icons"
 
-dirs = [
-    APP,
-    os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard"),
-    os.path.join(RES, "values"),
-    os.path.join(RES, "mipmap-mdpi"),
-    os.path.join(RES, "mipmap-hdpi"),
-    os.path.join(RES, "mipmap-xhdpi"),
-    os.path.join(RES, "mipmap-xxhdpi"),
-    os.path.join(RES, "mipmap-xxxhdpi"),
-    WRAP,
-]
-for d in dirs:
-    os.makedirs(d, exist_ok=True)
-print("Directories created")
+def write(path, content):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(content)
+    print(f"  wrote {path}")
 
-# settings.gradle — Gradle 10 compatible with pluginManagement
-with open(os.path.join(ROOT, "settings.gradle"), "w") as f:
-    f.write("""pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
+# settings.gradle
+write(os.path.join(ROOT, "settings.gradle"), """pluginManagement {
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-    }
+    repositories { google(); mavenCentral() }
 }
 rootProject.name = "SolarDashboard"
 include ":app"
 """)
 
-# Root build.gradle — empty for Gradle 10
-with open(os.path.join(ROOT, "build.gradle"), "w") as f:
-    f.write("// Top-level build file\n")
+# root build.gradle
+write(os.path.join(ROOT, "build.gradle"), "// Top-level build file\n")
 
-# app/build.gradle — modern plugins DSL, Gradle 10 compatible
-with open(os.path.join(APP, "build.gradle"), "w") as f:
-    f.write("""plugins {
+# app/build.gradle
+write(os.path.join(APP, "build.gradle"), """plugins {
     id 'com.android.application' version '8.3.0' apply true
 }
 android {
@@ -98,8 +79,7 @@ dependencies {
 """ % (PKG, PKG, HOST, START_URL, APP_NAME, HOST, KEYSTORE))
 
 # AndroidManifest.xml
-with open(os.path.join(MAIN, "AndroidManifest.xml"), "w") as f:
-    f.write("""<?xml version="1.0" encoding="utf-8"?>
+write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -115,23 +95,17 @@ with open(os.path.join(MAIN, "AndroidManifest.xml"), "w") as f:
         <activity
             android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
             android:exported="true">
-            <meta-data
-                android:name="android.support.customtabs.trusted.DEFAULT_URL"
+            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL"
                 android:value="${defaultUrl}"/>
-            <meta-data
-                android:name="android.support.customtabs.trusted.THEME_COLOR"
+            <meta-data android:name="android.support.customtabs.trusted.THEME_COLOR"
                 android:value="@color/colorPrimary"/>
-            <meta-data
-                android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
+            <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
                 android:value="@color/colorPrimary"/>
-            <meta-data
-                android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
+            <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
                 android:value="@color/colorPrimary"/>
-            <meta-data
-                android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BACKGROUND_COLOR"
+            <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BACKGROUND_COLOR"
                 android:value="@color/colorPrimary"/>
-            <meta-data
-                android:name="android.support.customtabs.trusted.FALLBACK_STRATEGY"
+            <meta-data android:name="android.support.customtabs.trusted.FALLBACK_STRATEGY"
                 android:value="customtabs"/>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
@@ -141,15 +115,12 @@ with open(os.path.join(MAIN, "AndroidManifest.xml"), "w") as f:
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="https"
-                      android:host="${hostName}"
+                <data android:scheme="https" android:host="${hostName}"
                       android:pathPrefix="/solar-dashboard"/>
             </intent-filter>
         </activity>
-        <service
-            android:name="com.google.androidbrowserhelper.trusted.DelegationService"
-            android:exported="true"
-            android:enabled="true">
+        <service android:name="com.google.androidbrowserhelper.trusted.DelegationService"
+            android:exported="true" android:enabled="true">
             <intent-filter>
                 <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -159,47 +130,41 @@ with open(os.path.join(MAIN, "AndroidManifest.xml"), "w") as f:
 </manifest>
 """)
 
-# res/values/strings.xml
-with open(os.path.join(RES, "values", "strings.xml"), "w") as f:
-    f.write("""<?xml version="1.0" encoding="utf-8"?>
+# strings.xml
+write(os.path.join(RES, "values", "strings.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">%s</string>
     <color name="colorPrimary">#%s</color>
 </resources>
 """ % (APP_NAME, COLOR_HEX))
 
-# gradle-wrapper.properties — pin to Gradle 8.7 (compatible with AGP 8.3)
-with open(os.path.join(WRAP, "gradle-wrapper.properties"), "w") as f:
-    f.write("""distributionBase=GRADLE_USER_HOME
+# gradle-wrapper.properties
+write(os.path.join(WRAP, "gradle-wrapper.properties"), """distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
 distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip
 zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 """)
 
-# No wrapper needed - workflow installs Gradle 8.7 directly
-print("No wrapper needed")
+print("All project files written OK")
 
-print("Project files written")
-
-# Download launcher icons
-icon_map = {
-    "mdpi":    ["icon-48.png",  "icon-72.png",  "icon-any-72.png"],
-    "hdpi":    ["icon-72.png",  "icon-any-72.png"],
-    "xhdpi":   ["icon-96.png",  "icon-any-96.png"],
-    "xxhdpi":  ["icon-144.png", "icon-any-144.png"],
-    "xxxhdpi": ["icon-192.png", "icon-any-192.png"],
+# Download icons
+densities = {
+    "mipmap-mdpi":    ["icon-48.png", "icon-72.png"],
+    "mipmap-hdpi":    ["icon-72.png", "icon-any-72.png"],
+    "mipmap-xhdpi":   ["icon-96.png", "icon-any-96.png"],
+    "mipmap-xxhdpi":  ["icon-144.png", "icon-any-144.png"],
+    "mipmap-xxxhdpi": ["icon-192.png", "icon-any-192.png"],
 }
-for density, candidates in icon_map.items():
-    dst = os.path.join(RES, f"mipmap-{density}", "ic_launcher.png")
-    for candidate in candidates:
-        url = f"{ICON_BASE}/{candidate}"
+for density, candidates in densities.items():
+    dst = os.path.join(RES, density, "ic_launcher.png")
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    for name in candidates:
         try:
-            urllib.request.urlretrieve(url, dst)
-            print(f"  {density}: {candidate} OK")
+            urllib.request.urlretrieve(f"{ICON_BASE}/{name}", dst)
+            print(f"  icon {density}: {name} OK")
             break
         except Exception:
             continue
 
-print("Icons done")
-print("TWA project generation complete")
+print("Build script complete")
