@@ -25,7 +25,6 @@ dirs = [
     os.path.join(RES, "mipmap-xhdpi"),
     os.path.join(RES, "mipmap-xxhdpi"),
     os.path.join(RES, "mipmap-xxxhdpi"),
-    WRAP,
 ]
 for d in dirs:
     os.makedirs(d, exist_ok=True)
@@ -177,24 +176,8 @@ zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 """)
 
-# Download Gradle wrapper jar
-print("Downloading gradle-wrapper.jar...")
-try:
-    urllib.request.urlretrieve(
-        "https://github.com/gradle/gradle/raw/v8.7.0/gradle/wrapper/gradle-wrapper.jar",
-        os.path.join(WRAP, "gradle-wrapper.jar")
-    )
-    print("  gradle-wrapper.jar downloaded")
-except Exception as e:
-    print(f"  Warning: {e}")
-
-# gradlew script — uses the wrapper (downloads Gradle 8.7 automatically)
-gradlew = os.path.join(ROOT, "gradlew")
-with open(gradlew, "w") as f:
-    f.write("""#!/usr/bin/env sh
-exec java -jar "$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar" "$@"
-""")
-os.chmod(gradlew, os.stat(gradlew).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+# No wrapper needed - workflow installs Gradle 8.7 directly
+print("No wrapper needed")
 
 print("Project files written")
 
