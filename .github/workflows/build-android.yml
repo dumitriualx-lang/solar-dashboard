@@ -2,8 +2,6 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -11,7 +9,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -23,118 +21,102 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+      - name: Install Android SDK build tools
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-34" \
+            "build-tools;34.0.0" 2>&1 | tail -5
+          echo "SDK install done"
 
       - name: Install Bubblewrap
-        run: npm install -g @bubblewrap/cli
-
-      - name: Set up Android SDK
         run: |
-          sudo apt-get install -y wget unzip
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          unzip -q commandlinetools-linux-11076708_latest.zip -d $HOME/android-sdk/cmdline-tools
-          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
-          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
-
-      - name: Accept licences and install SDK packages
-        run: |
-          yes | sdkmanager --sdk_root=$HOME/android-sdk --licenses || true
-          sdkmanager --sdk_root=$HOME/android-sdk \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "platform-tools"
+          npm install -g @bubblewrap/cli 2>&1 | tail -3
+          bubblewrap --version
 
       - name: Generate signing keystore
         run: |
           keytool -genkeypair \
-            -v \
             -keystore $HOME/android.keystore \
             -alias solar-key \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass solar2024 \
-            -keypass solar2024 \
-            -dname "CN=Solar Dashboard, OU=App, O=SolarApp, L=Pantelimon, S=Ilfov, C=RO"
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass solar2024 -keypass solar2024 \
+            -dname "CN=Solar Dashboard,O=SolarApp,C=RO" \
+            -noprompt
+          echo "Keystore created"
 
-      - name: Write Bubblewrap config
+      - name: Write twa-manifest.json
         run: |
-          mkdir -p $HOME/twa-project
-          cat > $HOME/twa-project/twa-manifest.json << 'EOF'
-          {
-            "packageId": "com.dumitriualxlang.solardashboard",
-            "host": "dumitriualx-lang.github.io",
-            "name": "Solar Dashboard",
-            "launcherName": "Solar Dashboard",
-            "display": "standalone",
-            "orientation": "portrait",
-            "themeColor": "#1D9E75",
-            "navigationColor": "#1D9E75",
-            "navigationColorDark": "#1D9E75",
-            "navigationDividerColor": "#1D9E75",
-            "navigationDividerColorDark": "#1D9E75",
-            "backgroundColor": "#1D9E75",
-            "startUrl": "/solar-dashboard/",
-            "iconUrl": "https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-any-512.png",
-            "maskableIconUrl": "https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-512.png",
-            "monochromeIconUrl": "",
-            "appVersion": "1.0.0",
-            "appVersionCode": 1,
-            "signingKey": {
-              "path": "/home/runner/android.keystore",
-              "alias": "solar-key",
-              "keystorePassword": "solar2024",
-              "keyPassword": "solar2024"
-            },
-            "isChromeOSOnly": false,
-            "enableNotifications": true,
-            "shortcuts": [],
-            "generatorApp": "bubblewrap-cli",
-            "webManifestUrl": "https://dumitriualx-lang.github.io/solar-dashboard/manifest.json",
-            "fallbackType": "customtabs",
-            "features": {
-              "locationDelegation": { "enabled": true },
-              "playBilling": { "enabled": false }
-            },
-            "alphaDependencies": { "enabled": false },
-            "enableSiteSettingsShortcut": true,
-            "isSplashScreenFadeOutEnabled": false,
-            "splashScreenFadeOutDuration": 300,
-            "minSdkVersion": 21,
-            "includeDependencyNotice": false,
-            "retainedBundles": []
-          }
-          EOF
+          mkdir -p $HOME/twa
+          cat > $HOME/twa/twa-manifest.json << 'EOF'
+{
+  "packageId": "com.dumitriualxlang.solardashboard",
+  "host": "dumitriualx-lang.github.io",
+  "name": "Solar Dashboard",
+  "launcherName": "Solar",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#1D9E75",
+  "navigationColor": "#1D9E75",
+  "navigationColorDark": "#1D9E75",
+  "navigationDividerColor": "#1D9E75",
+  "navigationDividerColorDark": "#1D9E75",
+  "backgroundColor": "#1D9E75",
+  "startUrl": "/solar-dashboard/",
+  "iconUrl": "https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-any-512.png",
+  "maskableIconUrl": "https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-512.png",
+  "monochromeIconUrl": "",
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "signingKey": {
+    "path": "/home/runner/android.keystore",
+    "alias": "solar-key",
+    "keystorePassword": "solar2024",
+    "keyPassword": "solar2024"
+  },
+  "isChromeOSOnly": false,
+  "enableNotifications": true,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://dumitriualx-lang.github.io/solar-dashboard/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": { "enabled": true },
+    "playBilling": { "enabled": false }
+  },
+  "alphaDependencies": { "enabled": false },
+  "enableSiteSettingsShortcut": true,
+  "isSplashScreenFadeOutEnabled": false,
+  "splashScreenFadeOutDuration": 300,
+  "minSdkVersion": 21,
+  "includeDependencyNotice": false
+}
+EOF
+          echo "Manifest written"
+          cat $HOME/twa/twa-manifest.json
 
       - name: Generate Android project
         run: |
-          cd $HOME/twa-project
-          bubblewrap generate \
-            --manifest $HOME/twa-project/twa-manifest.json
+          cd $HOME/twa
+          bubblewrap generate --manifest ./twa-manifest.json
+          echo "Generate done. Contents:"
+          ls -la $HOME/twa/
 
-      - name: Build APK and AAB
+      - name: Build
         run: |
-          cd $HOME/twa-project
-          bubblewrap build \
-            --skipPwaValidation
+          cd $HOME/twa
+          bubblewrap build --skipPwaValidation
+          echo "Build done"
 
-      - name: Copy outputs
+      - name: Collect outputs
         run: |
           mkdir -p $GITHUB_WORKSPACE/output
-          find $HOME/twa-project -name "*.apk" -exec cp {} $GITHUB_WORKSPACE/output/ \;
-          find $HOME/twa-project -name "*.aab" -exec cp {} $GITHUB_WORKSPACE/output/ \;
+          find $HOME/twa -name "*.apk" 2>/dev/null | xargs -I{} cp {} $GITHUB_WORKSPACE/output/ || true
+          find $HOME/twa -name "*.aab" 2>/dev/null | xargs -I{} cp {} $GITHUB_WORKSPACE/output/ || true
           cp $HOME/android.keystore $GITHUB_WORKSPACE/output/
-          echo "--- Output files ---"
+          echo "=== Output files ==="
           ls -lh $GITHUB_WORKSPACE/output/
 
-      - name: Upload artifacts
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: solar-dashboard-android
