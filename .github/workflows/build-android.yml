@@ -80,8 +80,8 @@ jobs:
         with:
           name: solar-dashboard-FINAL-RELEASE
           path: |
-            ${{ steps.sign_app.outputs.signedReleaseFile }}
-            ${{ steps.sign_app.outputs.signedBundleFile }}
+            /home/runner/twa/app/build/outputs/apk/release/*-signed.apk
+            /home/runner/twa/app/build/outputs/bundle/release/*-signed.aab
 
       - name: Upload Keystore (Backup)
         if: always()
