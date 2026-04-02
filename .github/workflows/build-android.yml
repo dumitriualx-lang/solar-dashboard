@@ -12,24 +12,25 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Prepare Keystore
+      - name: Prep Keystore
         run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > /home/runner/solar.keystore
 
       - name: Run Script
         run: python3 build-twa.py
 
-      - name: Download App Icon
+      - name: Setup Resources
         run: |
           mkdir -p /home/runner/twa/app/src/main/res/mipmap-mdpi
           wget https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-48.png -O /home/runner/twa/app/src/main/res/mipmap-mdpi/ic_launcher.png
 
-      - name: Build with System Gradle
+      - name: Build APK (using system gradle)
         run: |
           cd /home/runner/twa
+          # We use 'gradle' instead of './gradlew'
           gradle assembleRelease --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: solar-dashboard-v20
+          name: solar-dashboard-v25
           path: /home/runner/twa/app/build/outputs/apk/release/*.apk
