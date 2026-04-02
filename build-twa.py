@@ -12,7 +12,7 @@ PKG       = "com.dumitriualxlang.solardashboard"
 HOST      = "dumitriualx-lang.github.io"
 START_URL = "https://dumitriualx-lang.github.io/solar-dashboard/"
 APP_NAME  = "Solar Dashboard"
-COLOR_HEX = "FF1D9E75"
+COLOR_HEX = "1D9E75" # Removed FF prefix for standard hex compatibility
 KEYSTORE  = os.path.join(HOME, "solar.keystore")
 ICON_BASE = "https://dumitriualx-lang.github.io/solar-dashboard/icons"
 
@@ -48,8 +48,8 @@ android {
         applicationId "%s"
         minSdk 21
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 2
+        versionName "1.0.1"
         manifestPlaceholders = [
             hostName:        "%s",
             defaultUrl:      "%s",
@@ -78,9 +78,10 @@ dependencies {
 }
 """ % (PKG, PKG, HOST, START_URL, APP_NAME, HOST, KEYSTORE))
 
-# AndroidManifest.xml
+# AndroidManifest.xml - CRITICAL FIXES FOR ANDROID 14
 write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <application
@@ -119,8 +120,11 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
                       android:pathPrefix="/solar-dashboard"/>
             </intent-filter>
         </activity>
+        
         <service android:name="com.google.androidbrowserhelper.trusted.DelegationService"
-            android:exported="true" android:enabled="true">
+            android:exported="true" 
+            android:enabled="true"
+            tools:node="replace">
             <intent-filter>
                 <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -156,11 +160,11 @@ print("All project files written OK")
 
 # Download icons
 densities = {
-    "mipmap-mdpi":    ["icon-48.png", "icon-72.png"],
-    "mipmap-hdpi":    ["icon-72.png", "icon-any-72.png"],
-    "mipmap-xhdpi":   ["icon-96.png", "icon-any-96.png"],
-    "mipmap-xxhdpi":  ["icon-144.png", "icon-any-144.png"],
-    "mipmap-xxxhdpi": ["icon-192.png", "icon-any-192.png"],
+    "mipmap-mdpi":    ["icon-48.png"],
+    "mipmap-hdpi":    ["icon-72.png"],
+    "mipmap-xhdpi":   ["icon-96.png"],
+    "mipmap-xxhdpi":  ["icon-144.png"],
+    "mipmap-xxxhdpi": ["icon-192.png"],
 }
 for density, candidates in densities.items():
     dst = os.path.join(RES, density, "ic_launcher.png")
