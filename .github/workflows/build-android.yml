@@ -16,37 +16,36 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install Android SDK & Tools
+      - name: Install Android Command Line Tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openjdk-17-jdk wget unzip
           mkdir -p $HOME/android-sdk/cmdline-tools
           wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
+          unzip -q cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+          
+          # Set Paths
           export ANDROID_HOME=$HOME/android-sdk
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          
+          # Accept licenses and install platform tools
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
 
       - name: Install Gradle 8.7
         run: |
-          wget https://services.gradle.org/distributions/gradle-8.7-bin.zip
-          sudo unzip -d /opt/gradle gradle-8.7-bin.zip
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          sudo unzip -q -d /opt/gradle gradle-8.7-bin.zip
           sudo ln -s /opt/gradle/gradle-8.7/bin/gradle /usr/local/bin/gradle
 
       - name: Prepare Keystore File
-        # This matches the KEYSTORE path in your Python script: os.path.join(HOME, "solar.keystore")
         run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > $HOME/solar.keystore
 
       - name: Run TWA Build Script
         run: python3 build-twa.py
         env:
-          ANDROID_HOME: ${{ github.workspace }}/android-sdk
+          ANDROID_HOME: $HOME/android-sdk
 
       - name: Build Signed APK and AAB
-        # Because your Python script adds 'signingConfig' to build.gradle,
-        # these commands will produce SIGNED files automatically.
         run: |
           cd $HOME/twa
           gradle assembleRelease bundleRelease --no-daemon
