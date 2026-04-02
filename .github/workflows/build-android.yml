@@ -5,21 +5,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Prep Keystore
+
+      - name: Prepare Keystore
         run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > /home/runner/solar.keystore
-      - name: Generate Project
+
+      - name: Run Script
         run: python3 build-twa.py
-      - name: Build
+
+      - name: Download App Icon
+        run: |
+          mkdir -p /home/runner/twa/app/src/main/res/mipmap-mdpi
+          wget https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-48.png -O /home/runner/twa/app/src/main/res/mipmap-mdpi/ic_launcher.png
+
+      - name: Build with System Gradle
         run: |
           cd /home/runner/twa
-          wget https://raw.githubusercontent.com/gradle/gradle/v8.7.0/gradlew -O gradlew
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
-      - uses: actions/upload-artifact@v4
+          gradle assembleRelease --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: solar-apk
+          name: solar-dashboard-v20
           path: /home/runner/twa/app/build/outputs/apk/release/*.apk
