@@ -40,32 +40,22 @@ jobs:
 
       - name: Generate Android project files
         run: python3 $GITHUB_WORKSPACE/build-twa.py
-
+   
       - name: Build APK
         run: |
           cd $HOME/twa
-          gradle assembleRelease --no-daemon 2>&1
-          echo "Exit: $?"
+          ./gradlew assembleRelease --no-daemon
 
       - name: Build AAB
-        if: success()
         run: |
           cd $HOME/twa
-          gradle bundleRelease --no-daemon 2>&1 | tail -20
+          ./gradlew bundleRelease --no-daemon
 
-      - name: List outputs
-        if: always()
-        run: |
-          echo "=== APK ===" && find $HOME/twa -name "*.apk" 2>/dev/null || echo "none"
-          echo "=== AAB ===" && find $HOME/twa -name "*.aab" 2>/dev/null || echo "none"
-
-      - name: Sign APK and AAB
+      - name: Sign Artifacts
         uses: r0adkll/sign-android-release@v1
         id: sign_app
         with:
-          # This finds the APK for your phone
           releaseDirectory: /home/runner/twa/app/build/outputs/apk/release
-          # This finds the AAB for Google Play
           bundleReleaseDirectory: /home/runner/twa/app/build/outputs/bundle/release
           signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
           alias: solar-key
@@ -90,5 +80,3 @@ jobs:
           name: solar-keystore
           path: /home/runner/solar.keystore
           retention-days: 90
-  
-   
