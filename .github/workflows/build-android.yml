@@ -21,13 +21,6 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install Gradle 8.4
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt
-          echo "/opt/gradle-8.4/bin" >> $GITHUB_PATH
-          echo "Gradle installed"
-
       - name: Install SDK platforms
         run: |
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --channel=0 2>&1 | tail -5
@@ -41,28 +34,24 @@ jobs:
       - name: Generate Android project files
         run: python3 $GITHUB_WORKSPACE/build-twa.py
 
-      - name: Verify Gradle version
-        run: gradle --version
-
-      - name: Build APK
+      - name: Build APK (uses Gradle wrapper = Gradle 8.7)
         run: |
           cd $HOME/twa
-          gradle assembleRelease --no-daemon 2>&1
-          echo "Gradle exit: $?"
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon 2>&1
+          echo "Exit: $?"
 
       - name: Build AAB
         if: success()
         run: |
           cd $HOME/twa
-          gradle bundleRelease --no-daemon 2>&1
+          ./gradlew bundleRelease --no-daemon 2>&1 | tail -20
 
-      - name: List build outputs
+      - name: List outputs
         if: always()
         run: |
-          echo "=== APK files ==="
-          find $HOME/twa -name "*.apk" 2>/dev/null || echo "none"
-          echo "=== AAB files ==="
-          find $HOME/twa -name "*.aab" 2>/dev/null || echo "none"
+          echo "=== APK ===" && find $HOME/twa -name "*.apk" 2>/dev/null || echo "none"
+          echo "=== AAB ===" && find $HOME/twa -name "*.aab" 2>/dev/null || echo "none"
 
       - name: Collect outputs
         if: always()
