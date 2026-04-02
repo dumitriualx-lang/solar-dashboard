@@ -68,27 +68,23 @@ jobs:
           alias: solar-key
           keyStorePassword: solar2024
           keyPassword: solar2024
-          buildToolsVersion: 34.0.0
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
 
       - name: Upload Signed APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: solar-dashboard-signed
+          # This is the file you want to download and install
+          name: solar-dashboard-SIGNED-INSTALL-ME
           path: ${{ steps.sign_app.outputs.signedReleaseFile }}
 
-      - name: Collect outputs
-        if: always()
-        run: |
-          mkdir -p $GITHUB_WORKSPACE/output
-          find $HOME/twa -name "*.apk" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
-          find $HOME/twa -name "*.aab" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
-          cp $HOME/solar.keystore $GITHUB_WORKSPACE/output/ 2>/dev/null || true
-          ls -lh $GITHUB_WORKSPACE/output/
-
-      - name: Upload artifacts
+      - name: Upload Keystore (Backup)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: solar-dashboard-android
-          path: output/
-          retention-days: 30
+          name: solar-keystore
+          path: /home/runner/solar.keystore
+          retention-days: 90
+  
+   
