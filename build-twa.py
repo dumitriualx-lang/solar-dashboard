@@ -25,6 +25,7 @@ dirs = [
     os.path.join(RES, "mipmap-xhdpi"),
     os.path.join(RES, "mipmap-xxhdpi"),
     os.path.join(RES, "mipmap-xxxhdpi"),
+    WRAP,
 ]
 for d in dirs:
     os.makedirs(d, exist_ok=True)
