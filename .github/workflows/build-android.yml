@@ -59,15 +59,6 @@ jobs:
           echo "=== APK ===" && find $HOME/twa -name "*.apk" 2>/dev/null || echo "none"
           echo "=== AAB ===" && find $HOME/twa -name "*.aab" 2>/dev/null || echo "none"
 
-      - name: Collect outputs
-        if: always()
-        run: |
-          mkdir -p $GITHUB_WORKSPACE/output
-          find $HOME/twa -name "*.apk" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
-          find $HOME/twa -name "*.aab" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
-          cp $HOME/solar.keystore $GITHUB_WORKSPACE/output/ 2>/dev/null || true
-          ls -lh $GITHUB_WORKSPACE/output/
-          
       - name: Sign APK
         uses: r0adkll/sign-android-release@v1
         id: sign_app
@@ -82,8 +73,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: solar-dashboard-signed
-          # Use the output from the signing step specifically
           path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+
+      - name: Collect outputs
+        if: always()
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/output
+          find $HOME/twa -name "*.apk" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
+          find $HOME/twa -name "*.aab" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
+          cp $HOME/solar.keystore $GITHUB_WORKSPACE/output/ 2>/dev/null || true
+          ls -lh $GITHUB_WORKSPACE/output/
 
       - name: Upload artifacts
         if: always()
