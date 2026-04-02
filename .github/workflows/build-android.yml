@@ -15,40 +15,22 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: 'gradle'
 
-      - name: Install Android Command Line Tools
-        run: |
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
-          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
-          
-          # Set Paths
-          export ANDROID_HOME=$HOME/android-sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          
-          # Accept licenses and install platform tools
-          yes | sdkmanager --licenses > /dev/null
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
-
-      - name: Install Gradle 8.7
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
-          sudo unzip -q -d /opt/gradle gradle-8.7-bin.zip
-          sudo ln -s /opt/gradle/gradle-8.7/bin/gradle /usr/local/bin/gradle
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Prepare Keystore File
-        run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > $HOME/solar.keystore
+        run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > /home/runner/solar.keystore
 
       - name: Run TWA Build Script
         run: python3 build-twa.py
-        env:
-          ANDROID_HOME: $HOME/android-sdk
 
       - name: Build Signed APK and AAB
         run: |
-          cd $HOME/twa
-          gradle assembleRelease bundleRelease --no-daemon
+          cd /home/runner/twa
+          chmod +x gradlew
+          ./gradlew assembleRelease bundleRelease --no-daemon
 
       - name: Upload Signed Artifacts
         if: success()
@@ -58,10 +40,3 @@ jobs:
           path: |
             /home/runner/twa/app/build/outputs/apk/release/*.apk
             /home/runner/twa/app/build/outputs/bundle/release/*.aab
-
-      - name: Upload Keystore (Backup)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: solar-keystore
-          path: /home/runner/solar.keystore
