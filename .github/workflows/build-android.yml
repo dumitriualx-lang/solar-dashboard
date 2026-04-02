@@ -68,6 +68,7 @@ jobs:
           alias: solar-key
           keyStorePassword: solar2024
           keyPassword: solar2024
+          buildToolsVersion: 34.0.0
 
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
