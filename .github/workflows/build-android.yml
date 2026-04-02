@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android TWA
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -19,100 +19,36 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Install Android SDK packages
+      - name: Install SDK platforms
         run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" 2>&1 | tail -5
-
-      - name: Install Bubblewrap
-        run: |
-          npm install -g @bubblewrap/cli 2>&1 | tail -3
-          bubblewrap --version
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --channel=0 2>&1 | tail -5
 
       - name: Generate signing keystore
         run: |
-          keytool -genkeypair \
-            -keystore $HOME/android.keystore \
-            -alias solar-key \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass solar2024 -keypass solar2024 \
-            -dname "CN=Solar Dashboard,O=SolarApp,C=RO" \
-            -noprompt
+          keytool -genkeypair -keystore $HOME/solar.keystore -alias solar-key -keyalg RSA -keysize 2048 -validity 10000 -storepass solar2024 -keypass solar2024 -dname "CN=Solar Dashboard,O=SolarApp,C=RO" -noprompt
           echo "Keystore created"
 
-      - name: Write twa-manifest.json
-        run: |
-          mkdir -p $HOME/twa
-          python3 -c "
-          import json
-          manifest = {
-            'packageId': 'com.dumitriualxlang.solardashboard',
-            'host': 'dumitriualx-lang.github.io',
-            'name': 'Solar Dashboard',
-            'launcherName': 'Solar',
-            'display': 'standalone',
-            'orientation': 'portrait',
-            'themeColor': '#1D9E75',
-            'navigationColor': '#1D9E75',
-            'navigationColorDark': '#1D9E75',
-            'navigationDividerColor': '#1D9E75',
-            'navigationDividerColorDark': '#1D9E75',
-            'backgroundColor': '#1D9E75',
-            'startUrl': '/solar-dashboard/',
-            'iconUrl': 'https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-any-512.png',
-            'maskableIconUrl': 'https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-512.png',
-            'monochromeIconUrl': '',
-            'appVersion': '1.0.0',
-            'appVersionCode': 1,
-            'signingKey': {
-              'path': '/home/runner/android.keystore',
-              'alias': 'solar-key',
-              'keystorePassword': 'solar2024',
-              'keyPassword': 'solar2024'
-            },
-            'isChromeOSOnly': False,
-            'enableNotifications': True,
-            'shortcuts': [],
-            'generatorApp': 'bubblewrap-cli',
-            'webManifestUrl': 'https://dumitriualx-lang.github.io/solar-dashboard/manifest.json',
-            'fallbackType': 'customtabs',
-            'features': {
-              'locationDelegation': {'enabled': True},
-              'playBilling': {'enabled': False}
-            },
-            'alphaDependencies': {'enabled': False},
-            'enableSiteSettingsShortcut': True,
-            'isSplashScreenFadeOutEnabled': False,
-            'splashScreenFadeOutDuration': 300,
-            'minSdkVersion': 21,
-            'includeDependencyNotice': False
-          }
-          with open('/home/runner/twa/twa-manifest.json', 'w') as f:
-            json.dump(manifest, f, indent=2)
-          print('Manifest written OK')
-          "
+      - name: Generate Android project files
+        run: python3 $GITHUB_WORKSPACE/build-twa.py
 
-      - name: Generate Android project
+      - name: Build APK
         run: |
           cd $HOME/twa
-          bubblewrap generate --manifest ./twa-manifest.json
-          echo "Generate done"
-          ls -la $HOME/twa/
+          gradle assembleRelease --no-daemon 2>&1 | tail -20
 
-      - name: Build APK and AAB
+      - name: Build AAB
         run: |
           cd $HOME/twa
-          bubblewrap build --skipPwaValidation
-          echo "Build done"
+          gradle bundleRelease --no-daemon 2>&1 | tail -10
 
       - name: Collect outputs
         run: |
           mkdir -p $GITHUB_WORKSPACE/output
           find $HOME/twa -name "*.apk" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
           find $HOME/twa -name "*.aab" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
-          cp $HOME/android.keystore $GITHUB_WORKSPACE/output/
-          echo "=== Output files ==="
+          cp $HOME/solar.keystore $GITHUB_WORKSPACE/output/
           ls -lh $GITHUB_WORKSPACE/output/
 
       - name: Upload artifacts
