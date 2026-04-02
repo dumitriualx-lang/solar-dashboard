@@ -1,82 +1,89 @@
-name: Build Android TWA
+name: Build and Sign Solar Dashboard
 
 on:
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: "17"
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Android SDK & Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk wget unzip
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          unzip cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
+          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+          export ANDROID_HOME=$HOME/android-sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Install Gradle 8.7
         run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt/
-          sudo ln -sf /opt/gradle-8.7/bin/gradle /usr/local/bin/gradle
-          gradle --version
+          wget https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          sudo unzip -d /opt/gradle gradle-8.7-bin.zip
+          sudo ln -s /opt/gradle/gradle-8.7/bin/gradle /usr/local/bin/gradle
 
-      - name: Install SDK platforms
+      - name: Run TWA Build Script
         run: |
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --channel=0 2>&1 | tail -5
-          echo "SDK done"
-
-      - name: Generate signing keystore
-        run: |
-          keytool -genkeypair -keystore $HOME/solar.keystore -alias solar-key -keyalg RSA -keysize 2048 -validity 10000 -storepass solar2024 -keypass solar2024 -dname "CN=Solar Dashboard,O=SolarApp,C=RO" -noprompt
-          echo "Keystore created"
-
-      - name: Generate Android project files
-        run: python3 $GITHUB_WORKSPACE/build-twa.py
-   
-      - name: Build APK
-        run: |
-          cd $HOME/twa
-          gradle assembleRelease --no-daemon
-
-      - name: Build AAB
-        run: |
-          cd $HOME/twa
-          gradle bundleRelease --no-daemon
-
-      - name: Sign Artifacts
-        uses: r0adkll/sign-android-release@v1.0.4
-        id: sign_app
-        with:
-          releaseDirectory: /home/runner/twa/app/build/outputs/apk/release
-          bundleReleaseDirectory: /home/runner/twa/app/build/outputs/bundle/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
-          alias: solar-key
-          keyStorePassword: solar2024
-          keyPassword: solar2024
+          python3 build-twa.py
         env:
-          BUILD_TOOLS_VERSION: "34.0.0"
+          ANDROID_HOME: ${{ github.workspace }}/android-sdk
 
-      - name: Upload Signed Artifacts
+      - name: Build APK and AAB
+        run: |
+          cd $HOME/twa
+          gradle assembleRelease bundleRelease --no-daemon
+
+      - name: Prepare Signing Key
+        run: |
+          echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > $HOME/release.keystore
+
+      - name: Sign APK (Manual)
+        run: |
+          BUILD_TOOLS=$HOME/android-sdk/build-tools/34.0.0
+          APK_PATH=$HOME/twa/app/build/outputs/apk/release/app-release-unsigned.apk
+          # If the above path is wrong, it might be app-release.apk
+          [ -f $APK_PATH ] || APK_PATH=$HOME/twa/app/build/outputs/apk/release/app-release.apk
+          
+          $BUILD_TOOLS/apksigner sign --ks $HOME/release.keystore \
+            --ks-key-alias solar-key \
+            --ks-pass pass:solar2024 \
+            --key-pass pass:solar2024 \
+            --out $HOME/solar-signed.apk $APK_PATH
+
+      - name: Sign AAB (Manual)
+        run: |
+          AAB_PATH=$HOME/twa/app/build/outputs/bundle/release/app-release.aab
+          jarsigner -keystore $HOME/release.keystore \
+            -storepass solar2024 \
+            -keypass solar2024 \
+            $AAB_PATH solar-key
+          mv $AAB_PATH $HOME/solar-signed.aab
+
+      - name: Upload FINAL Artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: solar-dashboard-FINAL-RELEASE
           path: |
-            /home/runner/twa/app/build/outputs/apk/release/*-signed.apk
-            /home/runner/twa/app/build/outputs/bundle/release/*-signed.aab
+            $HOME/solar-signed.apk
+            $HOME/solar-signed.aab
 
       - name: Upload Keystore (Backup)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: solar-keystore
-          path: /home/runner/solar.keystore
-          retention-days: 90
+          path: $HOME/release.keystore
