@@ -138,6 +138,12 @@ write(os.path.join(RES, "values", "strings.xml"), """<?xml version="1.0" encodin
 </resources>
 """ % (APP_NAME, COLOR_HEX))
 
+# gradle.properties — enable AndroidX
+write(os.path.join(ROOT, "gradle.properties"), """android.useAndroidX=true
+android.enableJetifier=true
+org.gradle.jvmargs=-Xmx2048m
+""")
+
 # gradle-wrapper.properties
 write(os.path.join(WRAP, "gradle-wrapper.properties"), """distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
