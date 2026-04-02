@@ -58,25 +58,7 @@ jobs:
         run: |
           echo "=== APK ===" && find $HOME/twa -name "*.apk" 2>/dev/null || echo "none"
           echo "=== AAB ===" && find $HOME/twa -name "*.aab" 2>/dev/null || echo "none"
-          
-- name: Sign APK
 
-        uses: r0adkll/sign-android-release@v1
-
-        id: sign_app
-
-        with:
-
-          releaseDirectory: $HOME/twa/app/build/outputs/apk/release
-
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }} # See note below
-
-          alias: solar-key
-
-          keyStorePassword: solar2024
-
-          keyPassword: solar2024
-          
       - name: Collect outputs
         if: always()
         run: |
@@ -85,6 +67,23 @@ jobs:
           find $HOME/twa -name "*.aab" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
           cp $HOME/solar.keystore $GITHUB_WORKSPACE/output/ 2>/dev/null || true
           ls -lh $GITHUB_WORKSPACE/output/
+          
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app
+        with:
+          releaseDirectory: /home/runner/twa/app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
+          alias: solar-key
+          keyStorePassword: solar2024
+          keyPassword: solar2024
+
+      - name: Upload Signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: solar-dashboard-signed
+          # Use the output from the signing step specifically
+          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
 
       - name: Upload artifacts
         if: always()
