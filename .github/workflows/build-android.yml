@@ -35,55 +35,34 @@ jobs:
           sudo unzip -d /opt/gradle gradle-8.7-bin.zip
           sudo ln -s /opt/gradle/gradle-8.7/bin/gradle /usr/local/bin/gradle
 
+      - name: Prepare Keystore File
+        # This matches the KEYSTORE path in your Python script: os.path.join(HOME, "solar.keystore")
+        run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > $HOME/solar.keystore
+
       - name: Run TWA Build Script
-        run: |
-          python3 build-twa.py
+        run: python3 build-twa.py
         env:
           ANDROID_HOME: ${{ github.workspace }}/android-sdk
 
-      - name: Build APK and AAB
+      - name: Build Signed APK and AAB
+        # Because your Python script adds 'signingConfig' to build.gradle,
+        # these commands will produce SIGNED files automatically.
         run: |
           cd $HOME/twa
           gradle assembleRelease bundleRelease --no-daemon
 
-      - name: Prepare Signing Key
-        run: |
-          echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > $HOME/release.keystore
-
-      - name: Sign APK (Manual)
-        run: |
-          BUILD_TOOLS=$HOME/android-sdk/build-tools/34.0.0
-          APK_PATH=$HOME/twa/app/build/outputs/apk/release/app-release-unsigned.apk
-          # If the above path is wrong, it might be app-release.apk
-          [ -f $APK_PATH ] || APK_PATH=$HOME/twa/app/build/outputs/apk/release/app-release.apk
-          
-          $BUILD_TOOLS/apksigner sign --ks $HOME/release.keystore \
-            --ks-key-alias solar-key \
-            --ks-pass pass:solar2024 \
-            --key-pass pass:solar2024 \
-            --out $HOME/solar-signed.apk $APK_PATH
-
-      - name: Sign AAB (Manual)
-        run: |
-          AAB_PATH=$HOME/twa/app/build/outputs/bundle/release/app-release.aab
-          jarsigner -keystore $HOME/release.keystore \
-            -storepass solar2024 \
-            -keypass solar2024 \
-            $AAB_PATH solar-key
-          mv $AAB_PATH $HOME/solar-signed.aab
-
-      - name: Upload FINAL Artifacts
+      - name: Upload Signed Artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: solar-dashboard-FINAL-RELEASE
           path: |
-            $HOME/solar-signed.apk
-            $HOME/solar-signed.aab
+            /home/runner/twa/app/build/outputs/apk/release/*.apk
+            /home/runner/twa/app/build/outputs/bundle/release/*.aab
 
       - name: Upload Keystore (Backup)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: solar-keystore
-          path: $HOME/release.keystore
+          path: /home/runner/solar.keystore
