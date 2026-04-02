@@ -59,11 +59,14 @@ jobs:
           echo "=== APK ===" && find $HOME/twa -name "*.apk" 2>/dev/null || echo "none"
           echo "=== AAB ===" && find $HOME/twa -name "*.aab" 2>/dev/null || echo "none"
 
-      - name: Sign APK
+      - name: Sign APK and AAB
         uses: r0adkll/sign-android-release@v1
         id: sign_app
         with:
+          # This finds the APK for your phone
           releaseDirectory: /home/runner/twa/app/build/outputs/apk/release
+          # This finds the AAB for Google Play
+          bundleReleaseDirectory: /home/runner/twa/app/build/outputs/bundle/release
           signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
           alias: solar-key
           keyStorePassword: solar2024
@@ -71,13 +74,14 @@ jobs:
         env:
           BUILD_TOOLS_VERSION: "34.0.0"
 
-      - name: Upload Signed APK
+      - name: Upload Signed Artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          # This is the file you want to download and install
-          name: solar-dashboard-SIGNED-INSTALL-ME
-          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+          name: solar-dashboard-FINAL-RELEASE
+          path: |
+            ${{ steps.sign_app.outputs.signedReleaseFile }}
+            ${{ steps.sign_app.outputs.signedBundleFile }}
 
       - name: Upload Keystore (Backup)
         if: always()
