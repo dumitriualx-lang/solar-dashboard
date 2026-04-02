@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-Generates a minimal Android TWA project for Solar Dashboard.
-Run from the GitHub Actions workflow after Java and Android SDK are set up.
-"""
 import os, stat, urllib.request, shutil
 
 HOME = os.path.expanduser("~")
@@ -12,17 +8,14 @@ MAIN = os.path.join(APP, "src", "main")
 RES  = os.path.join(MAIN, "res")
 WRAP = os.path.join(ROOT, "gradle", "wrapper")
 
-# App config
-PKG         = "com.dumitriualxlang.solardashboard"
-HOST        = "dumitriualx-lang.github.io"
-START_URL   = "https://dumitriualx-lang.github.io/solar-dashboard/"
-APP_NAME    = "Solar Dashboard"
-COLOR       = "#1D9E75"
-COLOR_HEX   = "FF1D9E75"
-KEYSTORE    = os.path.join(HOME, "solar.keystore")
-ICON_BASE   = "https://dumitriualx-lang.github.io/solar-dashboard/icons"
+PKG       = "com.dumitriualxlang.solardashboard"
+HOST      = "dumitriualx-lang.github.io"
+START_URL = "https://dumitriualx-lang.github.io/solar-dashboard/"
+APP_NAME  = "Solar Dashboard"
+COLOR_HEX = "FF1D9E75"
+KEYSTORE  = os.path.join(HOME, "solar.keystore")
+ICON_BASE = "https://dumitriualx-lang.github.io/solar-dashboard/icons"
 
-# Create directory structure
 dirs = [
     APP,
     os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard"),
@@ -38,22 +31,35 @@ for d in dirs:
     os.makedirs(d, exist_ok=True)
 print("Directories created")
 
-# settings.gradle
+# settings.gradle — Gradle 10 compatible with pluginManagement
 with open(os.path.join(ROOT, "settings.gradle"), "w") as f:
-    f.write('rootProject.name = "SolarDashboard"\ninclude ":app"\n')
-
-# Root build.gradle
-with open(os.path.join(ROOT, "build.gradle"), "w") as f:
-    f.write("""buildscript {
-    repositories { google(); mavenCentral() }
-    dependencies { classpath "com.android.tools.build:gradle:8.2.0" }
+    f.write("""pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
 }
-allprojects { repositories { google(); mavenCentral() } }
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "SolarDashboard"
+include ":app"
 """)
 
-# app/build.gradle
+# Root build.gradle — empty for Gradle 10
+with open(os.path.join(ROOT, "build.gradle"), "w") as f:
+    f.write("// Top-level build file\n")
+
+# app/build.gradle — modern plugins DSL, Gradle 10 compatible
 with open(os.path.join(APP, "build.gradle"), "w") as f:
-    f.write("""plugins { id 'com.android.application' }
+    f.write("""plugins {
+    id 'com.android.application' version '8.3.0' apply true
+}
 android {
     namespace "%s"
     compileSdk 34
@@ -64,18 +70,18 @@ android {
         versionCode 1
         versionName "1.0.0"
         manifestPlaceholders = [
-            hostName: "%s",
-            defaultUrl: "%s",
-            launcherName: "%s",
+            hostName:        "%s",
+            defaultUrl:      "%s",
+            launcherName:    "%s",
             assetStatements: '[{ \\"relation\\": [\\"delegate_permission/common.handle_all_urls\\"], \\"target\\": { \\"namespace\\": \\"web\\", \\"site\\": \\"https://%s\\" }}]'
         ]
     }
     signingConfigs {
         release {
-            storeFile file("%s")
+            storeFile     file("%s")
             storePassword "solar2024"
-            keyAlias "solar-key"
-            keyPassword "solar2024"
+            keyAlias      "solar-key"
+            keyPassword   "solar2024"
         }
     }
     buildTypes {
@@ -162,48 +168,54 @@ with open(os.path.join(RES, "values", "strings.xml"), "w") as f:
 </resources>
 """ % (APP_NAME, COLOR_HEX))
 
-# gradle-wrapper.properties
+# gradle-wrapper.properties — pin to Gradle 8.7 (compatible with AGP 8.3)
 with open(os.path.join(WRAP, "gradle-wrapper.properties"), "w") as f:
     f.write("""distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
-distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-bin.zip
+distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip
 zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 """)
+
+# Download Gradle wrapper jar
+print("Downloading gradle-wrapper.jar...")
+try:
+    urllib.request.urlretrieve(
+        "https://github.com/gradle/gradle/raw/v8.7.0/gradle/wrapper/gradle-wrapper.jar",
+        os.path.join(WRAP, "gradle-wrapper.jar")
+    )
+    print("  gradle-wrapper.jar downloaded")
+except Exception as e:
+    print(f"  Warning: {e}")
+
+# gradlew script — uses the wrapper (downloads Gradle 8.7 automatically)
+gradlew = os.path.join(ROOT, "gradlew")
+with open(gradlew, "w") as f:
+    f.write("""#!/usr/bin/env sh
+exec java -jar "$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar" "$@"
+""")
+os.chmod(gradlew, os.stat(gradlew).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
 print("Project files written")
 
 # Download launcher icons
 icon_map = {
-    "mdpi":    ("icon-48.png",  "icon-any-48.png",  "icon-72.png"),
-    "hdpi":    ("icon-72.png",  "icon-any-72.png",  None),
-    "xhdpi":   ("icon-96.png",  "icon-any-96.png",  None),
-    "xxhdpi":  ("icon-144.png", "icon-any-144.png", None),
-    "xxxhdpi": ("icon-192.png", "icon-any-192.png", None),
+    "mdpi":    ["icon-48.png",  "icon-72.png",  "icon-any-72.png"],
+    "hdpi":    ["icon-72.png",  "icon-any-72.png"],
+    "xhdpi":   ["icon-96.png",  "icon-any-96.png"],
+    "xxhdpi":  ["icon-144.png", "icon-any-144.png"],
+    "xxxhdpi": ["icon-192.png", "icon-any-192.png"],
 }
-
 for density, candidates in icon_map.items():
     dst = os.path.join(RES, f"mipmap-{density}", "ic_launcher.png")
-    fetched = False
     for candidate in candidates:
-        if candidate is None:
-            continue
         url = f"{ICON_BASE}/{candidate}"
         try:
             urllib.request.urlretrieve(url, dst)
-            print(f"  {density}: {candidate} ✅")
-            fetched = True
+            print(f"  {density}: {candidate} OK")
             break
         except Exception:
             continue
-    if not fetched:
-        # Copy any existing icon as fallback
-        for src in [os.path.join(RES, "mipmap-xxxhdpi", "ic_launcher.png"),
-                    os.path.join(RES, "mipmap-xxhdpi",  "ic_launcher.png")]:
-            if os.path.exists(src):
-                shutil.copy(src, dst)
-                print(f"  {density}: copied from fallback")
-                break
 
 print("Icons done")
-print("TWA project generation complete ✅")
+print("TWA project generation complete")
