@@ -27,7 +27,6 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -35,7 +34,6 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-
 rootProject.name = "twa"
 include(":app")
 """)
@@ -74,8 +72,8 @@ android {{
         applicationId "{PKG}"
         minSdk 21
         targetSdk 34
-        versionCode 30
-        versionName "1.3.0"
+        versionCode 35
+        versionName "1.3.5"
 
         manifestPlaceholders = [
             hostName: "{HOST}",
@@ -112,7 +110,7 @@ dependencies {{
 }}
 """)
 
-# ✅ AndroidManifest (FIXED: Added <queries> for Android 14 compatibility)
+# ✅ AndroidManifest.xml (FIXED: Added <queries> for browser visibility)
 write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
@@ -130,30 +128,21 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
         android:icon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Translucent.NoTitleBar">
 
-        <meta-data
-            android:name="asset_statements"
-            android:value="${assetStatements}"/>
+        <meta-data android:name="asset_statements" android:value="${assetStatements}"/>
 
-        <activity
-            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+        <activity android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
             android:exported="true">
-
-            <meta-data
-                android:name="android.support.customtabs.trusted.DEFAULT_URL"
-                android:value="${defaultUrl}"/>
-
+            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="${defaultUrl}"/>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="${hostName}" android:pathPrefix="/solar-dashboard" />
             </intent-filter>
-
         </activity>
 
         <service android:name="com.google.androidbrowserhelper.trusted.DelegationService"
@@ -168,5 +157,3 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
     </application>
 </manifest>
 """)
-
-print("Project generated successfully.")
