@@ -9,7 +9,7 @@ RES  = os.path.join(MAIN, "res")
 
 PKG       = "com.dumitriualxlang.solardashboard"
 HOST      = "dumitriualx-lang.github.io"
-START_URL = "https://dumitriualx-lang.github.io/"
+START_URL = "https://dumitriualx-lang.github.io/solar-dashboard/"
 APP_NAME  = "Solar Dashboard"
 KEYSTORE  = os.path.join(HOME, "solar.keystore")
 
@@ -18,7 +18,7 @@ def write(path, content):
     with open(path, "w") as f:
         f.write(content)
 
-# ✅ settings.gradle (FIXED)
+# ✅ settings.gradle
 write(os.path.join(ROOT, "settings.gradle"), """
 pluginManagement {
     repositories {
@@ -40,9 +40,13 @@ rootProject.name = "twa"
 include(":app")
 """)
 
-# ✅ root build.gradle
+# ✅ root build.gradle (FIXED: Added repositories to buildscript)
 write(os.path.join(ROOT, "build.gradle"), """
 buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
     dependencies {
         classpath "com.android.tools.build:gradle:8.2.0"
     }
@@ -70,8 +74,8 @@ android {{
         applicationId "{PKG}"
         minSdk 21
         targetSdk 34
-        versionCode 25
-        versionName "1.2.5"
+        versionCode 30
+        versionName "1.3.0"
 
         manifestPlaceholders = [
             hostName: "{HOST}",
@@ -84,10 +88,6 @@ android {{
     compileOptions {{
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
-    }}
-
-    buildFeatures {{
-        buildConfig true
     }}
 
     signingConfigs {{
@@ -112,16 +112,23 @@ dependencies {{
 }}
 """)
 
-# ✅ AndroidManifest (FIXED for Android 14)
+# ✅ AndroidManifest (FIXED: Added <queries> for Android 14 compatibility)
 write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
 
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
         android:label="${launcherName}"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+        android:theme="@android:style/Theme.Translucent.NoTitleBar">
 
         <meta-data
             android:name="asset_statements"
@@ -144,10 +151,20 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="https" android:host="${hostName}" />
+                <data android:scheme="https" android:host="${hostName}" android:pathPrefix="/solar-dashboard" />
             </intent-filter>
 
         </activity>
+
+        <service android:name="com.google.androidbrowserhelper.trusted.DelegationService"
+            android:enabled="true"
+            android:exported="true"
+            tools:node="replace">
+            <intent-filter>
+                <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </service>
     </application>
 </manifest>
 """)
