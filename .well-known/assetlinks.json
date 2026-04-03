@@ -2,7 +2,7 @@
   "relation": ["delegate_permission/common.handle_all_urls"],
   "target": {
     "namespace": "android_app",
-    "package_name": "com.triualx.solardashboard",
-    "sha256_cert_fingerprints": ["FA:C6:17:45:DC:09:03:78:6F:B9:ED:46:28:C3:39:D2:51:95:F5:A6:51:F0:44:08:14:60:1A:10:20:05:35:F5"]
+    "package_name": "com.dumitriualxlang.solardashboard",
+    "sha256_cert_fingerprints": ["AC:A6:44:2A:86:E7:BE:6A:CB:79:DD:A1:EF:34:C5:D9:8C:5B:90:88:7F:CE:DE:42:01:FA:E5:68:0E:5B:44:5B"]
   }
 }]
