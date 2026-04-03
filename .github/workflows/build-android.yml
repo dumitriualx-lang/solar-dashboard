@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -19,22 +19,24 @@ jobs:
       - name: Install Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Decode Keystore
+      - name: Decode keystore
         run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > $HOME/solar.keystore
 
-      - name: Run Python generator
+      - name: Run Python script
         run: python3 build-twa.py
 
+      # ✅ FIXED ICON (change filename if needed)
       - name: Add icon
         run: |
           mkdir -p $HOME/twa/app/src/main/res/mipmap-mdpi
-          wget https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-192.png \
+          wget https://dumitriualx-lang.github.io/icons/icon-192.png \
           -O $HOME/twa/app/src/main/res/mipmap-mdpi/ic_launcher.png
 
+      # ✅ CRITICAL FIX (Gradle version)
       - name: Generate Gradle Wrapper
         run: |
           cd $HOME/twa
-          gradle wrapper
+          gradle wrapper --gradle-version 8.2
 
       - name: Build AAB + APK
         run: |
