@@ -21,17 +21,21 @@ jobs:
         run: python3 build-twa.py
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4 # Updated to v4
         with:
           gradle-version: 8.2
 
-      - name: Build Signed APK
+      - name: Build APK and AAB
         run: |
           cd /home/runner/twa
-          gradle assembleRelease --no-daemon
+          # bundleRelease creates the .aab file for Google Play
+          # assembleRelease creates the .apk file for manual testing
+          gradle bundleRelease assembleRelease --no-daemon
 
-      - name: Upload Artifact
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: solar-dashboard-v50
-          path: /home/runner/twa/app/build/outputs/apk/release/*.apk
+          name: solar-dashboard-final-v50
+          path: |
+            /home/runner/twa/app/build/outputs/apk/release/*.apk
+            /home/runner/twa/app/build/outputs/bundle/release/*.aab
