@@ -18,72 +18,129 @@ def write(path, content):
     with open(path, "w") as f:
         f.write(content)
 
-# 1. Project settings
+# settings.gradle
 write(os.path.join(ROOT, "settings.gradle"), "include ':app'")
 
-# 2. Build Script (Targeting Android 14 / API 34)
-write(os.path.join(APP, "build.gradle"), """
-plugins { id 'com.android.application' }
-android {
-    namespace "%s"
+# ROOT build.gradle (MISSING BEFORE → critical)
+write(os.path.join(ROOT, "build.gradle"), """
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.2.0'
+    }
+}
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+""")
+
+# gradle.properties (important for stability)
+write(os.path.join(ROOT, "gradle.properties"), """
+org.gradle.jvmargs=-Xmx2g
+android.useAndroidX=true
+android.enableJetifier=true
+""")
+
+# APP build.gradle
+write(os.path.join(APP, "build.gradle"), f"""
+plugins {{
+    id 'com.android.application'
+}}
+
+android {{
+    namespace "{PKG}"
     compileSdk 34
-    defaultConfig {
-        applicationId "%s"
+
+    defaultConfig {{
+        applicationId "{PKG}"
         minSdk 21
         targetSdk 34
         versionCode 25
         versionName "1.2.5"
+
         manifestPlaceholders = [
-            hostName: "%s",
-            defaultUrl: "%s",
-            launcherName: "%s",
-            assetStatements: '[{ \\"relation\\": [\\"delegate_permission/common.handle_all_urls\\"], \\"target\\": { \\"namespace\\": \\"web\\", \\"site\\": \\"https://%s\\" }}]'
+            hostName: "{HOST}",
+            defaultUrl: "{START_URL}",
+            launcherName: "{APP_NAME}",
+            assetStatements: '[{{ "relation": ["delegate_permission/common.handle_all_urls"], "target": {{ "namespace": "web", "site": "https://{HOST}" }} }}]'
         ]
-    }
-    signingConfigs {
-        release {
-            storeFile file("%s")
+    }}
+
+    compileOptions {{
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }}
+
+    signingConfigs {{
+        release {{
+            storeFile file("{KEYSTORE}")
             storePassword "solar2024"
             keyAlias "solar-key"
             keyPassword "solar2024"
-        }
-    }
-    buildTypes {
-        release {
+        }}
+    }}
+
+    buildTypes {{
+        release {{
             signingConfig signingConfigs.release
             minifyEnabled false
-        }
-    }
-}
-dependencies {
-    implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
-}
-""" % (PKG, PKG, HOST, START_URL, APP_NAME, HOST, KEYSTORE))
+        }}
+    }}
+}}
 
-# 3. Android Manifest with Security Fixes
+dependencies {{
+    implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
+}}
+""")
+
+# AndroidManifest (FIXED THEME + stability)
 write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-    <queries><intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent></queries>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
     <uses-permission android:name="android.permission.INTERNET"/>
-    <application android:label="${launcherName}" android:icon="@mipmap/ic_launcher" android:theme="@android:style/Theme.Translucent.NoTitleBar">
-        <meta-data android:name="asset_statements" android:value="${assetStatements}"/>
-        <activity android:name="com.google.androidbrowserhelper.trusted.LauncherActivity" android:exported="true">
-            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="${defaultUrl}"/>
+
+    <application
+        android:label="${launcherName}"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+
+        <meta-data
+            android:name="asset_statements"
+            android:value="${assetStatements}"/>
+
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+            android:exported="true">
+
+            <meta-data
+                android:name="android.support.customtabs.trusted.DEFAULT_URL"
+                android:value="${defaultUrl}"/>
+
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" />
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
             <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="https" android:host="${hostName}" android:pathPrefix="/solar-dashboard" />
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+
+                <data
+                    android:scheme="https"
+                    android:host="${hostName}"/>
             </intent-filter>
+
         </activity>
-        <service android:name="com.google.androidbrowserhelper.trusted.DelegationService" android:enabled="true" android:exported="true" tools:node="replace">
-            <intent-filter><action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>
-        </service>
+
     </application>
 </manifest>
 """)
 
-write(os.path.join(RES, "values", "colors.xml"), """<?xml version="1.0" encoding="utf-8"?><resources><color name="colorPrimary">#1D9E75</color></resources>""")
-
-print("Project files generated.")
+print("Project files generated successfully.")
