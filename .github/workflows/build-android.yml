@@ -15,28 +15,23 @@ jobs:
           distribution: 'temurin'
 
       - name: Prepare Keystore
-        # This decodes your secret and places it where the Python script expects it
         run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > /home/runner/solar.keystore
 
       - name: Run Project Generator
-        # This runs your rewritten python script
         run: python3 build-twa.py
 
       - name: Setup Gradle
-        # This installs the actual Gradle engine (v8.2.0 to match your script)
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.2
 
       - name: Build Signed APK
         run: |
-          # Move into the directory created by the Python script
           cd /home/runner/twa
-          # Run the build using the system-installed Gradle
           gradle assembleRelease --no-daemon
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: solar-dashboard-v30
+          name: solar-dashboard-v35
           path: /home/runner/twa/app/build/outputs/apk/release/*.apk
