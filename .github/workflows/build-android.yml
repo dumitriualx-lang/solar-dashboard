@@ -33,5 +33,5 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: solar-dashboard-v35
+          name: solar-dashboard-v40
           path: /home/runner/twa/app/build/outputs/apk/release/*.apk
