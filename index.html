@@ -4,182 +4,199 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1D9E75">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Solar Dashboard">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>Solar Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-/* RESTORED: ALL ORIGINAL STYLES */
 :root{--g:#1D9E75;--gl:rgba(29,158,117,.13);--am:#BA7517;--aml:rgba(186,117,23,.13);--rd:#A32D2D;--rdl:rgba(163,45,45,.13);--bl:#378ADD;--bll:rgba(55,138,221,.18);--or:#D85A30;--bg:#f4f4f0;--sf:#fff;--sf2:#f0efe9;--br:rgba(0,0,0,.09);--tx:#1a1a1a;--t2:#666;--t3:#aaa;--r:12px;--rs:8px}
 @media(prefers-color-scheme:dark){:root{--bg:#111;--sf:#1c1c1a;--sf2:#252523;--br:rgba(255,255,255,.09);--tx:#f0efe9;--t2:#aaa;--t3:#555}}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}
 .hdr{background:var(--g);color:#fff;padding:44px 16px 14px;position:sticky;top:0;z-index:100}
+.hdr h1{font-size:17px;font-weight:700}
 .hdr-row{display:flex;justify-content:space-between;align-items:flex-start}
-.hdr-stats{display:flex;gap:14px;margin-top:10px;font-size:11px;opacity:.9}
+.hdr-sub{font-size:10px;opacity:.8;margin-top:2px}
+.live-pill{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;background:rgba(255,255,255,.2);padding:3px 9px;border-radius:20px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:#fff;animation:blink 1.5s infinite}
+.hdr-stats{display:flex;gap:14px;margin-top:10px;font-size:11px;opacity:.9;flex-wrap:wrap}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 .body{padding:12px;display:flex;flex-direction:column;gap:10px;padding-bottom:80px}
 .card{background:var(--sf);border-radius:var(--r);border:.5px solid var(--br);padding:14px}
-.ct{font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;display:flex;justify-content:space-between}
-.pill{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
-.p-ok{background:var(--gl);color:#0F6E56} .p-info{background:var(--bll);color:#185FA5}
-.gps-bar, .api-bar, .notif-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:10px;margin-bottom:10px;gap:8px}
-.gps-req{background:var(--bll);color:#185FA5} .api-ok{background:var(--gl);color:#0F6E56} .notif-off{background:var(--sf2);color:var(--t2)}
-.gps-btn, .api-refresh, .notif-btn, .cfg-save, .log-btn{background:var(--g);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer}
-.mfr-grid, .cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-.mfr-select, .cfg-inp-wrap input{width:100%;padding:7px;background:var(--sf2);border:1px solid var(--br);border-radius:var(--rs);color:var(--tx)}
+.ct{font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+.pill{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;text-transform:none;letter-spacing:0}
+.p-ok{background:var(--gl);color:#0F6E56}.p-warn{background:var(--aml);color:#854F0B}.p-info{background:var(--bll);color:#185FA5}.p-err{background:var(--rdl);color:var(--rd)}
+.gps-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:10px;margin-bottom:10px;gap:8px;flex-wrap:wrap}
+.gps-ok{background:var(--gl);color:#0F6E56}.gps-req{background:var(--bll);color:#185FA5}.gps-err{background:var(--aml);color:#854F0B}
+.gps-btn{background:none;border:.5px solid currentColor;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;color:inherit;white-space:nowrap}
+.api-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:10px;margin-bottom:10px;gap:8px}
+.api-ok{background:var(--gl);color:#0F6E56}.api-err{background:var(--aml);color:#854F0B}.api-load{background:var(--bll);color:#185FA5}
+.api-refresh{background:none;border:.5px solid currentColor;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;color:inherit;white-space:nowrap}
+.cons-card{background:var(--sf);border-radius:var(--r);border:2px solid var(--g);padding:14px}
+.cons-label{font-size:10px;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+.cons-row{display:flex;align-items:center;gap:10px}
+.cons-inp-wrap{flex:1;display:flex;align-items:center;gap:8px;background:var(--sf2);border-radius:var(--rs);padding:8px 14px;border:.5px solid var(--br)}
+.cons-inp-wrap input{flex:1;background:none;border:none;outline:none;font-size:24px;font-weight:700;color:var(--tx);width:100%;font-family:inherit;text-align:right}
+.cons-unit{font-size:13px;font-weight:600;color:var(--t2)}
+.log-btn{background:var(--g);color:#fff;border:none;border-radius:var(--rs);padding:8px 14px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap}
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .mc{background:var(--sf);border-radius:var(--r);border:.5px solid var(--br);padding:12px}
-.mc-val{font-size:22px;font-weight:700} .cg{color:var(--g)} .cr{color:var(--rd)}
-.nav{position:fixed;bottom:0;left:0;right:0;background:var(--sf);border-top:.5px solid var(--br);display:flex;z-index:200}
-.nb{flex:1;display:flex;flex-direction:column;align-items:center;padding:10px;font-size:9px;color:var(--t3);border:none;background:none}
-.nb.on{color:var(--g)} .page{display:none} .page.on{display:block}
+.mc.wide{grid-column:span 2}
+.mc-lbl{font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.mc-val{font-size:22px;font-weight:700;line-height:1}
+.cg{color:var(--g)!important}.ca{color:var(--am)!important}.cr{color:var(--rd)!important}.cb{color:var(--bl)!important}
+.irr-bar{height:6px;border-radius:3px;background:var(--sf2);margin:8px 0 4px;overflow:hidden}
+.irr-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#EF9F27,#1D9E75);transition:width .8s ease}
+.flow{display:grid;grid-template-columns:1fr 40px 1fr;align-items:center}
+.fnode{background:var(--sf2);border-radius:var(--rs);padding:10px 8px;text-align:center;border:.5px solid var(--br)}
+.wstrip{display:flex;gap:4px;margin-bottom:10px}
+.wd{flex:1;text-align:center;padding:6px 2px;border-radius:var(--rs);background:var(--sf2)}
+.wd.today{background:var(--gl);border:.5px solid var(--g)}
+.nav{position:fixed;bottom:0;left:0;right:0;background:var(--sf);border-top:.5px solid var(--br);display:flex;z-index:200;padding-bottom:env(safe-area-inset-bottom)}
+.nb{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px 6px;gap:3px;font-size:9px;color:var(--t3);border:none;background:none;cursor:pointer;font-family:inherit}
+.nb.on{color:var(--g)}.ni{font-size:20px}
+.page{display:none}.page.on{display:block}
+.mfr-select{width:100%;padding:7px 10px;font-size:12px;font-weight:600;font-family:inherit;background:var(--sf2);color:var(--tx);border:.5px solid var(--br);border-radius:var(--rs)}
+.cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.cfg-inp-wrap{display:flex;align-items:center;gap:6px;background:var(--sf2);border-radius:var(--rs);padding:7px 12px;border:.5px solid var(--br)}
+.cfg-inp-wrap input{flex:1;background:none;border:none;outline:none;font-size:18px;font-weight:700;color:var(--tx);width:100%;text-align:right}
+.cfg-save{background:var(--g);color:#fff;border:none;border-radius:var(--rs);padding:8px;font-size:12px;font-weight:700;width:100%;margin-top:4px}
+.notif-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:var(--rs);font-size:12px;margin-bottom:10px;gap:10px}
+.notif-off{background:var(--sf2);color:var(--t2)}.notif-ok{background:var(--gl);color:#0F6E56}
+.notif-btn{background:none;border:1.5px solid currentColor;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;color:inherit}
 </style>
 </head>
 <body>
 
 <div class="hdr">
-    <div class="hdr-row">
-        <h1>☀️ Solar Dashboard</h1>
-        <div class="pill p-ok">Live</div>
-    </div>
-    <div class="hdr-stats">
-        <span id="hdrPv">☀️ -- kW</span>
-        <span id="hdrBatt">🔋 --%</span>
-        <span id="hdrWx">🌡️ --°C</span>
-    </div>
+  <div class="hdr-row">
+    <div><h1>☀️ Solar Dashboard</h1><div class="hdr-sub"><span id="clk">--:--:--</span></div></div>
+    <div class="live-pill"><div class="live-dot"></div><span id="liveTag">Live</span></div>
+  </div>
+  <div class="hdr-stats">
+    <span id="hdrPv">☀️ -- kW</span><span id="hdrBatt">🔋 --%</span><span id="hdrWx">🌡️ --°C</span>
+  </div>
 </div>
 
 <div class="body">
 <div id="pgDash" class="page on">
-    <div class="gps-bar gps-req" id="gpsBar"><span>📍 Requesting Location...</span><button class="gps-btn" onclick="requestLocation()">Allow</button></div>
-    <div class="notif-bar notif-off" id="notifBar"><span>🔔 Enable Test Notification</span><button class="notif-btn" id="notifBtn" onclick="requestNotifPermission()">Enable</button></div>
+  <div class="gps-bar gps-req" id="gpsBar"><span id="gpsMsg">📍 Requesting location...</span><button class="gps-btn" onclick="requestLocation()">Allow GPS</button></div>
+  <div class="notif-bar notif-off" id="notifBar"><span id="notifMsg">🔔 Enable notifications for alerts</span><button class="notif-btn" id="notifBtn" onclick="requestNotifPermission()">Enable</button></div>
 
-    <div class="card">
-        <div class="ct">⚙️ System Configuration <span id="cfgSavedPill" class="pill p-ok" style="display:none">✓ Saved</span></div>
-        <div class="mfr-grid">
-            <div><label style="font-size:9px">Panel Brand</label>
-                <select class="mfr-select" id="cfgPanelBrand" onchange="onBrandSelect('panel')">
-                    <option value="huawei">Huawei Solar</option><option value="longi">LONGi</option><option value="other">Other</option>
-                </select>
-            </div>
-            <div><label style="font-size:9px">Battery Brand</label>
-                <select class="mfr-select" id="cfgBattBrand" onchange="onBrandSelect('batt')">
-                    <option value="huawei_5">Huawei Luna (5kWh)</option><option value="huawei_10">Huawei Luna (10kWh)</option><option value="tesla_pw2">Tesla Powerwall 2</option>
-                </select>
-            </div>
-        </div>
-        <div class="cfg-grid">
-            <div><label style="font-size:9px">Panels (kW)</label><input type="number" id="cfgPanel" value="5"></div>
-            <div><label style="font-size:9px">Battery (kWh)</label><input type="number" id="cfgBatt" value="5"></div>
-        </div>
-        <button class="cfg-save" style="width:100%" onclick="saveCfgAndApply()">💾 Save Settings</button>
+  <div class="card">
+    <div class="ct">⚙️ System configuration <span class="pill p-ok" id="cfgSavedPill" style="display:none">✓ Saved</span></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px">
+      <div><div style="font-size:10px; color:var(--t2)">☀️ Panel brand</div>
+        <select class="mfr-select" id="cfgPanelBrand"><option value="huawei">Huawei Solar</option><option value="longi">LONGi Solar</option><option value="jinko">Jinko Solar</option><option value="other">Other</option></select>
+      </div>
+      <div><div style="font-size:10px; color:var(--t2)">🔋 Battery brand</div>
+        <select class="mfr-select" id="cfgBattBrand">
+          <option value="huawei_5">Huawei Luna (5 kWh)</option><option value="huawei_10">Huawei Luna (10 kWh)</option><option value="tesla_pw2">Tesla Powerwall 2</option><option value="other">Other</option>
+        </select>
+      </div>
     </div>
+    <div class="cfg-grid">
+      <div><div style="font-size:10px; color:var(--t2)">☀️ Capacity (kW)</div><div class="cfg-inp-wrap"><input type="number" id="cfgPanel" value="5"></div></div>
+      <div><div style="font-size:10px; color:var(--t2)">🔋 Capacity (kWh)</div><div class="cfg-inp-wrap"><input type="number" id="cfgBatt" value="5"></div></div>
+    </div>
+    <button class="cfg-save" onclick="saveCfgAndApply()">💾 Save configuration</button>
+  </div>
 
-    <div class="card" style="border:2px solid var(--g)">
-        <div class="ct">🏠 Home Consumption (kW)</div>
-        <div style="display:flex; gap:10px">
-            <input type="number" id="iCons" style="flex:1; padding:10px; font-size:20px; font-weight:700" value="0.48" step="0.01">
-            <button class="log-btn" onclick="snap()">Log ↗</button>
-        </div>
-    </div>
+  <div class="cons-card">
+    <div class="cons-label">🏠 Home consumption</div>
+    <div class="cons-row"><div class="cons-inp-wrap"><input type="number" id="iCons" value="0.48" step="0.01"></div><button class="log-btn" onclick="snap()">Log ↗</button></div>
+  </div>
 
-    <div class="metrics">
-        <div class="mc"><div class="mc-lbl" style="font-size:9px">Solar Output</div><div class="mc-val cg" id="mv0">-- kW</div></div>
-        <div class="mc"><div class="mc-lbl" style="font-size:9px">Grid Connection</div><div class="mc-val" id="mv3">-- kW</div></div>
+  <div class="metrics">
+    <div class="mc"><div class="mc-lbl">Solar Output</div><div class="mc-val cg" id="mv0">-- kW</div></div>
+    <div class="mc"><div class="mc-lbl">Battery Flow</div><div class="mc-val" id="mv2">-- kW</div></div>
+    <div class="mc wide"><div class="mc-lbl">Battery Status</div>
+      <div style="display:flex; justify-content:space-between; align-items:baseline">
+        <span style="font-size:22px; font-weight:700" id="bPct">--%</span><span id="battKwhLbl" style="font-size:11px; color:var(--t2)">-- kWh usable</span>
+      </div>
+      <div class="irr-bar"><div id="bFill" class="irr-fill" style="width:0%; background:var(--g)"></div></div>
     </div>
-
-    <div class="card">
-        <div class="ct">🔋 Battery Strip <span id="bPill" class="pill p-info">Discharging</span></div>
-        <div style="display:flex; justify-content:space-between; align-items:baseline">
-            <span id="bPct" style="font-size:24px; font-weight:700">--%</span>
-            <span id="battKwhLbl" style="color:var(--t2); font-size:11px">-- kWh usable</span>
-        </div>
-        <div style="height:8px; background:var(--sf2); border-radius:4px; margin-top:8px; overflow:hidden">
-            <div id="bFill" style="height:100%; width:0%; background:var(--g); transition:width 1s"></div>
-        </div>
-    </div>
+  </div>
 </div>
 
-<div id="pgLog" class="page"><div class="card"><div class="ct">📋 Reading Log</div><div id="logBody" class="empty-log">No logs yet.</div></div></div>
+<div id="pgForecast" class="page"><div class="card"><div class="ct">5-day yield forecast</div><div class="wstrip" id="ws">Awaiting data...</div></div></div>
+<div id="pgSched" class="page"><div class="card"><div class="ct">Smart schedule</div><div id="smartSched">Awaiting data...</div></div></div>
+<div id="pgLog" class="page"><div class="card"><div class="ct">Reading log</div><div id="logBody">No readings yet.</div></div></div>
+
 </div>
 
 <nav class="nav">
-    <button class="nb on" onclick="showPage('Dash',this)">⚡Dash</button>
-    <button class="nb" onclick="showPage('Log',this)">📋Log</button>
+  <button class="nb on" onclick="showPage('Dash',this)"><span class="ni">⚡</span>Dash</button>
+  <button class="nb" onclick="showPage('Forecast',this)"><span class="ni">📅</span>Forecast</button>
+  <button class="nb" onclick="showPage('Sched',this)"><span class="ni">🗓️</span>Sched</button>
+  <button class="nb" onclick="showPage('Log',this)"><span class="ni">📋</span>Log</button>
 </nav>
 
 <script>
-window.notifTimers = {}; // FIX: Must stay at top!
+// FIX 1: Defined at the very top to prevent Open-Meteo crash
+window.notifTimers = {}; 
 
-let ST = { 
-    lat: null, lon: null, pvKw: 0, 
-    battSoc: 84, consKw: 0.48, gpsOk: false 
-};
+const SYS = { panelKw: 5, battGross: 5, battRes: 0.10 };
+let ST = { lat: null, lon: null, pvKw: 0, battSoc: 84, gpsOk: false };
 
-// RESTORED: BRAND PRESETS
-function onBrandSelect(type) {
-    if(type === 'batt') {
-        const b = document.getElementById('cfgBattBrand').value;
-        if(b === 'huawei_5') document.getElementById('cfgBatt').value = 5;
-        if(b === 'huawei_10') document.getElementById('cfgBatt').value = 10;
-        if(b === 'tesla_pw2') document.getElementById('cfgBatt').value = 13.5;
-    }
-}
-
-function saveCfgAndApply() {
-    localStorage.setItem('solar_cfg', JSON.stringify({
-        panel: document.getElementById('cfgPanel').value,
-        batt: document.getElementById('cfgBatt').value
-    }));
-    document.getElementById('cfgSavedPill').style.display = 'block';
-    setTimeout(() => document.getElementById('cfgSavedPill').style.display = 'none', 2000);
-    updateUI();
-}
-
-async function requestNotifPermission() {
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-        document.getElementById('notifBar').className = "notif-bar p-ok";
-        document.getElementById('notifMsg').innerText = "🔔 Notifications Active!";
-        new Notification("Solar Dashboard", { body: "Test successful! Your link is active." });
-    }
+function showPage(p, btn) {
+  document.querySelectorAll('.page').forEach(x => x.classList.remove('on'));
+  document.querySelectorAll('.nb').forEach(x => x.classList.remove('on'));
+  document.getElementById('pg' + p).classList.add('on');
+  btn.classList.add('on');
 }
 
 function requestLocation() {
-    navigator.geolocation.getCurrentPosition(pos => {
-        ST.lat = pos.coords.latitude; ST.lon = pos.coords.longitude;
-        ST.gpsOk = true;
-        document.getElementById('gpsBar').style.display = 'none';
-        fetchWeather();
-    });
+  navigator.geolocation.getCurrentPosition(pos => {
+    ST.lat = pos.coords.latitude; ST.lon = pos.coords.longitude;
+    ST.gpsOk = true;
+    document.getElementById('gpsBar').className = "gps-bar gps-ok";
+    document.getElementById('gpsMsg').innerText = `📍 Location: ${ST.lat.toFixed(2)}, ${ST.lon.toFixed(2)}`;
+    fetchWeather();
+  }, err => { alert("GPS Denied"); });
 }
 
 function fetchWeather() {
-    // RESTORED: OPEN-METEO CALL
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${ST.lat}&longitude=${ST.lon}&current=temperature_2m,shortwave_radiation&timezone=auto`;
-    fetch(url).then(r => r.json()).then(data => {
-        ST.pvKw = (data.current.shortwave_radiation / 1000 * document.getElementById('cfgPanel').value).toFixed(2);
-        updateUI(data.current.temperature_2m);
-    });
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${ST.lat}&longitude=${ST.lon}&current=shortwave_radiation,temperature_2m&timezone=auto`;
+  fetch(url).then(r => r.json()).then(data => {
+    const rad = data.current.shortwave_radiation;
+    ST.pvKw = ((rad / 1000) * document.getElementById('cfgPanel').value).toFixed(2);
+    document.getElementById('hdrWx').innerText = `🌡️ ${data.current.temperature_2m}°C`;
+    updateUI();
+  }).catch(e => { console.error("Weather error", e); });
 }
 
-function updateUI(temp = 11) {
-    document.getElementById('hdrPv').innerText = `☀️ ${ST.pvKw} kW`;
-    document.getElementById('hdrWx').innerText = `🌡️ ${temp}°C`;
-    document.getElementById('mv0').innerText = `${ST.pvKw} kW`;
-    document.getElementById('bPct').innerText = `${ST.battSoc}%`;
-    document.getElementById('bFill').style.width = `${ST.battSoc}%`;
-    const grid = (ST.pvKw - document.getElementById('iCons').value).toFixed(2);
-    document.getElementById('mv3').innerText = `${grid} kW`;
+function updateUI() {
+  document.getElementById('hdrPv').innerText = `☀️ ${ST.pvKw} kW`;
+  document.getElementById('mv0').innerText = `${ST.pvKw} kW`;
+  document.getElementById('hdrBatt').innerText = `🔋 ${ST.battSoc}%`;
+  document.getElementById('bPct').innerText = `${ST.battSoc}%`;
+  document.getElementById('bFill').style.width = `${ST.battSoc}%`;
 }
 
-function showPage(p, btn) {
-    document.querySelectorAll('.page').forEach(x => x.classList.remove('on'));
-    document.querySelectorAll('.nb').forEach(x => x.classList.remove('on'));
-    document.getElementById('pg' + p).classList.add('on');
-    btn.classList.add('on');
+function saveCfgAndApply() {
+  const pill = document.getElementById('cfgSavedPill');
+  pill.style.display = 'inline';
+  setTimeout(() => pill.style.display = 'none', 2000);
+  if(ST.gpsOk) fetchWeather();
 }
 
-// Initial Load
-setInterval(updateUI, 5000);
+// FIX 2: Restored Notification Function
+async function requestNotifPermission() {
+  if (!("Notification" in window)) { alert("Not supported"); return; }
+  const permission = await Notification.requestPermission();
+  if (permission === "granted") {
+    document.getElementById('notifBar').className = "notif-bar notif-ok";
+    document.getElementById('notifMsg').innerText = "🔔 Notifications Active!";
+    document.getElementById('notifBtn').style.display = "none";
+    new Notification("Solar Dashboard", { body: "Test Successful! Your app is now linked." });
+  }
+}
+
+setInterval(() => { document.getElementById('clk').innerText = new Date().toLocaleTimeString(); }, 1000);
 </script>
 </body>
 </html>
