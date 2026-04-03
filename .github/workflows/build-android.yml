@@ -28,7 +28,7 @@ jobs:
       - name: Add icon
         run: |
           mkdir -p $HOME/twa/app/src/main/res/mipmap-mdpi
-          wget https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-48.png \
+          wget https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-192.png \
           -O $HOME/twa/app/src/main/res/mipmap-mdpi/ic_launcher.png
 
       - name: Generate Gradle Wrapper
