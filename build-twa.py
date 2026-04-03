@@ -38,7 +38,7 @@ rootProject.name = "twa"
 include(":app")
 """)
 
-# ✅ root build.gradle (FIXED: Added repositories to buildscript)
+# ✅ root build.gradle
 write(os.path.join(ROOT, "build.gradle"), """
 buildscript {
     repositories {
@@ -58,7 +58,7 @@ android.useAndroidX=true
 android.enableJetifier=true
 """)
 
-# ✅ app build.gradle
+# ✅ app build.gradle (FIXED: versionCode and dependency version)
 write(os.path.join(APP, "build.gradle"), f"""
 plugins {{
     id 'com.android.application'
@@ -72,8 +72,8 @@ android {{
         applicationId "{PKG}"
         minSdk 21
         targetSdk 34
-        versionCode 35
-        versionName "1.3.5"
+        versionCode 40
+        versionName "1.4.0"
 
         manifestPlaceholders = [
             hostName: "{HOST}",
@@ -106,11 +106,11 @@ android {{
 }}
 
 dependencies {{
-    implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.1"
+    implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
 }}
 """)
 
-# ✅ AndroidManifest.xml (FIXED: Added <queries> for browser visibility)
+# ✅ AndroidManifest.xml
 write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
@@ -157,3 +157,5 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
     </application>
 </manifest>
 """)
+
+print("Project generated successfully.")
