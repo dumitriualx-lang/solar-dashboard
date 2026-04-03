@@ -9,7 +9,7 @@ RES  = os.path.join(MAIN, "res")
 
 PKG       = "com.dumitriualxlang.solardashboard"
 HOST      = "dumitriualx-lang.github.io"
-START_URL = "https://dumitriualx-lang.github.io/solar-dashboard/"
+START_URL = "https://dumitriualx-lang.github.io/"
 APP_NAME  = "Solar Dashboard"
 KEYSTORE  = os.path.join(HOME, "solar.keystore")
 
@@ -18,36 +18,45 @@ def write(path, content):
     with open(path, "w") as f:
         f.write(content)
 
-# settings.gradle
-write(os.path.join(ROOT, "settings.gradle"), "include ':app'")
-
-# ROOT build.gradle (MISSING BEFORE → critical)
-write(os.path.join(ROOT, "build.gradle"), """
-buildscript {
+# ✅ settings.gradle (FIXED)
+write(os.path.join(ROOT, "settings.gradle"), """
+pluginManagement {
     repositories {
         google()
         mavenCentral()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.0'
+        gradlePluginPortal()
     }
 }
-allprojects {
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
+    }
+}
+
+rootProject.name = "twa"
+include(":app")
+""")
+
+# ✅ root build.gradle
+write(os.path.join(ROOT, "build.gradle"), """
+buildscript {
+    dependencies {
+        classpath "com.android.tools.build:gradle:8.2.0"
     }
 }
 """)
 
-# gradle.properties (important for stability)
+# ✅ gradle.properties
 write(os.path.join(ROOT, "gradle.properties"), """
 org.gradle.jvmargs=-Xmx2g
 android.useAndroidX=true
 android.enableJetifier=true
 """)
 
-# APP build.gradle
+# ✅ app build.gradle
 write(os.path.join(APP, "build.gradle"), f"""
 plugins {{
     id 'com.android.application'
@@ -77,6 +86,10 @@ android {{
         targetCompatibility JavaVersion.VERSION_17
     }}
 
+    buildFeatures {{
+        buildConfig true
+    }}
+
     signingConfigs {{
         release {{
             storeFile file("{KEYSTORE}")
@@ -95,11 +108,11 @@ android {{
 }}
 
 dependencies {{
-    implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
+    implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.1"
 }}
 """)
 
-# AndroidManifest (FIXED THEME + stability)
+# ✅ AndroidManifest (FIXED for Android 14)
 write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -131,16 +144,12 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-
-                <data
-                    android:scheme="https"
-                    android:host="${hostName}"/>
+                <data android:scheme="https" android:host="${hostName}" />
             </intent-filter>
 
         </activity>
-
     </application>
 </manifest>
 """)
 
-print("Project files generated successfully.")
+print("Project generated successfully.")
