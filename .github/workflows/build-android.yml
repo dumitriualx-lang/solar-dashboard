@@ -20,13 +20,6 @@ jobs:
       - name: Run Project Generator
         run: python3 build-twa.py
 
-      - name: Setup App Icon
-        run: |
-          # Create the icon directory inside the generated project
-          mkdir -p /home/runner/twa/app/src/main/res/mipmap-mdpi
-          # Download the icon from your hosted site
-          wget https://dumitriualx-lang.github.io/solar-dashboard/icons/icon-48.png -O /home/runner/twa/app/src/main/res/mipmap-mdpi/ic_launcher.png
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
@@ -40,5 +33,5 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: solar-dashboard-v45
+          name: solar-dashboard-v50
           path: /home/runner/twa/app/build/outputs/apk/release/*.apk
