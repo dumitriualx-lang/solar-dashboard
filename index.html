@@ -12,7 +12,6 @@
 <title>Solar Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-/* YOUR ORIGINAL CSS - FULLY RESTORED */
 :root{--g:#1D9E75;--gl:rgba(29,158,117,.13);--am:#BA7517;--aml:rgba(186,117,23,.13);--rd:#A32D2D;--rdl:rgba(163,45,45,.13);--bl:#378ADD;--bll:rgba(55,138,221,.18);--or:#D85A30;--bg:#f4f4f0;--sf:#fff;--sf2:#f0efe9;--br:rgba(0,0,0,.09);--tx:#1a1a1a;--t2:#666;--t3:#aaa;--r:12px;--rs:8px}
 @media(prefers-color-scheme:dark){:root{--bg:#111;--sf:#1c1c1a;--sf2:#252523;--br:rgba(255,255,255,.09);--tx:#f0efe9;--t2:#aaa;--t3:#555}}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -48,6 +47,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
 .mc.wide{grid-column:span 2}
 .mc-lbl{font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
 .mc-val{font-size:22px;font-weight:700;line-height:1}
+.mc-sub{font-size:10px;color:var(--t2);margin-top:4px}
 .cg{color:var(--g)!important}.ca{color:var(--am)!important}.cr{color:var(--rd)!important}.cb{color:var(--bl)!important}
 .irr-bar{height:6px;border-radius:3px;background:var(--sf2);margin:8px 0 4px;overflow:hidden}
 .irr-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#EF9F27,#1D9E75);transition:width .8s ease}
@@ -60,16 +60,18 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
 .nb{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px 6px;gap:3px;font-size:9px;color:var(--t3);border:none;background:none;cursor:pointer;font-family:inherit}
 .nb.on{color:var(--g)}.ni{font-size:20px}
 .page{display:none}.page.on{display:block}
-.mfr-select{width:100%;padding:7px 10px;font-size:12px;font-weight:600;font-family:inherit;background:var(--sf2);color:var(--tx);border:.5px solid var(--br);border-radius:var(--rs)}
 .cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .cfg-inp-wrap{display:flex;align-items:center;gap:6px;background:var(--sf2);border-radius:var(--rs);padding:7px 12px;border:.5px solid var(--br)}
 .cfg-inp-wrap input{flex:1;background:none;border:none;outline:none;font-size:18px;font-weight:700;color:var(--tx);width:100%;text-align:right}
 .cfg-save{background:var(--g);color:#fff;border:none;border-radius:var(--rs);padding:8px;font-size:12px;font-weight:700;width:100%;margin-top:4px}
+.mfr-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.mfr-select{width:100%;padding:7px 10px;font-size:12px;font-weight:600;font-family:inherit;background:var(--sf2);color:var(--tx);border:.5px solid var(--br);border-radius:var(--rs)}
 .notif-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:var(--rs);font-size:13px;font-weight:500;margin-bottom:10px;gap:10px;flex-wrap:wrap}
 .notif-off{background:var(--sf2);color:var(--t2)}.notif-ok{background:var(--gl);color:#0F6E56}
 .notif-btn{background:none;border:1.5px solid currentColor;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:inherit;white-space:nowrap}
 .grid-panel{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
 .grid-stat{text-align:center;padding:10px 6px;border-radius:var(--rs);background:var(--sf2)}
+.gs-lbl{font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
 .gs-val{font-size:20px;font-weight:700;line-height:1}
 </style>
 </head>
@@ -95,16 +97,17 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
     <div class="ct">⚙️ System configuration <span class="pill p-ok" id="cfgSavedPill" style="display:none">✓ Saved</span></div>
     <div class="mfr-grid">
       <div class="mfr-group"><div class="mfr-lbl">☀️ Panel brand</div>
-        <select class="mfr-select" id="cfgPanelBrand" onchange="onBrandSelect('panel')">
-          <option value="">— Select brand —</option><option value="huawei">Huawei Solar</option><option value="longi">LONGi Solar</option><option value="jinko">Jinko Solar</option><option value="other">Other</option>
+        <select class="mfr-select" id="cfgPanelBrand">
+          <option value="huawei">Huawei Solar</option><option value="longi">LONGi Solar</option><option value="jinko">Jinko Solar</option>
+          <option value="ja">JA Solar</option><option value="trina">Trina Solar</option><option value="canadian">Canadian Solar</option>
+          <option value="sunpower">SunPower</option><option value="rec">REC Group</option><option value="qcells">Q CELLS</option>
         </select>
       </div>
       <div class="mfr-group"><div class="mfr-lbl">🔋 Battery brand</div>
-        <select class="mfr-select" id="cfgBattBrand" onchange="onBrandSelect('batt')">
-          <option value="">— Select brand —</option>
+        <select class="mfr-select" id="cfgBattBrand">
           <option value="huawei_5">Huawei Luna (5 kWh)</option><option value="huawei_10">Huawei Luna (10 kWh)</option>
-          <option value="tesla_pw2">Tesla Powerwall 2 (13.5 kWh)</option><option value="byd_hvs5">BYD HVS (5.1 kWh)</option>
-          <option value="sonnen_eco8">Sonnen Eco (8 kWh)</option><option value="other">Other</option>
+          <option value="tesla_pw2">Tesla Powerwall 2</option><option value="byd_hvs">BYD Battery-Box</option>
+          <option value="pylontech">Pylontech US</option><option value="sonnen">Sonnen Eco</option>
         </select>
       </div>
     </div>
@@ -116,23 +119,23 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
   </div>
 
   <div class="cons-card">
-    <div class="cons-label">🏠 Home consumption</div>
+    <div class="cons-label">🏠 Home consumption — enter from FusionSolar</div>
     <div class="cons-row"><div class="cons-inp-wrap"><input type="number" id="iCons" value="0.48" step="0.01"></div><button class="log-btn" onclick="snap()">Log ↗</button></div>
   </div>
 
   <div class="metrics">
-    <div class="mc"><div class="mc-lbl">Solar Output</div><div class="mc-val cg" id="mv0">-- kW</div></div>
-    <div class="mc"><div class="mc-lbl">Home Load</div><div class="mc-val" id="mv1">-- kW</div></div>
-    <div class="mc"><div class="mc-lbl">Battery Flow</div><div class="mc-val" id="mv2">-- kW</div></div>
+    <div class="mc"><div class="mc-lbl">Solar AC output</div><div class="mc-val cg" id="mv0">-- kW</div></div>
+    <div class="mc"><div class="mc-lbl">Home load</div><div class="mc-val" id="mv1">-- kW</div></div>
+    <div class="mc"><div class="mc-lbl">Battery flow</div><div class="mc-val" id="mv2">-- kW</div></div>
     <div class="mc"><div class="mc-lbl">Grid</div><div class="mc-val" id="mv3">-- kW</div></div>
   </div>
 
   <div class="card">
-    <div class="ct">🔋 Battery status <span id="bPill" class="pill">--</span></div>
+    <div class="ct">🔋 Battery Status <span id="bPill" class="pill">--</span></div>
     <div style="display:flex; justify-content:space-between; align-items:baseline">
-      <span style="font-size:22px; font-weight:700" id="bPct">--%</span><span id="battKwhLbl" style="font-size:11px; color:var(--t2)">-- kWh usable</span>
+      <span style="font-size:22px; font-weight:700" id="bPct">--%</span><span id="battKwhLbl" style="font-size:11px; color:var(--t2)">-- kWh</span>
     </div>
-    <div class="irr-bar"><div id="bFill" class="irr-fill" style="width:0%; background:var(--g)"></div></div>
+    <div class="irr-bar"><div id="bFill" class="irr-fill" style="width:0%"></div></div>
   </div>
 
   <div class="card">
@@ -146,21 +149,25 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
 </div>
 
 <div id="pgForecast" class="page"><div class="card"><div class="ct">5-day yield forecast</div><div class="wstrip" id="ws">Awaiting GPS...</div></div></div>
-<div id="pgSched" class="page"><div class="card"><div class="ct">Smart schedule</div><div id="smartSched">Awaiting forecast data...</div></div></div>
+<div id="pgSched" class="page"><div class="card"><div class="ct">Smart schedule</div><div id="smartSched">Awaiting data...</div></div></div>
 <div id="pgLog" class="page"><div class="card"><div class="ct">Reading log</div><div id="logBody">No readings yet.</div></div></div>
-
 </div>
 
 <nav class="nav">
-  <button class="nb on" onclick="showPage('Dash',this)"><span class="ni">⚡</span>Dash</button>
+  <button class="nb on" onclick="showPage('Dash',this)"><span class="ni">⚡</span>Dashboard</button>
   <button class="nb" onclick="showPage('Forecast',this)"><span class="ni">📅</span>Forecast</button>
-  <button class="nb" onclick="showPage('Sched',this)"><span class="ni">🗓️</span>Sched</button>
+  <button class="nb" onclick="showPage('Sched',this)"><span class="ni">🗓️</span>Schedule</button>
   <button class="nb" onclick="showPage('Log',this)"><span class="ni">📋</span>Log</button>
 </nav>
 
 <script>
-// FIX 1: Defined at top
+// FIX 1: Defined at the very top to prevent Open-Meteo crash
 window.notifTimers = {}; 
+
+const SYS = {
+  panelKw: 5, invEff: 0.984, dcLoss: 0.97, battGross: 5, battRes: 0.10,
+  get battUse() { return (this.battGross * (1 - this.battRes)); }
+};
 
 let ST = { lat: null, lon: null, pvKw: 0, battSoc: 84, gpsOk: false };
 
@@ -171,38 +178,22 @@ function showPage(p, btn) {
   btn.classList.add('on');
 }
 
-// RESTORED BRAND LOGIC
-function onBrandSelect(type) {
-  if(type === 'batt') {
-    const b = document.getElementById('cfgBattBrand').value;
-    if(b === 'huawei_5') document.getElementById('cfgBatt').value = 5;
-    if(b === 'huawei_10') document.getElementById('cfgBatt').value = 10;
-    if(b === 'tesla_pw2') document.getElementById('cfgBatt').value = 13.5;
-    if(b === 'byd_hvs5') document.getElementById('cfgBatt').value = 5.1;
-  }
-}
-
-function saveCfgAndApply() {
-  document.getElementById('cfgSavedPill').style.display = 'inline';
-  setTimeout(() => document.getElementById('cfgSavedPill').style.display = 'none', 2000);
-  if(ST.gpsOk) fetchWeather();
-}
-
 function requestLocation() {
   navigator.geolocation.getCurrentPosition(pos => {
     ST.lat = pos.coords.latitude; ST.lon = pos.coords.longitude;
     ST.gpsOk = true;
-    document.getElementById('gpsBar').style.display = 'none';
+    document.getElementById('gpsBar').style.display = "none";
     document.getElementById('apiBar').className = "api-bar api-ok";
     fetchWeather();
-  });
+  }, err => { alert("Location required for solar calculation."); });
 }
 
 function fetchWeather() {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${ST.lat}&longitude=${ST.lon}&current=shortwave_radiation,temperature_2m&timezone=auto`;
   fetch(url).then(r => r.json()).then(data => {
     const rad = data.current.shortwave_radiation;
-    ST.pvKw = ((rad / 1000) * document.getElementById('cfgPanel').value).toFixed(2);
+    const pCap = parseFloat(document.getElementById('cfgPanel').value);
+    ST.pvKw = ((rad / 1000) * pCap).toFixed(2);
     document.getElementById('hdrWx').innerText = `🌡️ ${data.current.temperature_2m}°C`;
     updateUI();
   });
@@ -211,33 +202,39 @@ function fetchWeather() {
 function updateUI() {
   document.getElementById('hdrPv').innerText = `☀️ ${ST.pvKw} kW`;
   document.getElementById('mv0').innerText = `${ST.pvKw} kW`;
-  const cons = parseFloat(document.getElementById('iCons').value);
-  document.getElementById('mv1').innerText = `${cons} kW`;
-  document.getElementById('mv3').innerText = `${(ST.pvKw - cons).toFixed(2)} kW`;
+  document.getElementById('hdrBatt').innerText = `🔋 ${ST.battSoc}%`;
   document.getElementById('bPct').innerText = `${ST.battSoc}%`;
   document.getElementById('bFill').style.width = `${ST.battSoc}%`;
+  const cons = parseFloat(document.getElementById('iCons').value);
+  document.getElementById('mv1').innerText = `${cons} kW`;
+  document.getElementById('gsNow').innerText = `${(ST.pvKw - cons).toFixed(2)} kW`;
 }
 
-// RESTORED LOGGING FUNCTION
+function saveCfgAndApply() {
+  const pill = document.getElementById('cfgSavedPill');
+  pill.style.display = 'inline';
+  setTimeout(() => pill.style.display = 'none', 2000);
+  if(ST.gpsOk) fetchWeather();
+}
+
 function snap() {
   const log = document.getElementById('logBody');
   const now = new Date().toLocaleTimeString();
-  const entry = document.createElement('div');
-  entry.style.padding = "8px 0";
-  entry.style.borderBottom = "0.5px solid var(--br)";
-  entry.innerHTML = `<b>${now}</b>: Consumed ${document.getElementById('iCons').value} kW`;
+  const val = document.getElementById('iCons').value;
+  const entry = `<div style="padding:8px; border-bottom:0.5px solid var(--br)"><b>${now}</b>: ${val} kW recorded</div>`;
   if(log.innerHTML.includes("No readings")) log.innerHTML = "";
-  log.prepend(entry);
+  log.innerHTML = entry + log.innerHTML;
 }
 
-// FIX 2: RESTORED NOTIFICATION LOGIC
+// FIX 2: Restored Notification Function
 async function requestNotifPermission() {
+  if (!("Notification" in window)) { alert("Browser does not support notifications"); return; }
   const permission = await Notification.requestPermission();
   if (permission === "granted") {
     document.getElementById('notifBar').className = "notif-bar notif-ok";
     document.getElementById('notifMsg').innerText = "🔔 Notifications Active!";
     document.getElementById('notifBtn').style.display = "none";
-    new Notification("Solar Dashboard", { body: "Test successful! You are now linked." });
+    new Notification("Solar Dashboard", { body: "System Linked Successfully!" });
   }
 }
 
