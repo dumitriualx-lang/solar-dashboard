@@ -1,53 +1,42 @@
 name: Build Solar Dashboard
-
-on:
-  workflow_dispatch:
+on: workflow_dispatch
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: 17
+          java-version: '17'
+          distribution: 'temurin'
 
-      - name: Install Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Prepare Keystore
+        # This decodes your secret and places it where the Python script expects it
+        run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > /home/runner/solar.keystore
 
-      - name: Decode keystore
-        run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > $HOME/solar.keystore
-
-      - name: Run Python script
+      - name: Run Project Generator
+        # This runs your rewritten python script
         run: python3 build-twa.py
 
-      # ✅ FIXED ICON (change filename if needed)
-      - name: Add icon
-        run: |
-          mkdir -p $HOME/twa/app/src/main/res/mipmap-mdpi
-          wget https://raw.githubusercontent.com/dumitriualx-lang/solar-dashboard/main/icons/icon-192.png \
-          -O $HOME/twa/app/src/main/res/mipmap-mdpi/ic_launcher.png
+      - name: Setup Gradle
+        # This installs the actual Gradle engine (v8.2.0 to match your script)
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.2
 
-      # ✅ CRITICAL FIX (Gradle version)
-      - name: Generate Gradle Wrapper
+      - name: Build Signed APK
         run: |
-          cd $HOME/twa
-          gradle wrapper --gradle-version 8.2
+          # Move into the directory created by the Python script
+          cd /home/runner/twa
+          # Run the build using the system-installed Gradle
+          gradle assembleRelease --no-daemon
 
-      - name: Build AAB + APK
-        run: |
-          cd $HOME/twa
-          ./gradlew bundleRelease
-          ./gradlew assembleRelease
-
-      - name: Upload artifacts
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: solar-dashboard
-          path: |
-            $HOME/twa/app/build/outputs/**/*.apk
-            $HOME/twa/app/build/outputs/**/*.aab
+          name: solar-dashboard-v30
+          path: /home/runner/twa/app/build/outputs/apk/release/*.apk
