@@ -16,6 +16,12 @@ jobs:
 
       - name: Prepare Keystore
         run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > /home/runner/solar.keystore
+       
+      - name: Install Pillow
+        run: pip install Pillow --break-system-packages -q
+
+      - name: Generate Android project
+        run: python3 $GITHUB_WORKSPACE/build-twa.py
 
       - name: Run Project Generator
         run: python3 build-twa.py
@@ -24,13 +30,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.2
-      
-      - name: Install Pillow
-        run: pip install Pillow --break-system-packages -q
-
-      - name: Generate Android project
-        run: python3 $GITHUB_WORKSPACE/build-twa.py
-
+           
       - name: Build APK and AAB
         run: |
           cd /home/runner/twa
