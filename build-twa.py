@@ -108,14 +108,6 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="https"
-                      android:host="dumitriualx-lang.github.io"
-                      android:pathPrefix="/solar-dashboard"/>
-            </intent-filter>
         </activity>
         <service android:name="com.google.androidbrowserhelper.trusted.DelegationService"
             android:exported="true" android:enabled="true">
