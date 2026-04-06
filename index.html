@@ -479,6 +479,10 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
 </nav>
 
 <script>
+// Global scope — must be first
+window.notifTimers = {};
+const notifTimers = window.notifTimers;
+
 // ═══════════════════════════════════════════════════════════════
 // SYSTEM CONSTANTS — Huawei SUN2000-5KTL-M1 + Luna 2000 CO
 // ═══════════════════════════════════════════════════════════════
