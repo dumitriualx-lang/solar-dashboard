@@ -54,6 +54,12 @@ jobs:
           echo ""
           echo "================================================"
 
+      - name: Install Pillow
+        run: pip install Pillow --break-system-packages -q
+
+      - name: Generate Android project
+        run: python3 $GITHUB_WORKSPACE/build-twa.py
+        
       - name: Generate Android project
         run: python3 $GITHUB_WORKSPACE/build-twa.py
 
