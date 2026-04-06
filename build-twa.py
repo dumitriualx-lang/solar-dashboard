@@ -53,10 +53,9 @@ android {
         versionCode 1
         versionName "1.0.0"
         manifestPlaceholders = [
-            hostName:        "%s",
-            defaultUrl:      "%s",
-            launcherName:    "%s",
-            assetStatements: '[{ \\"relation\\": [\\"delegate_permission/common.handle_all_urls\\"], \\"target\\": { \\"namespace\\": \\"web\\", \\"site\\": \\"https://%s\\" }}]'
+            hostName:     "dumitriualx-lang.github.io",
+            defaultUrl:   "https://dumitriualx-lang.github.io/solar-dashboard/",
+            launcherName: "Solar Dashboard"
         ]
     }
     signingConfigs {
@@ -78,24 +77,28 @@ dependencies {
     implementation "androidx.browser:browser:1.8.0"
     implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
 }
-""" % (PKG, PKG, HOST, START_URL, APP_NAME, HOST, KEYSTORE))
+""" % (PKG, PKG, KEYSTORE))
 
 write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <application
-        android:label="${launcherName}"
+        android:label="Solar Dashboard"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.NoTitleBar"
         android:allowBackup="true"
         android:supportsRtl="true">
-        <meta-data android:name="asset_statements" android:value="${assetStatements}"/>
+        <meta-data
+            android:name="asset_statements"
+            android:value="[{&quot;relation&quot;:[&quot;delegate_permission/common.handle_all_urls&quot;],&quot;target&quot;:{&quot;namespace&quot;:&quot;web&quot;,&quot;site&quot;:&quot;https://dumitriualx-lang.github.io&quot;}}]"/>
         <activity
             android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
             android:exported="true">
-            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="${defaultUrl}"/>
+            <meta-data
+                android:name="android.support.customtabs.trusted.DEFAULT_URL"
+                android:value="https://dumitriualx-lang.github.io/solar-dashboard/"/>
             <meta-data android:name="android.support.customtabs.trusted.THEME_COLOR" android:value="@color/colorPrimary"/>
             <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR" android:value="@color/colorPrimary"/>
             <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR" android:value="@color/colorPrimary"/>
@@ -109,7 +112,9 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="https" android:host="${hostName}" android:pathPrefix="/solar-dashboard"/>
+                <data android:scheme="https"
+                      android:host="dumitriualx-lang.github.io"
+                      android:pathPrefix="/solar-dashboard"/>
             </intent-filter>
         </activity>
         <service android:name="com.google.androidbrowserhelper.trusted.DelegationService"
