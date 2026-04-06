@@ -25,7 +25,7 @@ def write(path, content):
 write(os.path.join(ROOT, "settings.gradle"), """pluginManagement {
     repositories {
         google()
-        mavenCentral()
+        mainCentral()
         gradlePluginPortal()
     }
 }
@@ -33,7 +33,7 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
-        mavenCentral()
+        mainCentral()
     }
 }
 rootProject.name = "SolarDashboard"
@@ -49,7 +49,7 @@ android.enableJetifier=true
 org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
 """)
 
-# app/build.gradle
+# app/build.gradle - FIXED JSON ESCAPING
 write(os.path.join(APP, "build.gradle"), """plugins {
     id 'com.android.application' version '8.3.0' apply true
 }
@@ -66,7 +66,7 @@ android {
             hostName:        "%(host)s",
             defaultUrl:      "%(url)s",
             launcherName:    "%(name)s",
-            assetStatements: '[{ \\"relation\\": [\\"delegate_permission/common.handle_all_urls\\"], \\"target\\": { \\"namespace\\": \\"web\\", \\"site\\": \\"https://%(host)s\\" }}]'
+            assetStatements: '[{ "relation": ["delegate_permission/common.handle_all_urls"], "target": { "namespace": "web", "site": "https://%(host)s" }}]'
         ]
     }
     signingConfigs {
@@ -176,9 +176,6 @@ zipStorePath=wrapper/dists
 
 print("All project files written OK")
 
-# Icons embedded as base64 — no network needed, always works
-# Maskable icon (has safe-zone padding) used for ic_launcher
-# Resized to correct density sizes using Pillow
 import base64, io
 try:
     from PIL import Image
@@ -199,7 +196,6 @@ def write_icon(b64_data, path, size):
     img.save(path, "PNG")
     print(f"  {os.path.basename(os.path.dirname(path))}: {size}x{size} OK")
 
-# ic_launcher = maskable icon (has safe-zone padding — correct for adaptive icons)
 density_sizes = {
     "mipmap-mdpi":    48,
     "mipmap-hdpi":    72,
@@ -210,7 +206,6 @@ density_sizes = {
 for density, size in density_sizes.items():
     write_icon(ICON_MASKABLE_B64, os.path.join(RES, density, "ic_launcher.png"), size)
 
-# ic_launcher_round = any-purpose icon (full-bleed, looks good in circles)
 for density, size in density_sizes.items():
     write_icon(ICON_ANY_B64, os.path.join(RES, density, "ic_launcher_round.png"), size)
 
