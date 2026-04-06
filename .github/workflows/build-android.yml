@@ -33,26 +33,13 @@ jobs:
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --channel=0 2>&1 | tail -3
           echo "SDK ready"
 
-      - name: Generate and save keystore
+      - name: Prepare Keystore
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
         run: |
-          keytool -genkeypair \
-            -keystore $HOME/solar.keystore \
-            -alias solar-key \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass solar2024 -keypass solar2024 \
-            -dname "CN=Solar Dashboard,O=SolarApp,C=RO" \
-            -noprompt
-          echo "Keystore created"
-          echo "================================================"
-          echo "SHA-256 FINGERPRINT — copy this to assetlinks.json"
-          echo "================================================"
-          keytool -list -v -keystore $HOME/solar.keystore -alias solar-key -storepass solar2024 2>&1 | grep "SHA256:"
-          echo "================================================"
-          echo "KEYSTORE BASE64 — copy this to SIGNING_KEY_BASE64 secret"
-          echo "================================================"
-          base64 -w 0 $HOME/solar.keystore
-          echo ""
-          echo "================================================"
+          echo "$SIGNING_KEY_BASE64" | base64 -d > $HOME/solar.keystore
+          echo "Keystore restored from secret"
+          keytool -list -v -keystore $HOME/solar.keystore -storepass solar2024 2>&1 | grep "SHA256:" || true
 
       - name: Install Pillow
         run: pip install Pillow --break-system-packages -q
