@@ -7,7 +7,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:A
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -32,6 +32,9 @@ jobs:
         run: |
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --channel=0 2>&1 | tail -3
           echo "SDK ready"
+
+      - name: Install Pillow
+        run: pip install Pillow --break-system-packages -q
 
       - name: Prepare Keystore from secret
         env:
