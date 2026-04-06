@@ -92,7 +92,7 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
         android:supportsRtl="true">
         <meta-data
             android:name="asset_statements"
-            android:value="[{&quot;relation&quot;:[&quot;delegate_permission/common.handle_all_urls&quot;],&quot;target&quot;:{&quot;namespace&quot;:&quot;web&quot;,&quot;site&quot;:&quot;https://dumitriualx-lang.github.io&quot;}}]"/>
+            android:resource="@string/asset_statements"/>
         <activity
             android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
             android:exported="true">
@@ -124,6 +124,7 @@ write(os.path.join(RES, "values", "strings.xml"), """<?xml version="1.0" encodin
 <resources>
     <string name="app_name">%s</string>
     <color name="colorPrimary">#%s</color>
+    <string name="asset_statements">[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"web","site":"https://dumitriualx-lang.github.io"}}]</string>
 </resources>
 """ % (APP_NAME, COLOR_HEX))
 
