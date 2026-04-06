@@ -42,20 +42,32 @@ jobs:
         run: |
           echo "$SIGNING_KEY_BASE64" | base64 -d > $HOME/solar.keystore
           echo "Keystore size: $(wc -c < $HOME/solar.keystore) bytes"
-          echo "================================================"
-          echo "SHA-256 FINGERPRINT"
-          echo "================================================"
-          keytool -list -v -keystore $HOME/solar.keystore -storepass solar2024 2>&1 | grep "SHA256:" || echo "Could not read keystore"
+          echo "=== All aliases ==="
+          keytool -list -keystore $HOME/solar.keystore -storepass solar2024 2>&1
+          echo "=== SHA256 solar-key alias ==="
+          keytool -list -v -keystore $HOME/solar.keystore -alias solar-key -storepass solar2024 2>&1 | grep -E "SHA256:|Alias" || echo "solar-key not found"
           echo "================================================"
 
       - name: Generate Android project
         run: python3 $GITHUB_WORKSPACE/build-twa.py
+
+      - name: Verify keystore before build
+        run: |
+          echo "=== KEYSTORE SHA BEFORE BUILD ==="
+          keytool -list -v -keystore $HOME/solar.keystore -storepass solar2024 2>&1 | grep "SHA256:" || echo "MISSING"
+          ls -la $HOME/solar.keystore
 
       - name: Build APK
         run: |
           cd $HOME/twa
           gradle assembleRelease --no-daemon 2>&1
           echo "APK exit: $?"
+
+      - name: Verify keystore after build
+        run: |
+          echo "=== KEYSTORE SHA AFTER BUILD ==="
+          keytool -list -v -keystore $HOME/solar.keystore -storepass solar2024 2>&1 | grep "SHA256:" || echo "MISSING"
+          ls -la $HOME/solar.keystore
 
       - name: Build AAB
         if: success()
