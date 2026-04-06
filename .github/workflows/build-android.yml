@@ -7,7 +7,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
+  build:A
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -33,20 +33,18 @@ jobs:
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --channel=0 2>&1 | tail -3
           echo "SDK ready"
 
-      - name: Prepare Keystore
+      - name: Prepare Keystore from secret
         env:
           SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
         run: |
           echo "$SIGNING_KEY_BASE64" | base64 -d > $HOME/solar.keystore
-          echo "Keystore restored from secret"
-          keytool -list -v -keystore $HOME/solar.keystore -storepass solar2024 2>&1 | grep "SHA256:" || true
+          echo "Keystore size: $(wc -c < $HOME/solar.keystore) bytes"
+          echo "================================================"
+          echo "SHA-256 FINGERPRINT"
+          echo "================================================"
+          keytool -list -v -keystore $HOME/solar.keystore -storepass solar2024 2>&1 | grep "SHA256:" || echo "Could not read keystore"
+          echo "================================================"
 
-      - name: Install Pillow
-        run: pip install Pillow --break-system-packages -q
-
-      - name: Generate Android project
-        run: python3 $GITHUB_WORKSPACE/build-twa.py
-        
       - name: Generate Android project
         run: python3 $GITHUB_WORKSPACE/build-twa.py
 
