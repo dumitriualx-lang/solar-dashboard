@@ -1,45 +1,96 @@
 name: Build Solar Dashboard
-on: workflow_dispatch
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          distribution: temurin
+          java-version: "17"
 
-      - name: Prepare Keystore
-        run: echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > /home/runner/solar.keystore
-       
-      - name: Install Pillow
-        run: pip install Pillow --break-system-packages -q
+      - name: Install Gradle 8.7
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt/
+          sudo ln -sf /opt/gradle-8.7/bin/gradle /usr/local/bin/gradle
+          gradle --version | head -3
+
+      - name: Install Android SDK platforms
+        run: |
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --channel=0 2>&1 | tail -3
+          echo "SDK ready"
+
+      - name: Generate and save keystore
+        run: |
+          keytool -genkeypair \
+            -keystore $HOME/solar.keystore \
+            -alias solar-key \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass solar2024 -keypass solar2024 \
+            -dname "CN=Solar Dashboard,O=SolarApp,C=RO" \
+            -noprompt
+          echo "Keystore created"
+          echo "================================================"
+          echo "SHA-256 FINGERPRINT — copy this to assetlinks.json"
+          echo "================================================"
+          keytool -list -v -keystore $HOME/solar.keystore -alias solar-key -storepass solar2024 2>&1 | grep "SHA256:"
+          echo "================================================"
+          echo "KEYSTORE BASE64 — copy this to SIGNING_KEY_BASE64 secret"
+          echo "================================================"
+          base64 -w 0 $HOME/solar.keystore
+          echo ""
+          echo "================================================"
 
       - name: Generate Android project
         run: python3 $GITHUB_WORKSPACE/build-twa.py
 
-      - name: Run Project Generator
-        run: python3 build-twa.py
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.4
-           
-      - name: Build APK and AAB
+      - name: Build APK
         run: |
-          cd /home/runner/twa
-          gradle bundleRelease assembleRelease --no-daemon
+          cd $HOME/twa
+          gradle assembleRelease --no-daemon 2>&1
+          echo "APK exit: $?"
 
-      - name: Upload Artifacts
+      - name: Build AAB
+        if: success()
+        run: |
+          cd $HOME/twa
+          gradle bundleRelease --no-daemon 2>&1 | tail -10
+          echo "AAB exit: $?"
+
+      - name: List outputs
+        if: always()
+        run: |
+          echo "=== APK ===" && find $HOME/twa -name "*.apk" 2>/dev/null || echo "none"
+          echo "=== AAB ===" && find $HOME/twa -name "*.aab" 2>/dev/null || echo "none"
+
+      - name: Collect outputs
+        if: always()
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/output
+          find $HOME/twa -name "*.apk" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
+          find $HOME/twa -name "*.aab" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
+          cp $HOME/solar.keystore $GITHUB_WORKSPACE/output/ 2>/dev/null || true
+          base64 -w 0 $HOME/solar.keystore > $GITHUB_WORKSPACE/output/solar.keystore.b64 2>/dev/null || true
+          echo "=== Output files ==="
+          ls -lh $GITHUB_WORKSPACE/output/
+
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: solar-dashboard-dist-v51
-          path: |
-            /home/runner/twa/app/build/outputs/apk/release/*.apk
-            /home/runner/twa/app/build/outputs/bundle/release/*.aab
+          name: solar-dashboard-android
+          path: output/
+          retention-days: 30
