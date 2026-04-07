@@ -512,6 +512,18 @@ const SYS = {
   noct:      45,       // Nominal Operating Cell Temperature °C
 };
 
+// SOC display mapping: battery physically operates 10–90% (user sees 0–100% of usable)
+// User input 90% = battery full (ceiling), 10% = battery empty (reserve floor)
+const SOC_FLOOR = 10;   // reserve floor % (hardware locked)
+const SOC_CEIL  = 90;   // charge ceiling % (safety threshold)
+const socToInternal = (userPct) =>
+  Math.max(0, Math.min(100,
+    ((+userPct - SOC_FLOOR) / (SOC_CEIL - SOC_FLOOR)) * 100
+  ));
+const socToDisplay = (internalPct) =>
+  +(SOC_FLOOR + (internalPct / 100) * (SOC_CEIL - SOC_FLOOR)).toFixed(1);
+
+
 // ═══════════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════════
@@ -530,7 +542,7 @@ let ST = {
   apiOk: false, lastFetch: null,
 
   // Battery — derived from energy balance, SOC evolves over time
-  battSoc: savedCfg.battSoc || 50,
+  battSoc: savedCfg.battSoc ? Math.max(0,Math.min(100,((savedCfg.battSoc-10)/80)*100)) : 50,
 
   // Consumption — only manual input
   consKw: savedCfg.consKw || 0,
@@ -1088,7 +1100,7 @@ function evolveSoc() {
 
   // Battery low + grid starting (crosses from battery to grid)
   if (fl.gridImport > 0.05 && (fl.battFlow >= -0.05) &&
-      (!ST._lastGridNotif || nowMin - ST._lastGridNotif > 30)) {
+      (!ST._lastGridNotif || nowMin - ST._lastGridNotif > 15)) {
     ST._lastGridNotif = nowMin;
     showNotification(
       '⚡ Grid power active',
@@ -1100,7 +1112,7 @@ function evolveSoc() {
 
   // Battery discharged to reserve
   if (ST.battSoc <= hardFlr + 2 && prevSoc > hardFlr + 2 &&
-      (!ST._lastBattLowNotif || nowMin - ST._lastBattLowNotif > 60)) {
+      (!ST._lastBattLowNotif || nowMin - ST._lastBattLowNotif > 15)) {
     ST._lastBattLowNotif = nowMin;
     showNotification(
       '🔋 Battery at reserve level',
@@ -1112,7 +1124,7 @@ function evolveSoc() {
 
   // Battery fully charged
   if (ST.battSoc >= 99 && prevSoc < 99 &&
-      (!ST._lastBattFullNotif || nowMin - ST._lastBattFullNotif > 120)) {
+      (!ST._lastBattFullNotif || nowMin - ST._lastBattFullNotif > 15)) {
     ST._lastBattFullNotif = nowMin;
     showNotification(
       '🌞 Battery fully charged!',
@@ -1230,7 +1242,7 @@ function renderBattery() {
   if (brandLabel) brandLabel.textContent = battSpec ? battSpec.name : 'Battery';
 
   // Compact strip elements
-  document.getElementById('bPct').textContent = soc + '%';
+  document.getElementById('bPct').textContent = socToDisplay(soc) + '%';
   document.getElementById('bPct').style.color = col;
   document.getElementById('battKwhLbl').textContent = f(st,2) + ' / ' + f(SYS.battUse,1) + ' kWh';
   document.getElementById('battBackupLbl').textContent = bkp + 'h backup';
@@ -1239,7 +1251,7 @@ function renderBattery() {
 
   // Progress bar width = soc%, reserve floor shown via 10% left gap
   const fillEl = document.getElementById('bFill');
-  fillEl.style.width = Math.max(soc, 3) + '%';
+  fillEl.style.width = Math.max(socToDisplay(soc), 3) + '%';
   fillEl.style.background = col;
 
   // Pill
@@ -1842,19 +1854,32 @@ function initCfgInputs() {
   if (savedCfg.panelKw)   document.getElementById('cfgPanel').value = savedCfg.panelKw;
   if (savedCfg.battGross) document.getElementById('cfgBatt').value  = savedCfg.battGross;
   if (savedCfg.battRes)   document.getElementById('cfgRes').value   = Math.round(savedCfg.battRes * 100);
-  if (savedCfg.battSoc)   document.getElementById('cfgSoc').value   = Math.round(savedCfg.battSoc);
+  if (savedCfg.battSoc)   { document.getElementById('cfgSoc').value = Math.round(savedCfg.battSoc); ST.battSoc = socToInternal(savedCfg.battSoc); }
   if (savedCfg.consKw)    document.getElementById('iCons').value    = savedCfg.consKw;
   updateUsableDisplay();
   updateSocDisplay();
 }
 
 function onSocInput() {
-  const raw = parseFloat(document.getElementById('cfgSoc').value);
-  const soc = Math.min(100, Math.max(0, isNaN(raw) ? ST.battSoc : raw));
-  ST.battSoc = soc;
-  lastFlowT = Date.now(); // reset flow timer so SOC doesn't immediately evolve away
+  const raw     = parseFloat(document.getElementById('cfgSoc').value);
+  if (isNaN(raw)) return;
+  const userPct = Math.min(100, Math.max(0, raw));
+  // Map user-entered SOC to internal (10%→0%, 90%→100%)
+  ST.battSoc = socToInternal(userPct);
+  lastFlowT  = Date.now();
   updateSocDisplay();
   renderAll();
+}
+
+function updateSocDisplay() {
+  // Show the kWh stored at current SOC
+  const kwhStored = stored();
+  const el = document.getElementById('cfgSocKwh');
+  if (el) el.value = f(kwhStored, 2) + ' kWh stored';
+  // Show display SOC (mapped back: internal→user-facing %)
+  const displayPct = socToDisplay(ST.battSoc);
+  const hint = document.getElementById('cfgSocHint');
+  if (hint) hint.textContent = 'Battery at ' + displayPct + '% · ' + f(kwhStored,2) + ' kWh stored · Enter FusionSolar SOC';
 }
 
 function onCfgChange() {
@@ -1890,7 +1915,10 @@ function saveCfgAndApply() {
   SYS.panelKw   = panel;
   SYS.battGross = gross;
   SYS.battRes   = res;
-  if (!isNaN(soc) && soc>=0 && soc<=100) ST.battSoc = soc;
+  if (!isNaN(soc) && soc>=0 && soc<=100) {
+    ST.battSoc = socToInternal(soc);  // map display → internal
+    saveCfg({ ...loadCfg(), battSoc: soc }); // save display value
+  }
   // Apply brand-specific max charge/discharge rates if set
   const maxCEl = document.getElementById('cfgBattBrand');
   const maxC = parseFloat(maxCEl.dataset.maxC) || SYS._battMaxC;
