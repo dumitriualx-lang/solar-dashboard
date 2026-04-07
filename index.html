@@ -671,12 +671,17 @@ async function fetchWeather() {
       const raw = await new Promise((resolve, reject) => {
         const id = 'cb_' + Date.now();
         window[id] = function(b64result, error) {
+          delete window[id];
           if (b64result) {
             try { resolve(atob(b64result)); }
-            catch(e) { reject(new Error('decode error')); }
-          } else { reject(new Error(error || 'Android fetch failed')); }
+            catch(e) { reject(new Error('base64 decode failed')); }
+          } else {
+            reject(new Error(error || 'null response'));
+          }
         };
         window.AndroidBridge.fetchData(u, 'window["' + id + '"]');
+        // Timeout after 25s
+        setTimeout(() => { if(window[id]) { delete window[id]; reject(new Error('timeout')); } }, 25000);
       });
       data = JSON.parse(raw);
     } else {
