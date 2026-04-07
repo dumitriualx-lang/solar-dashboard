@@ -1494,7 +1494,7 @@ function setNotifBar(type, msg) {
 
 function testNotifications() {
   // Fire both notification types immediately (bypasses debounce) for testing
-  const hasAndroid = window.AndroidBridgeBridge && window.AndroidBridge.showNotification;
+  const hasAndroid = window.AndroidBridge && window.AndroidBridge.showNotification;
   if (!hasAndroid && (typeof Notification === 'undefined' || Notification.permission !== 'granted')) {
     alert('Notifications not enabled. Tap Enable first.');
     return;
