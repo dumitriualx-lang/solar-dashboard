@@ -727,6 +727,16 @@ function wxIcon(code) {
   return '⛈️';
 }
 
+function calcPV(poaWm2) {
+  // Convert POA irradiance to AC output kW for Huawei SUN2000-5KTL-M1
+  const tempC  = ST.wxTempC || 25;
+  const noct   = SYS.noct || 45;
+  const tCell  = tempC + (noct - 20) / 800 * poaWm2;
+  const tFactor = 1 - (SYS.tempCoeff || 0.0037) * Math.max(0, tCell - 25);
+  const dcKw   = SYS.panelKw * (poaWm2 / 1000) * tFactor;
+  return +Math.min(dcKw * (SYS.invEff || 0.984), SYS.acMax || 5).toFixed(3);
+}
+
 function processOpenMeteo(d) {
   const cur = d.current || {};
   ST.irrWm2    = +(cur.direct_radiation || 0);
@@ -1538,12 +1548,12 @@ let scheduledNotifTimers = [];
 async function requestNotifPermission() {
   // Android WebView native notifications
   if (window.AppBridge && window.AppBridge.showNotif) {
-    if (window.NativeBridge.granted && window.AppBridge.notifGranted()) {
+    if (window.AppBridge.notifGranted && window.AppBridge.notifGranted()) {
       setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
       saveCfg({ ...loadCfg(), notifEnabled: true });
       scheduleNotifications();
     } else {
-      if (window.AndroidBridge.requestNotifications) window.AppBridge.requestNotif();
+      if (window.AppBridge.requestNotif) window.AppBridge.requestNotif();
       setNotifBar('ok', '🔔 Allow notifications in the system prompt · then tap Enable again');
     }
     return;
