@@ -660,52 +660,22 @@ async function fetchWeather() {
       + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
       + '&timezone=auto&forecast_days=7';
 
-    const hasAndroidBridge = !!(window.AndroidBridge && window.AndroidBridge.fetchData);
-    setApi('load', '⏳ ' + (hasAndroidBridge ? 'Using native fetch...' : 'Using browser fetch...'));
+    // Normal fetch() — intercepted by Java shouldInterceptRequest on Android
+    const r = await fetch(u);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
 
-    let raw;
-    if (hasAndroidBridge) {
-      raw = await new Promise((resolve, reject) => {
-        const id = 'cb_' + Date.now();
-        window[id] = function(b64result, error) {
-          delete window[id];
-          if (b64result) {
-            try { resolve(atob(b64result)); }
-            catch(e) { reject(new Error('base64 decode failed')); }
-          } else {
-            reject(new Error(error || 'null response'));
-          }
-        };
-        window.AndroidBridge.fetchData(u, 'window["' + id + '"]');
-        setTimeout(() => { if(window[id]) { delete window[id]; reject(new Error('timeout')); } }, 25000);
-      });
-    } else {
-      const r = await fetch(u);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      raw = await r.text();
-    }
-
-    const d = JSON.parse(raw);
     processOpenMeteo(d);
     ST.apiOk = true; ST.lastFetch = new Date();
-    setApi('ok', '✅ Weather data loaded · ' + ST.locName + ' · updated '
+    setApi('ok', '✅ Weather loaded · ' + ST.locName + ' · '
       + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
       + ' · refreshes every 15 min');
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted' ||
-        (window.AndroidBridge && window.AndroidBridge.notificationsGranted && window.AndroidBridge.notificationsGranted())) {
-      scheduleNotifications(); schedulePeakAlerts();
-    }
+    scheduleNotifications();
+    schedulePeakAlerts();
   } catch(e) {
     ST.apiOk = false;
-    const bridge = !!(window.AndroidBridge && window.AndroidBridge.fetchData);
-    const msg = e.message || '';
-    const is429 = msg.includes('429');
-    const errText = is429
-      ? '⏳ Rate limit reached. Auto-retry in 15 min.'
-      : '⚠️ Fetch failed via ' + (bridge ? 'Android bridge' : 'browser fetch') + ': ' + msg
-        + '. <button class="api-refresh" onclick="fetchWeather()">Retry</button>';
-    setApi('err', errText);
-    if (is429) setTimeout(() => fetchWeather(), 15 * 60 * 1000);
+    setApi('err', '⚠️ ' + e.message
+      + ' <button class="api-refresh" onclick="fetchWeather()">Retry</button>');
     fallbackEstimate();
   }
   renderAll();
@@ -1521,13 +1491,13 @@ let scheduledNotifTimers = [];
 
 async function requestNotifPermission() {
   // Android WebView native notifications
-  if (window.AndroidBridge && window.AndroidBridge.showNotification) {
-    if (window.AndroidBridge.notificationsGranted && window.AndroidBridge.notificationsGranted()) {
+  if (window.NativeBridge && window.NativeBridge.show) {
+    if (window.NativeBridge.granted && window.NativeBridge.granted()) {
       setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
       saveCfg({ ...loadCfg(), notifEnabled: true });
       scheduleNotifications();
     } else {
-      if (window.AndroidBridge.requestNotifications) window.AndroidBridge.requestNotifications();
+      if (window.AndroidBridge.requestNotifications) window.NativeBridge.request();
       setNotifBar('ok', '🔔 Allow notifications in the system prompt · then tap Enable again');
     }
     return;
@@ -1564,7 +1534,7 @@ function setNotifBar(type, msg) {
 
 function testNotifications() {
   // Fire both notification types immediately (bypasses debounce) for testing
-  const hasAndroid = window.AndroidBridge && window.AndroidBridge.showNotification;
+  const hasAndroid = window.NativeBridge && window.NativeBridge.show;
   if (!hasAndroid && (typeof Notification === 'undefined' || Notification.permission !== 'granted')) {
     alert('Notifications not enabled. Tap Enable first.');
     return;
@@ -1609,8 +1579,8 @@ function testNotifications() {
 
 function initNotifBar() {
   // Android WebView native notifications
-  if (window.AndroidBridge && window.AndroidBridge.showNotification) {
-    if (window.AndroidBridge.notificationsGranted && window.AndroidBridge.notificationsGranted()) {
+  if (window.NativeBridge && window.NativeBridge.show) {
+    if (window.NativeBridge.granted && window.NativeBridge.granted()) {
       setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
       saveCfg({ ...loadCfg(), notifEnabled: true });
       scheduleNotifications();
@@ -1736,8 +1706,8 @@ function schedulemorningNotif() {
 
 function showNotification(title, body, tag) {
   // Use native Android notification bridge if available
-  if (window.AndroidBridge && window.AndroidBridge.showNotification) {
-    window.AndroidBridge.showNotification(title, body, tag || 'solar');
+  if (window.NativeBridge && window.NativeBridge.show) {
+    window.NativeBridge.show(title, body);
     return;
   }
   if ((typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
