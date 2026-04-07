@@ -336,7 +336,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
     <div class="mc"><div class="mc-lbl">Home load</div><div class="mc-val" id="mv1">-- kW</div><div class="mc-sub" id="ms1">--</div></div>
     <div class="mc"><div class="mc-lbl">Battery flow</div><div class="mc-val" id="mv2">-- kW</div><div class="mc-sub" id="ms2">--</div></div>
     <div class="mc"><div class="mc-lbl">Grid</div><div class="mc-val" id="mv3">-- kW</div><div class="mc-sub" id="ms3">--</div></div>
-    <div class="mc wide"><div class="mc-lbl">Backup time · Luna 2000 CO</div><div class="mc-val cg" id="mv4">-- h</div><div class="mc-sub" id="ms4">--</div></div>
+
   </div>
 
   <div class="card">
@@ -354,7 +354,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:18px">🔋</span>
         <div>
-          <div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">Luna 2000 CO</div>
+          <div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em" id="battBrandLabel">Luna 2000 CO</div>
           <div style="display:flex;align-items:baseline;gap:6px;margin-top:1px">
             <span style="font-size:20px;font-weight:700;color:var(--tx)" id="bPct">--%</span>
             <span style="font-size:11px;color:var(--t2)" id="battKwhLbl">-- kWh</span>
@@ -670,7 +670,7 @@ async function fetchWeather() {
   if (Notification.permission === 'granted') { scheduleNotifications(); schedulePeakAlerts(); }
   } catch(e) {
     ST.apiOk = false;
-    setApi('err', '⚠️ Cannot reach Open-Meteo (' + e.message + '). Check connection.');
+    setApi('err', '⚠️ Cannot reach Open-Meteo (' + e.message + '). <button class="api-refresh" onclick="fetchWeather()">Retry</button>');
     fallbackEstimate();
   }
   renderAll();
@@ -954,7 +954,6 @@ function renderMetrics() {
     {v:f(ST.consKw,2)+' kW', s:sp+'% solar'+(fl.batt2home>0.01?' + '+f(fl.batt2home,2)+' batt':'')+(fl.gridImport>0.01?' + '+f(fl.gridImport,2)+' grid':''), c:''},
     {v:(fl.battFlow>=0?'+':'')+f(fl.battFlow,2)+' kW', s:f(st,2)+' kWh stored · SOC '+Math.round(ST.battSoc)+'%', c:fl.battFlow>0.01?'cb':fl.battFlow<-0.01?'ca':''},
     {v:(fl.gridExport>0.01?'+':fl.gridImport>0.01?'−':'')+f(Math.max(fl.gridExport,fl.gridImport),2)+' kW', s:fl.gridExport>0.01?'feed-in / exporting':fl.gridImport>0.01?'importing from grid':'not used · self-sufficient', c:fl.gridExport>0.01?'cg':fl.gridImport>0.01?'cr':''},
-    {v:f(bkp,1)+' h', s:'at '+f(ST.consKw,2)+' kW · '+f(st,2)+' / '+f(SYS.battUse,2)+' kWh usable · '+Math.round(SYS.battRes*100)+'% reserve locked', c:bkp>8?'cg':bkp>3?'ca':'cr'},
   ];
   data.forEach((d,i)=>{
     document.getElementById('mv'+i).textContent = d.v;
@@ -1001,6 +1000,12 @@ function renderBattery() {
   const bkp = f(st / Math.max(0.01, ST.consKw), 1);
   const col = soc > 60 ? '#1D9E75' : soc > 30 ? '#BA7517' : '#A32D2D';
   const bg  = soc > 60 ? '#1D9E75' : soc > 30 ? '#BA7517' : '#A32D2D';
+
+  // Update battery brand label dynamically
+  const battKey = document.getElementById('cfgBattBrand') ? document.getElementById('cfgBattBrand').value : '';
+  const battSpec = battKey && BATT_BRANDS[battKey] ? BATT_BRANDS[battKey] : null;
+  const brandLabel = document.getElementById('battBrandLabel');
+  if (brandLabel) brandLabel.textContent = battSpec ? battSpec.name : 'Battery';
 
   // Compact strip elements
   document.getElementById('bPct').textContent = soc + '%';
@@ -1050,7 +1055,7 @@ function renderFlow() {
     '<div class="fnode" style="border-color:#D85A3055"><div class="fic">🏠</div><div class="flb">Home load</div>'+
     '<div class="fvl" style="color:#D85A30">'+f(ST.consKw,2)+' kW</div>'+
     '<div class="fsub">'+f(fl.solar2home,2)+' solar'+(fl.batt2home>0.005?' +'+f(fl.batt2home,2)+' batt':'')+'</div></div>'+
-    '<div class="fnode" style="border-color:'+bc+'55"><div class="fic">🔋</div><div class="flb">Luna 2000 CO</div>'+
+    '<div class="fnode" style="border-color:'+bc+'55"><div class="fic">🔋</div><div class="flb">'+(document.getElementById('cfgBattBrand')&&BATT_BRANDS[document.getElementById('cfgBattBrand').value]?BATT_BRANDS[document.getElementById('cfgBattBrand').value].name:'Battery')+'</div>'+
     '<div class="fvl" style="color:'+bc+'">'+(fl.battFlow>=0?'+':'')+f(fl.battFlow,2)+' kW</div>'+
     '<div class="fsub">'+Math.round(ST.battSoc)+'% · '+f(stored(),2)+' kWh</div></div>'+
     '</div><div style="display:flex;gap:6px;align-items:center">'+arr(gk,gc,gr)+
@@ -1367,7 +1372,7 @@ let scheduledNotifTimers = [];
 
 async function requestNotifPermission() {
   if (!('Notification' in window)) {
-    setNotifBar('off', '❌ Notifications not supported in this browser.');
+    setNotifBar('off', '📱 For notifications, install as PWA from Chrome browser.');
     return;
   }
   if (Notification.permission === 'granted') {
@@ -1582,12 +1587,9 @@ function onSocInput() {
   const raw = parseFloat(document.getElementById('cfgSoc').value);
   const soc = Math.min(100, Math.max(0, isNaN(raw) ? ST.battSoc : raw));
   ST.battSoc = soc;
+  lastFlowT = Date.now(); // reset flow timer so SOC doesn't immediately evolve away
   updateSocDisplay();
-  renderBattery();
-  renderMetrics();
-  renderFlow();
-  renderGridPanel();
-  renderSmartSched();
+  renderAll();
 }
 
 function onCfgChange() {
