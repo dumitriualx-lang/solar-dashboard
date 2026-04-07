@@ -153,29 +153,48 @@ public class MainActivity extends Activity {
 
     // JavaScript bridge — called from the web page
     public class SolarBridge {
-        // Native HTTP fetch — bypasses WebView network restrictions
+        // Native HTTP fetch — runs in background thread, calls back to JS
         @JavascriptInterface
-        public String httpGet(String urlStr) {
-            try {
-                URL url = new URL(urlStr);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(15000);
-                conn.setRequestProperty("Accept", "application/json");
-                conn.setRequestProperty("User-Agent", "SolarDashboard/1.0");
-                int code = conn.getResponseCode();
-                if (code != 200) return null;
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close();
-                conn.disconnect();
-                return sb.toString();
-            } catch (Exception e) {
-                return null;
-            }
+        public void httpGetAsync(String urlStr, String callbackId) {
+            new Thread(() -> {
+                String result = null;
+                String error = null;
+                try {
+                    URL url = new URL(urlStr);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(20000);
+                    conn.setRequestProperty("Accept", "application/json");
+                    conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)");
+                    int code = conn.getResponseCode();
+                    if (code == 200) {
+                        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = br.readLine()) != null) sb.append(line);
+                        br.close();
+                        result = sb.toString();
+                    } else {
+                        error = "HTTP " + code;
+                    }
+                    conn.disconnect();
+                } catch (Exception e) {
+                    error = e.getMessage();
+                }
+                final String finalResult = result;
+                final String finalError = error;
+                mainHandler.post(() -> {
+                    if (finalResult != null) {
+                        String safe = finalResult.replace("\\", "\\\\").replace("'", "\\'");
+                        webView.evaluateJavascript(
+                            "window._androidHttpCallback('" + callbackId + "', '" + safe + "', null);", null);
+                    } else {
+                        webView.evaluateJavascript(
+                            "window._androidHttpCallback('" + callbackId + "', null, '" + finalError + "');", null);
+                    }
+                });
+            }).start();
         }
 
         // Show native Android notification
