@@ -730,7 +730,7 @@ function wxIcon(code) {
 }
 
 function calcPV(poaWm2) {
-  if (!poaWm2) return 0;
+  if (!poaWm2 || isNaN(poaWm2) || poaWm2 <= 0) return 0;
   const pkw     = SYS.panelKw || 5;   // use 5kW estimate if not configured
   const tempC   = ST.wxTempC  || 25;
   const tCell   = tempC + (SYS.noct - 20) / 800 * poaWm2;
@@ -751,7 +751,7 @@ function processOpenMeteo(d) {
   const dni = +(cur.direct_normal_irradiance || ST.irrWm2);
   const dhi = +(cur.diffuse_radiation || ST.irrWm2 * 0.15);
   const ghi = +(cur.direct_radiation  || ST.irrWm2);
-  ST.poaWm2    = calcPOA(dni, dhi, ghi);
+  ST.poaWm2    = calcPOA(dni, dhi, ghi, SYS.tiltDeg || 30, 180);
   ST.pvKw      = calcPV(ST.poaWm2);
   ST.cfGHI     = Math.max(0, 1 - 0.75 * Math.pow((ST.cloudCover/100), 3.4));
   ST.tempFactor = 1 - SYS.tempCoeff * Math.max(0, ST.wxTempC + (ST.poaWm2/800)*25 - 25);
@@ -767,7 +767,8 @@ function processOpenMeteo(d) {
     const pvKw = calcPV(calcPOA(
       hr.direct_normal_irradiance?.[i] || 0,
       hr.diffuse_radiation?.[i] || 0,
-      hr.direct_radiation?.[i] || 0
+      hr.direct_radiation?.[i] || 0,
+      SYS.tiltDeg || 30, 180
     ));
     ST.todayH.push({ hour: h, pvKw,
       ghi: hr.direct_radiation?.[i] || 0,
@@ -1083,7 +1084,7 @@ function evolveSoc() {
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
 const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
-const stored = () => SYS.battUse ? +(ST.battSoc/100 * SYS.battUse).toFixed(3) : 0;
+const stored = () => +((ST.battSoc/100) * (SYS.battUse || 4.5)).toFixed(3);
 
 function updateClock() {
   const el = document.getElementById('clk');
@@ -1818,7 +1819,7 @@ function updateUsableDisplay() {
   const gross  = parseFloat(document.getElementById('cfgBatt').value) || SYS.battGross || 0;
   const res    = (parseFloat(document.getElementById('cfgRes').value) || Math.round((SYS.battRes||0.1)*100)) / 100;
   const usable = gross ? +(gross * (1 - res)).toFixed(2) : '';
-  document.getElementById('cfgUsable').value = usable || '';
+  document.getElementById('cfgUsable').value = usable !== '' ? usable : '';
 }
 
 function saveCfgAndApply() {
