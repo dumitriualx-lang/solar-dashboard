@@ -923,9 +923,11 @@ function wmoText(c){if(c===0)return'Clear sky';if(c<=2)return'Partly cloudy';if(
 function solarPosition(lat, lon) {
   const now    = new Date();
   const doy    = Math.floor((now - new Date(now.getFullYear(),0,0)) / 86400000);
-  const hour   = now.getHours() + now.getMinutes()/60 + now.getSeconds()/3600;
+  // Must use UTC hour + longitude for correct solar hour angle
+  // Using local hour double-counts the timezone offset
+  const hourUTC = now.getUTCHours() + now.getUTCMinutes()/60 + now.getUTCSeconds()/3600;
   const decl   = 23.45 * Math.sin((360/365*(doy - 81)) * Math.PI/180);   // degrees
-  const ha     = (hour - 12)*15 + lon;                                     // hour angle °
+  const ha     = (hourUTC - 12)*15 + lon;                                  // true solar hour angle
   const latR   = lat  * Math.PI/180;
   const decR   = decl * Math.PI/180;
   const haR    = ha   * Math.PI/180;
@@ -947,8 +949,10 @@ function solarPosition(lat, lon) {
 // tiltDeg = panel tilt from horizontal (e.g. 30)
 // panelAz = panel azimuth (180 = south)
 function calcPOA(dni, dhi, ghi, tiltDeg, panelAz) {
-  if (!ST.lat) return ghi;                     // no GPS yet — fall back to GHI
-  const pos     = solarPosition(ST.lat, ST.lon);
+  const lat = ST.lat || 44.4;
+  const lon = ST.lon || 26.17;
+  if (!ghi && !dni) return 0;
+  const pos     = solarPosition(lat, lon);
   if (pos.altitude <= 0) return 0;
   const tiltR   = tiltDeg * Math.PI/180;
   const altR    = pos.altitude * Math.PI/180;
