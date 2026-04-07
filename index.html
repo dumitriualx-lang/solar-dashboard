@@ -285,7 +285,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
           <input type="number" id="cfgSoc" inputmode="numeric" min="0" max="100" step="1" value="" oninput="onSocInput()">
           <span class="cfg-unit">%</span>
         </div>
-        <div class="cfg-hint" id="cfgSocHint">Enter current SOC from FusionSolar app</div>
+        <div class="cfg-hint" id="cfgSocHint">Enter SOC from FusionSolar · 90% = full · 10% = empty (reserve)</div>
       </div>
       <div class="cfg-group">
         <div class="cfg-lbl">⚡ Stored energy</div>
@@ -573,9 +573,7 @@ let geoWatchId = null;
 // ═══════════════════════════════════════════════════════════════
 function requestLocation() {
   if (!('geolocation' in navigator)) {
-    setGps('err', '❌ Geolocation not supported by this browser.');
-    // Fall back to default Pantelimon coords
-    onLocationOk(44.4558, 26.1897, 'Pantelimon (default)', null);
+    setGps('err', '❌ Geolocation not supported by this browser. Enable GPS to get solar data.');
     return;
   }
   setGps('req', '📍 Requesting GPS permission...');
@@ -620,12 +618,11 @@ function applyPosition(pos) {
 
 function onLocationErr(err) {
   let msg = '⚠️ ';
-  if (err.code === 1) msg += 'Location permission denied. Using default coordinates (Pantelimon).';
-  else if (err.code === 2) msg += 'GPS unavailable. Using default coordinates (Pantelimon).';
-  else msg += 'Location timeout. Using default coordinates (Pantelimon).';
-  setGps('err', msg + ' <button class="gps-btn" onclick="requestLocation()" style="margin-left:6px">Retry</button>');
-  // Fallback to hardcoded Pantelimon if GPS fails
-  onLocationOk(44.4558, 26.1897, 'Pantelimon, Ilfov (default)', null);
+  if (err.code === 1) msg += 'Location permission denied.';
+  else if (err.code === 2) msg += 'GPS unavailable.';
+  else msg += 'Location timeout.';
+  setGps('err', msg + ' <button class="gps-btn" onclick="requestLocation()" style="margin-left:6px">Enable GPS</button>');
+  // Do NOT fall back to default coords — wait for real GPS
 }
 
 function onLocationOk(lat, lon, name, acc) {
@@ -790,7 +787,8 @@ function processOpenMeteo(d) {
   const swrRaw = +(cur.shortwave_radiation || 0);
 
   // Compute clear-sky irradiance from solar geometry
-  const cs = clearSkyIrradiance(ST.lat || 44.4, ST.lon || 26.17);
+  if (!ST.lat || !ST.lon) return;
+  const cs = clearSkyIrradiance(ST.lat, ST.lon);
 
   // Derive cloud factor: prefer shortwave_radiation ratio over cloud_cover
   // (Open-Meteo cloud_cover is model-based and often very wrong)
@@ -960,9 +958,9 @@ function solarPosition(lat, lon) {
 // tiltDeg = panel tilt from horizontal (e.g. 30)
 // panelAz = panel azimuth (180 = south)
 function calcPOA(dni, dhi, ghi, tiltDeg, panelAz) {
-  const lat = ST.lat || 44.4;
-  const lon = ST.lon || 26.17;
-  if (!ghi && !dni) return 0;
+  const lat = ST.lat || 0;
+  const lon = ST.lon || 0;
+  if (!lat || !lon || (!ghi && !dni)) return 0;
   const pos     = solarPosition(lat, lon);
   if (pos.altitude <= 0) return 0;
   const tiltR   = tiltDeg * Math.PI/180;
@@ -1973,7 +1971,8 @@ function initCfgInputs() {
   // Only populate if user has previously saved — otherwise leave blank
   if (savedCfg.panelKw)   document.getElementById('cfgPanel').value = savedCfg.panelKw;
   if (savedCfg.battGross) document.getElementById('cfgBatt').value  = savedCfg.battGross;
-  if (savedCfg.battRes)   document.getElementById('cfgRes').value   = Math.round(savedCfg.battRes * 100);
+  document.getElementById('cfgRes').value = savedCfg.battRes
+    ? Math.round(savedCfg.battRes * 100) : 10;  // default 10% reserve
   if (savedCfg.battSoc)   { document.getElementById('cfgSoc').value = Math.round(savedCfg.battSoc); ST.battSoc = socToInternal(savedCfg.battSoc); }
   if (savedCfg.consKw)    document.getElementById('iCons').value    = savedCfg.consKw;
   updateUsableDisplay();
@@ -1999,7 +1998,7 @@ function updateSocDisplay() {
   // Show display SOC (mapped back: internal→user-facing %)
   const displayPct = socToDisplay(ST.battSoc);
   const hint = document.getElementById('cfgSocHint');
-  if (hint) hint.textContent = 'Battery at ' + displayPct + '% · ' + f(kwhStored,2) + ' kWh stored · Enter FusionSolar SOC';
+  if (hint) hint.textContent = 'Battery at ' + displayPct + '% usable · ' + f(kwhStored,2) + ' kWh stored · (90%=full, 10%=empty)';
 }
 
 function onCfgChange() {
