@@ -188,6 +188,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
   <!-- GPS STATUS BAR -->
   <div class="gps-bar gps-req" id="gpsBar">
     <span id="gpsMsg">📍 Requesting your location for accurate solar data...</span>
+    <button class="gps-btn" id="gpsBtnEl" onclick="requestLocation()">Allow GPS</button>
   </div>
 
   <!-- API STATUS BAR -->
@@ -704,7 +705,7 @@ function applyTranslations() {
   st('battBrandHint', 'cfg_batt_brand_hint');
 
   // GPS bar button text
-  const gpsBtnEl = document.querySelector('#gpsBar .gps-btn');
+  const gpsBtnEl = document.getElementById('gpsBtnEl');
   if (gpsBtnEl) gpsBtnEl.textContent = L.gps_btn || 'Allow GPS';
 
   // Notification bar messages
@@ -866,17 +867,14 @@ function onLocationOk(lat, lon, name, acc) {
 }
 
 function setGps(type, html) {
-  const el = document.getElementById('gpsBar');
-  if (!el) return;
-  el.className = 'gps-bar gps-' + type;
-  const L = (typeof LANG !== 'undefined' && LANG[currentLang]) ? LANG[currentLang] : {gps_btn:'Allow GPS'};
-  const btnLabel = L.gps_btn || 'Allow GPS';
-  if (type === 'ok') {
-    el.innerHTML = '<span>' + html + '</span>';
-  } else {
-    el.innerHTML = '<span>' + html + '</span>'
-      + ' <button class="gps-btn" onclick="requestLocation()">' + btnLabel + '</button>';
-  }
+  const bar = document.getElementById('gpsBar');
+  if (!bar) return;
+  bar.className = 'gps-bar gps-' + type;
+  const msg = document.getElementById('gpsMsg');
+  if (msg) msg.textContent = html;
+  // Static button — just hide it when GPS is acquired
+  const btn = document.getElementById('gpsBtnEl');
+  if (btn) btn.style.display = (type === 'ok') ? 'none' : '';
 }
 
 // Reverse geocode using Open-Meteo's geocoding — no API key needed
