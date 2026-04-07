@@ -124,6 +124,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -132,18 +133,20 @@ import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.view.Window;
 import android.view.WindowManager;
-import android.graphics.Color;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import java.io.ByteArrayInputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
     private WebView webView;
@@ -152,97 +155,61 @@ public class MainActivity extends Activity {
     private static final String CHANNEL_ID = "solar_alerts";
     private int notifId = 1;
 
-    // Fetch URL in background thread, return result to JS callback
-    private void fetchUrl(String urlStr, String jsCallback) {
-        new Thread(() -> {
-            String result = null;
-            String errorMsg = "unknown";
-            try {
-                java.net.URL url = new java.net.URL(urlStr);
-                java.net.URLConnection rawConn = url.openConnection();
-                rawConn.setConnectTimeout(20000);
-                rawConn.setReadTimeout(25000);
-                rawConn.setRequestProperty("Accept", "application/json");
-                rawConn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                rawConn.setRequestProperty("Accept-Encoding", "identity");
-                rawConn.connect();
-                java.io.InputStream is;
-                if (rawConn instanceof java.net.HttpURLConnection) {
-                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) rawConn;
-                    int code = conn.getResponseCode();
-                    errorMsg = "HTTP " + code;
-                    if (code == 200) {
-                        is = conn.getInputStream();
-                    } else {
-                        is = null;
-                    }
-                } else {
-                    is = rawConn.getInputStream();
-                }
-                if (is != null) {
-                    BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = br.readLine()) != null) sb.append(line);
-                    br.close();
-                    result = sb.toString();
-                }
-            } catch (Exception e) {
-                errorMsg = e.getClass().getSimpleName() + ": " + e.getMessage();
+    // Perform native HTTP GET and return response bytes
+    private byte[] nativeGet(String urlStr) {
+        try {
+            URL url = new URL(urlStr);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(20000);
+            conn.setReadTimeout(20000);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)");
+            conn.setRequestProperty("Accept", "application/json, */*");
+            conn.setInstanceFollowRedirects(true);
+            int code = conn.getResponseCode();
+            if (code == 200) {
+                java.io.InputStream is = conn.getInputStream();
+                byte[] buf = new byte[4096];
+                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                int n;
+                while ((n = is.read(buf)) != -1) bos.write(buf, 0, n);
+                conn.disconnect();
+                return bos.toByteArray();
             }
-            final String b64 = result != null ?
-                android.util.Base64.encodeToString(
-                    result.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                    android.util.Base64.NO_WRAP) : null;
-            final String errFinal = errorMsg;
-            mainHandler.post(() -> {
-                String js = b64 != null
-                    ? jsCallback + "('" + b64 + "', null);"
-                    : jsCallback + "(null, 'ERR:" + errFinal.replace("'","") + "');";
-                webView.evaluateJavascript(js, null);
-            });
-        }).start();
+            conn.disconnect();
+        } catch (Exception e) { /* ignore */ }
+        return null;
     }
 
-    // JavaScript bridge
-    public class SolarBridge {
+    // Notification bridge
+    public class NotifBridge {
         @JavascriptInterface
-        public void fetchData(String urlStr, String callbackFn) {
-            fetchUrl(urlStr, callbackFn);
-        }
-
-        @JavascriptInterface
-        public void showNotification(String title, String body, String tag) {
+        public void show(String title, String body) {
             mainHandler.post(() -> {
-                NotificationCompat.Builder builder = new NotificationCompat.Builder(MainActivity.this, CHANNEL_ID)
+                NotificationCompat.Builder b = new NotificationCompat.Builder(MainActivity.this, CHANNEL_ID)
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle(title)
-                    .setContentText(body)
+                    .setContentTitle(title).setContentText(body)
                     .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setAutoCancel(true)
-                    .setColor(Color.parseColor("#1D9E75"));
-                Intent intent = new Intent(MainActivity.this, MainActivity.class);
-                intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                PendingIntent pi = PendingIntent.getActivity(MainActivity.this, 0, intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-                builder.setContentIntent(pi);
-                try {
-                    NotificationManagerCompat.from(MainActivity.this).notify(notifId++, builder.build());
-                } catch (Exception ignored) {}
+                    .setAutoCancel(true).setColor(Color.parseColor("#1D9E75"));
+                Intent i = new Intent(MainActivity.this, MainActivity.class);
+                i.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                b.setContentIntent(PendingIntent.getActivity(MainActivity.this, 0, i,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+                try { NotificationManagerCompat.from(MainActivity.this).notify(notifId++, b.build()); }
+                catch (Exception ignored) {}
             });
         }
 
         @JavascriptInterface
-        public boolean notificationsGranted() {
+        public boolean granted() {
             return NotificationManagerCompat.from(MainActivity.this).areNotificationsEnabled();
         }
 
         @JavascriptInterface
-        public void requestNotifications() {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        public void request() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                 requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
-            }
         }
     }
 
@@ -250,10 +217,9 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(
                 CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
-            ch.setDescription("Solar production alerts");
-            ch.enableLights(true);
             ch.setLightColor(Color.parseColor("#1D9E75"));
-            ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(ch);
+            ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE))
+                .createNotificationChannel(ch);
         }
     }
 
@@ -275,7 +241,6 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        s.setCacheMode(WebSettings.LOAD_DEFAULT);
         s.setGeolocationEnabled(true);
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(true);
@@ -284,35 +249,55 @@ public class MainActivity extends Activity {
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        s.setJavaScriptCanOpenWindowsAutomatically(false);
+        s.setCacheMode(WebSettings.LOAD_DEFAULT);
 
-        // Register bridge BEFORE loading URL
-        SolarBridge bridge = new SolarBridge();
-        webView.addJavascriptInterface(bridge, "AndroidBridge");
+        // Register notification bridge
+        webView.addJavascriptInterface(new NotifBridge(), "NativeBridge");
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
-            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback cb) {
-                cb.invoke(origin, true, false);
-            }
+            public void onGeolocationPermissionsShowPrompt(String origin,
+                    GeolocationPermissions.Callback cb) { cb.invoke(origin, true, false); }
             @Override
-            public void onPermissionRequest(android.webkit.PermissionRequest request) {
-                request.grant(request.getResources());
+            public void onPermissionRequest(android.webkit.PermissionRequest r) {
+                r.grant(r.getResources());
             }
         });
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return false; // allow all URLs to load in WebView
+            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                return false;
+            }
+
+            // KEY FIX: intercept API calls and serve them via native Java HTTP
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                String url = request.getUrl().toString();
+                // Only intercept Open-Meteo API calls
+                if (url.contains("api.open-meteo.com") || url.contains("api.forecast.solar")) {
+                    byte[] data = nativeGet(url);
+                    if (data != null) {
+                        return new WebResourceResponse(
+                            "application/json", "UTF-8", 200, "OK",
+                            new java.util.HashMap<String, String>() {{
+                                put("Access-Control-Allow-Origin", "*");
+                                put("Content-Type", "application/json; charset=UTF-8");
+                            }},
+                            new ByteArrayInputStream(data)
+                        );
+                    }
+                    // Return empty error response
+                    return new WebResourceResponse("application/json", "UTF-8", 503,
+                        "Service Unavailable", new java.util.HashMap<>(),
+                        new ByteArrayInputStream("{}".getBytes()));
+                }
+                return null; // let WebView handle everything else normally
             }
         });
 
-        if (savedInstanceState != null) {
-            webView.restoreState(savedInstanceState);
-        } else {
-            webView.loadUrl(APP_URL);
-        }
+        if (savedInstanceState != null) webView.restoreState(savedInstanceState);
+        else webView.loadUrl(APP_URL);
     }
 
     @Override
@@ -328,6 +313,7 @@ public class MainActivity extends Activity {
     }
 }
 """)
+
 
 
 
