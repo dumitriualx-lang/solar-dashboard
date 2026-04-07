@@ -653,17 +653,21 @@ async function fetchWeather() {
   setApi('load', '⏳ Fetching solar forecast...');
   try {
     // Forecast.Solar API — free, no API key, no auth required
-    // Returns hourly solar production estimate based on panel specs
     const tilt = SYS.tiltDeg || 30;
-    const az   = 0;  // 0 = south in Forecast.Solar convention (Europe)
+    const az   = 0;
     const kwp  = SYS.panelKw;
     const u = 'https://api.forecast.solar/estimate/'
       + f(ST.lat,4) + '/' + f(ST.lon,4) + '/'
       + tilt + '/' + az + '/' + kwp
       + '?time_zone=auto&damping=0';
 
+    // Debug: log which path is taken
+    const hasAndroidBridge = !!(window.Android && window.Android.httpGetAsync);
+    console.log('Android bridge available:', hasAndroidBridge, 'URL:', u);
+    setApi('load', '⏳ ' + (hasAndroidBridge ? 'Using native fetch...' : 'Using browser fetch...'));
+
     let data;
-    if (window.Android && window.Android.httpGetAsync) {
+    if (hasAndroidBridge) {
       const raw = await new Promise((resolve, reject) => {
         const id = 'cb_' + Date.now();
         window._androidHttpCallback = function(cbId, b64result, error) {
@@ -693,7 +697,8 @@ async function fetchWeather() {
     }
   } catch(e) {
     ST.apiOk = false;
-    setApi('err', '⚠️ Cannot reach Forecast.Solar (' + e.message + '). <button class="api-refresh" onclick="fetchWeather()">Retry</button>');
+    const bridge = !!(window.Android && window.Android.httpGetAsync);
+    setApi('err', '⚠️ Fetch failed via ' + (bridge?'Android bridge':'browser fetch') + ': ' + e.message + '. <button class="api-refresh" onclick="fetchWeather()">Retry</button>');
     fallbackEstimate();
   }
   renderAll();
