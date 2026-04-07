@@ -496,6 +496,13 @@ function saveCfg(obj) {
   try { localStorage.setItem(CFG_KEY, JSON.stringify(obj)); } catch(e) {}
 }
 const savedCfg = loadCfg();
+
+// Guard: returns true only when user has saved system configuration
+function isSysConfigured() {
+  const cfg = loadCfg();
+  return !!(cfg && cfg.panelKw && cfg.battGross);
+}
+
 const SYS = {
   panelKw:   savedCfg.panelKw   || null,     // kW peak — must be set by user
   tiltDeg:   savedCfg.tiltDeg   || 30,       // panel tilt angle
@@ -1113,6 +1120,7 @@ function evolveSoc() {
   }
 
   // ── Real-time alerts ──────────────────────────────────────────────────────
+  if (!isSysConfigured()) return;
   const canNotif = (window.AppBridge && window.AppBridge.showNotif) ||
     (typeof Notification !== 'undefined' && Notification.permission === 'granted');
   if (!canNotif) return;
@@ -1788,6 +1796,7 @@ function getBestWindow() {
 }
 
 function scheduleNotifications() {
+  if (!isSysConfigured()) return;
   const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
     (typeof Notification !== 'undefined' && Notification.permission === 'granted');
   if (!notifOk) return;
@@ -1825,6 +1834,7 @@ function scheduleNotifications() {
 
 // Real-time smart appliance alerts — called every 15 min from evolveSoc
 function checkApplianceAlerts() {
+  if (!isSysConfigured()) return;
   const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
     (typeof Notification !== 'undefined' && Notification.permission === 'granted');
   if (!notifOk) return;
@@ -2320,6 +2330,7 @@ function triggerApplianceNotif(type, app) {
 
 // Schedule "peak coming" alert for top appliances
 function schedulePeakAlerts() {
+  if (!isSysConfigured()) return;
   const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
     (typeof Notification !== 'undefined' && Notification.permission === 'granted');
   if (!notifOk) return;
