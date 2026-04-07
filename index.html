@@ -706,9 +706,13 @@ async function fetchWeather() {
     const d = JSON.parse(raw);
     processOpenMeteo(d);
     ST.apiOk = true; ST.lastFetch = new Date();
-    setApi('ok', '✅ Weather loaded · ' + ST.locName + ' · '
-      + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
-      + ' · refreshes every 15 min');
+    const _cs = clearSkyIrradiance(ST.lat||44.4, ST.lon||26.17);
+    const _pos = solarPosition(ST.lat||44.4, ST.lon||26.17);
+    setApi('ok', '✅ Weather · ' + ST.locName
+      + ' · GHI=' + Math.round(ST.irrWm2) + ' POA=' + Math.round(ST.poaWm2)
+      + ' alt=' + Math.round(_pos.altitude) + '° csGHI=' + Math.round(_cs.ghi)
+      + ' pvKw=' + f(ST.pvKw,2)
+      + ' · ' + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
     scheduleNotifications(); schedulePeakAlerts();
   } catch(e) {
     ST.apiOk = false;
