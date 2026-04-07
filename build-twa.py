@@ -182,9 +182,8 @@ public class MainActivity extends Activity {
             }
 
             @Override
-            public boolean onPermissionRequest(android.webkit.PermissionRequest request) {
+            public void onPermissionRequest(android.webkit.PermissionRequest request) {
                 request.grant(request.getResources());
-                return true;
             }
         });
 
