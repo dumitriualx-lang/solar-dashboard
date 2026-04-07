@@ -83,6 +83,9 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="Solar Dashboard"
         android:icon="@mipmap/ic_launcher"
@@ -115,6 +118,9 @@ import android.webkit.WebViewClient;
 import android.view.Window;
 import android.view.WindowManager;
 import android.graphics.Color;
+import android.webkit.WebChromeClient;
+import android.webkit.GeolocationPermissions;
+import android.webkit.PermissionRequest;
 
 public class MainActivity extends Activity {
     private WebView webView;
@@ -143,10 +149,19 @@ public class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setGeolocationEnabled(true);
         settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
+        settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        // Remove WebView user agent marker so APIs treat it like a real browser
+        String ua = settings.getUserAgentString();
+        settings.setUserAgentString(ua.replace("wv", "").replace("  ", " ").trim());
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        settings.setUserAgentString(settings.getUserAgentString()
+            .replace("; wv", "")
+            + " SolarDashboard/1.0");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -155,6 +170,20 @@ public class MainActivity extends Activity {
                 if (url.startsWith("https://dumitriualx-lang.github.io")) {
                     return false;
                 }
+                return true;
+            }
+        });
+
+        webView.setWebChromeClient(new android.webkit.WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin,
+                    android.webkit.GeolocationPermissions.Callback callback) {
+                callback.invoke(origin, true, false);
+            }
+
+            @Override
+            public boolean onPermissionRequest(android.webkit.PermissionRequest request) {
+                request.grant(request.getResources());
                 return true;
             }
         });
