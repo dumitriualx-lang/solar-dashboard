@@ -584,19 +584,25 @@ function requestLocation() {
   }
   setGps('req', '📍 Requesting GPS permission...');
 
-  // Try to get a fast first fix, then start watching
+  // Try GPS with enableHighAccuracy first, fallback to network location
   navigator.geolocation.getCurrentPosition(
     pos => {
       applyPosition(pos);
-      // Then start watching for position updates (auto-refresh as user moves)
       if (geoWatchId !== null) navigator.geolocation.clearWatch(geoWatchId);
       geoWatchId = navigator.geolocation.watchPosition(
         applyPosition,
-        err => { /* silent — already have a fix */ },
+        () => {},
         { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 }
       );
     },
-    err => onLocationErr(err),
+    () => {
+      // High accuracy failed — retry with network/low accuracy
+      navigator.geolocation.getCurrentPosition(
+        pos => applyPosition(pos),
+        err => onLocationErr(err),
+        { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 }
+      );
+    },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
   );
 }
@@ -2501,6 +2507,15 @@ const LANG = {
     faq_notif_body: 'Smart alerts check every 15 minutes whether solar surplus is enough to run each appliance in your schedule. You get a specific alert per appliance: "Run washing machine now" when surplus covers it, or "Wait until 13:00" when production will be sufficient later.',
     faq_data_title: '📡 Data sources',
     faq_data_body: 'Weather & irradiance: Open-Meteo (free, no API key, updates every 5 min). Location: device GPS. All calculations run locally on your device — no data is sent anywhere.',
+    // Additional UI
+    gps_init: '📍 Requesting your location for accurate solar data...',
+    cfg_panel_brand_hint: 'Select to auto-fill typical specs',
+    cfg_batt_brand_hint: 'Select to auto-fill capacity & reserve',
+    solar_irr: 'Solar Irradiance',
+    energy_flow: 'Energy Flow',
+    forecast_yield: '5-Day Solar Yield Forecast',
+    schedule_title: 'Smart Appliance Schedule',
+    log_title: 'Energy Log',
   },
   ro: {
     // Nav
@@ -2569,6 +2584,17 @@ const LANG = {
     faq_notif_body: 'Alertele inteligente verifică la fiecare 15 minute dacă surplusul solar este suficient pentru a porni fiecare aparat din program. Primești o alertă specifică per aparat: "Pornește mașina de spălat acum" când surplusul acoperă consumul, sau "Așteaptă până la 13:00" când producția va fi suficientă mai târziu.',
     faq_data_title: '📡 Surse de date',
     faq_data_body: 'Date meteo și radiație: Open-Meteo (gratuit, fără cheie API, actualizat la 5 min). Locație: GPS dispozitiv. Toate calculele rulează local pe dispozitivul tău — nicio dată nu este trimisă nicăieri.',
+    // Additional UI
+    gps_init: '📍 Se solicită localizarea pentru date solare precise...',
+    cfg_panel_brand_hint: 'Selectați pentru completare automată',
+    cfg_batt_brand_hint: 'Selectați pentru capacitate și rezervă',
+    solar_irr: 'Radiație Solară',
+    energy_flow: 'Flux Energie',
+    forecast_yield: 'Prognoză Producție Solară 5 Zile',
+    schedule_title: 'Program Inteligent Aparate',
+    log_title: 'Jurnal Energie',
+    notif_enable: 'Activează',
+    live: 'Live',
   }
 };
 
@@ -2589,24 +2615,68 @@ function setLang(lang) {
 function applyTranslations() {
   const L = LANG[currentLang] || LANG.en;
 
-  // Nav buttons
-  const navLabels = ['Dash','Forecast','Sched','Log','Faq'];
-  const navKeys   = ['nav_dash','nav_forecast','nav_sched','nav_log','nav_faq'];
+  // Nav buttons — text node is last child after the icon span
+  const navKeys = ['nav_dash','nav_forecast','nav_sched','nav_log','nav_faq'];
   document.querySelectorAll('.nb').forEach((btn, i) => {
-    if (navKeys[i]) btn.childNodes[1] && (btn.childNodes[1].textContent = L[navKeys[i]] || btn.childNodes[1].textContent);
+    if (!navKeys[i]) return;
+    // Find and update the text node (after the icon span)
+    for (let node of btn.childNodes) {
+      if (node.nodeType === 3 && node.textContent.trim()) {
+        node.textContent = L[navKeys[i]] || node.textContent;
+        break;
+      }
+    }
   });
 
-  // All elements with data-i18n attribute
+  // FAQ elements with data-i18n
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     if (L[key]) el.textContent = L[key];
   });
 
-  // Live tag
-  const liveTag = document.getElementById('liveTag');
-  if (liveTag) liveTag.textContent = L.live || 'Live';
+  // Header live tag
+  const el = id => document.getElementById(id);
+  const txt = (id, key) => { const e=el(id); if(e && L[key]) e.textContent=L[key]; };
+  const html = (id, key) => { const e=el(id); if(e && L[key]) e.innerHTML=L[key]; };
 
-  // Notification bar messages (re-init)
+  txt('liveTag', 'live');
+
+  // GPS bar initial message
+  if (el('gpsMsg')) el('gpsMsg').textContent = L.gps_init || '📍 Requesting your location for accurate solar data...';
+  const gpsBtnEl = document.querySelector('#gpsBar .gps-btn');
+  if (gpsBtnEl) gpsBtnEl.textContent = L.gps_btn || 'Allow GPS';
+
+  // Config section labels — find by traversing label elements
+  const labelMap = {
+    'panelBrandHint': 'cfg_panel_brand_hint',
+    'battBrandHint':  'cfg_batt_brand_hint',
+    'cfgSocHint':     'cfg_soc_hint',
+  };
+  Object.entries(labelMap).forEach(([id, key]) => txt(id, key));
+
+  // Notification button
+  const notifBtn = el('notifBtn');
+  if (notifBtn) notifBtn.textContent = L.notif_enable || 'Enable';
+
+  // Card titles — find all .ct elements and translate by content
+  const ctMap = {
+    'Solar Irradiance': L.solar_irr,
+    'Radiație Solară': L.solar_irr,
+    'Energy Flow': L.energy_flow,
+    'Flux Energie': L.energy_flow,
+    '5-Day Solar Yield Forecast': L.forecast_yield,
+    'Prognoză Producție Solară 5 Zile': L.forecast_yield,
+    'Smart Appliance Schedule': L.schedule_title,
+    'Program Inteligent Aparate': L.schedule_title,
+    'Energy Log': L.log_title,
+    'Jurnal Energie': L.log_title,
+  };
+  document.querySelectorAll('.ct').forEach(ct => {
+    const text = ct.textContent.trim();
+    if (ctMap[text]) ct.textContent = ctMap[text];
+  });
+
+  // Notification bar messages (re-init to pick up new language)
   initNotifBar();
 }
 
