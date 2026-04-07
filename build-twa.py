@@ -76,6 +76,7 @@ android {
 dependencies {
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "androidx.webkit:webkit:1.8.0"
+    implementation "androidx.core:core:1.12.0"
 }
 """ % (PKG, PKG, KEYSTORE))
 
@@ -83,6 +84,7 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -110,7 +112,18 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
 write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "MainActivity.java"), """package com.dumitriualxlang.solardashboard;
 
 import android.app.Activity;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.webkit.GeolocationPermissions;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -118,19 +131,104 @@ import android.webkit.WebViewClient;
 import android.view.Window;
 import android.view.WindowManager;
 import android.graphics.Color;
-import android.webkit.WebChromeClient;
-import android.webkit.GeolocationPermissions;
-import android.webkit.PermissionRequest;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class MainActivity extends Activity {
     private WebView webView;
+    private Handler mainHandler;
     private static final String URL = "https://dumitriualx-lang.github.io/solar-dashboard/";
+    private static final String CHANNEL_ID = "solar_alerts";
+    private static final String CHANNEL_NAME = "Solar Alerts";
+    private int notifId = 1;
+
+    // JavaScript bridge — called from the web page
+    public class SolarBridge {
+        // Native HTTP fetch — bypasses WebView network restrictions
+        @JavascriptInterface
+        public String httpGet(String urlStr) {
+            try {
+                URL url = new URL(urlStr);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(15000);
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setRequestProperty("User-Agent", "SolarDashboard/1.0");
+                int code = conn.getResponseCode();
+                if (code != 200) return null;
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                conn.disconnect();
+                return sb.toString();
+            } catch (Exception e) {
+                return null;
+            }
+        }
+
+        // Show native Android notification
+        @JavascriptInterface
+        public void showNotification(String title, String body, String tag) {
+            mainHandler.post(() -> {
+                NotificationCompat.Builder builder = new NotificationCompat.Builder(MainActivity.this, CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setContentTitle(title)
+                    .setContentText(body)
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setColor(Color.parseColor("#1D9E75"));
+                Intent intent = new Intent(MainActivity.this, MainActivity.class);
+                intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                PendingIntent pi = PendingIntent.getActivity(MainActivity.this, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                builder.setContentIntent(pi);
+                NotificationManagerCompat nm = NotificationManagerCompat.from(MainActivity.this);
+                try { nm.notify(notifId++, builder.build()); } catch (Exception ignored) {}
+            });
+        }
+
+        // Check if notifications are granted
+        @JavascriptInterface
+        public boolean notificationsGranted() {
+            NotificationManagerCompat nm = NotificationManagerCompat.from(MainActivity.this);
+            return nm.areNotificationsEnabled();
+        }
+
+        // Request notification permission (Android 13+)
+        @JavascriptInterface
+        public void requestNotifications() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
+            }
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH);
+            channel.setDescription("Solar production alerts");
+            channel.enableLights(true);
+            channel.setLightColor(Color.parseColor("#1D9E75"));
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            nm.createNotificationChannel(channel);
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        mainHandler = new Handler(Looper.getMainLooper());
+        createNotificationChannel();
 
-        // Full screen, no title bar
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -155,13 +253,20 @@ public class MainActivity extends Activity {
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
         settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        // Remove WebView user agent marker so APIs treat it like a real browser
-        String ua = settings.getUserAgentString();
-        settings.setUserAgentString(ua.replace("wv", "").replace("  ", " ").trim());
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        settings.setUserAgentString(settings.getUserAgentString()
-            .replace("; wv", "")
-            + " SolarDashboard/1.0");
+
+        // Add JavaScript bridge
+        webView.addJavascriptInterface(new SolarBridge(), "Android");
+
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                callback.invoke(origin, true, false);
+            }
+            @Override
+            public void onPermissionRequest(android.webkit.PermissionRequest request) {
+                request.grant(request.getResources());
+            }
+        });
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -173,59 +278,6 @@ public class MainActivity extends Activity {
                     return false;
                 }
                 return true;
-            }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                // Inject fetch polyfill using XMLHttpRequest for WebView compatibility
-                view.evaluateJavascript(
-                    "(function() {" +
-                    "  if (window._fetchPolyfilled) return;" +
-                    "  window._fetchPolyfilled = true;" +
-                    "  var origFetch = window.fetch;" +
-                    "  window.fetch = function(url, opts) {" +
-                    "    return new Promise(function(resolve, reject) {" +
-                    "      var xhr = new XMLHttpRequest();" +
-                    "      var method = (opts && opts.method) ? opts.method : 'GET';" +
-                    "      xhr.open(method, url, true);" +
-                    "      xhr.onload = function() {" +
-                    "        var resp = {" +
-                    "          ok: xhr.status >= 200 && xhr.status < 300," +
-                    "          status: xhr.status," +
-                    "          json: function() { return Promise.resolve(JSON.parse(xhr.responseText)); }," +
-                    "          text: function() { return Promise.resolve(xhr.responseText); }" +
-                    "        };" +
-                    "        resolve(resp);" +
-                    "      };" +
-                    "      xhr.onerror = function() { reject(new Error('Network error')); };" +
-                    "      xhr.send(opts && opts.body ? opts.body : null);" +
-                    "    });" +
-                    "  };" +
-                    "})();",
-                    null
-                );
-                // Hide notification bar in WebView — not supported
-                view.evaluateJavascript(
-                    "(function() {" +
-                    "  var bar = document.getElementById('notifBar');" +
-                    "  if (bar) bar.style.display = 'none';" +
-                    "})();",
-                    null
-                );
-            }
-        });
-
-        webView.setWebChromeClient(new android.webkit.WebChromeClient() {
-            @Override
-            public void onGeolocationPermissionsShowPrompt(String origin,
-                    android.webkit.GeolocationPermissions.Callback callback) {
-                callback.invoke(origin, true, false);
-            }
-
-            @Override
-            public void onPermissionRequest(android.webkit.PermissionRequest request) {
-                request.grant(request.getResources());
             }
         });
 
@@ -252,6 +304,7 @@ public class MainActivity extends Activity {
     }
 }
 """)
+
 
 write(os.path.join(RES, "values", "strings.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <resources>
