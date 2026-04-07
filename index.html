@@ -803,19 +803,31 @@ let geoWatchId = null;
 // ═══════════════════════════════════════════════════════════════
 function requestLocation() {
   if (!('geolocation' in navigator)) {
-    setGps('err', '❌ Geolocation not supported.');
+    setGps('err', '❌ Geolocation not supported by this browser. Enable GPS to get solar data.');
     return;
   }
-  setGps('req', '📍 Requesting GPS...');
+  setGps('req', '📍 Requesting GPS permission...');
+
+  // Try GPS with enableHighAccuracy first, fallback to network location
   navigator.geolocation.getCurrentPosition(
     pos => {
       applyPosition(pos);
-      if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
-      geoWatchId = navigator.geolocation.watchPosition(applyPosition, ()=>{},
-        { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 });
+      if (geoWatchId !== null) navigator.geolocation.clearWatch(geoWatchId);
+      geoWatchId = navigator.geolocation.watchPosition(
+        applyPosition,
+        () => {},
+        { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 }
+      );
     },
-    err => onLocationErr(err),
-    { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
+    () => {
+      // High accuracy failed — retry with network/low accuracy
+      navigator.geolocation.getCurrentPosition(
+        pos => applyPosition(pos),
+        err => onLocationErr(err),
+        { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 }
+      );
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
   );
 }
 
@@ -2631,6 +2643,9 @@ initNotifBar();                              // set notification bar state
 // Init language
 document.getElementById('langSelect').value = currentLang;
 applyTranslations();
+// Show GPS request with button
+setGps('req', '📍 Requesting your location for accurate solar data...');
+
 requestLocation();                           // ask for GPS immediately on load
 setInterval(fetchWeather, 5*60*1000);        // re-fetch every 5 min
 setInterval(()=>{
