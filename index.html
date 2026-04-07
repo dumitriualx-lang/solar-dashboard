@@ -661,12 +661,14 @@ async function fetchWeather() {
       + '&timezone=auto&forecast_days=7';
     // Use native Android HTTP bridge if available (WebView), otherwise use fetch
     let d;
-    if (window.Android && window.Android.httpGet) {
+    if (window.Android && window.Android.httpGetAsync) {
       const raw = await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          const result = window.Android.httpGet(u);
-          if (result) resolve(result); else reject(new Error('Android fetch failed'));
-        }, 0);
+        const id = 'cb_' + Date.now();
+        window._androidHttpCallback = function(cbId, result, error) {
+          if (cbId !== id) return;
+          if (result) resolve(result); else reject(new Error(error || 'Android fetch failed'));
+        };
+        window.Android.httpGetAsync(u, id);
       });
       d = JSON.parse(raw);
     } else {
@@ -1427,7 +1429,8 @@ function setNotifBar(type, msg) {
 
 function testNotifications() {
   // Fire both notification types immediately (bypasses debounce) for testing
-  if (Notification.permission !== 'granted') {
+  const hasAndroid = window.Android && window.Android.showNotification;
+  if (!hasAndroid && Notification.permission !== 'granted') {
     alert('Notifications not enabled. Tap Enable first.');
     return;
   }
