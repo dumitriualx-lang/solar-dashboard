@@ -1064,10 +1064,10 @@ function evolveSoc() {
   const now = Date.now();
   const dtH = (now - lastFlowT) / 3600000;   // hours elapsed
   lastFlowT = now;
-  // SOC floor = hard floor (half of reserve %)
-  const hardFlr = Math.round(SYS.battRes * 50);  // e.g. battRes=0.10 → floor=5%
+  const hardFlr = Math.round(SYS.battRes * 50);
+  const prevSoc = ST.battSoc;
   ST.battSoc = Math.max(hardFlr, Math.min(100,
-    +(ST.battSoc + (fl.battFlow / SYS.battUse) * dtH * 100).toFixed(2)
+    +(ST.battSoc + (fl.battFlow / (SYS.battUse || 4.5)) * dtH * 100).toFixed(2)
   ));
   // Accumulate grid kWh for today
   ST.gridExportKwh = +(ST.gridExportKwh + fl.gridExport * dtH).toFixed(4);
@@ -1077,6 +1077,48 @@ function evolveSoc() {
   if (!ST._lastDate) ST._lastDate = today;
   if (today !== ST._lastDate) {
     ST.gridExportKwh = 0; ST.gridImportKwh = 0; ST._lastDate = today;
+  }
+
+  // ── Real-time alerts ──────────────────────────────────────────────────────
+  const canNotif = (window.AppBridge && window.AppBridge.showNotif) ||
+    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  if (!canNotif) return;
+
+  const nowMin = now / 60000;
+
+  // Battery low + grid starting (crosses from battery to grid)
+  if (fl.gridImport > 0.05 && (fl.battFlow >= -0.05) &&
+      (!ST._lastGridNotif || nowMin - ST._lastGridNotif > 30)) {
+    ST._lastGridNotif = nowMin;
+    showNotification(
+      '⚡ Grid power active',
+      'Battery at ' + Math.round(ST.battSoc) + '%. Grid supplying ' +
+      f(fl.gridImport, 2) + ' kW. Solar: ' + f(ST.pvKw, 2) + ' kW.',
+      'grid-import'
+    );
+  }
+
+  // Battery discharged to reserve
+  if (ST.battSoc <= hardFlr + 2 && prevSoc > hardFlr + 2 &&
+      (!ST._lastBattLowNotif || nowMin - ST._lastBattLowNotif > 60)) {
+    ST._lastBattLowNotif = nowMin;
+    showNotification(
+      '🔋 Battery at reserve level',
+      'Battery reached ' + Math.round(ST.battSoc) + '% (reserve floor). ' +
+      'Grid will cover remaining load. Solar: ' + f(ST.pvKw, 2) + ' kW.',
+      'batt-low'
+    );
+  }
+
+  // Battery fully charged
+  if (ST.battSoc >= 99 && prevSoc < 99 &&
+      (!ST._lastBattFullNotif || nowMin - ST._lastBattFullNotif > 120)) {
+    ST._lastBattFullNotif = nowMin;
+    showNotification(
+      '🌞 Battery fully charged!',
+      'Battery at 100%. Excess solar (' + f(fl.gridExport, 2) + ' kW) exporting to grid.',
+      'batt-full'
+    );
   }
 }
 
@@ -1704,7 +1746,9 @@ function getBestWindow() {
 }
 
 function scheduleNotifications() {
-  if ((typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
+  const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
+    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  if (!notifOk) return;
 
   // Clear any existing scheduled timers
   scheduledNotifTimers.forEach(t => clearTimeout(t));
@@ -1771,7 +1815,9 @@ function showNotification(title, body, tag) {
     window.AppBridge.showNotif(title, body);
     return;
   }
-  if ((typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
+  const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
+    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  if (!notifOk) return;
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready.then(reg => {
       reg.showNotification(title, {
@@ -2126,7 +2172,9 @@ function renderSmartSched() {
 const NOTIF_DEBOUNCE_MS = 30 * 1000;
 
 function triggerApplianceNotif(type, app) {
-  if ((typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
+  const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
+    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  if (!notifOk) return;
   const key = app.id + '_' + type;
   if (notifTimers[key]) clearTimeout(notifTimers[key]);
   notifTimers[key] = setTimeout(() => {
@@ -2159,7 +2207,9 @@ function triggerApplianceNotif(type, app) {
 
 // Schedule "peak coming" alert for top appliances
 function schedulePeakAlerts() {
-  if ((typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
+  const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
+    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  if (!notifOk) return;
   if (!ST.todayH || !ST.todayH.length) return;
   const now   = new Date();
   const nowMs = now.getTime();
