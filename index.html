@@ -650,25 +650,22 @@ async function fetchWeather() {
     setApi('load', '⏳ Waiting for GPS location...');
     return;
   }
-  setApi('load', '⏳ Fetching solar forecast...');
+  setApi('load', '⏳ Fetching weather & irradiance...');
   try {
-    // Forecast.Solar API — free, no API key, no auth required
-    const tilt = SYS.tiltDeg || 30;
-    const az   = 0;
-    const kwp  = SYS.panelKw;
-    const u = 'https://api.forecast.solar/estimate/'
-      + f(ST.lat,4) + '/' + f(ST.lon,4) + '/'
-      + tilt + '/' + az + '/' + kwp
-      + '?time_zone=auto&damping=0';
+    const u = 'https://api.open-meteo.com/v1/forecast?'
+      + 'latitude='  + f(ST.lat,4)
+      + '&longitude=' + f(ST.lon,4)
+      + '&current=temperature_2m,cloud_cover,weathercode,direct_radiation,diffuse_radiation,direct_normal_irradiance'
+      + '&hourly=direct_radiation,diffuse_radiation,direct_normal_irradiance,cloud_cover,temperature_2m,precipitation_probability,weathercode'
+      + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
+      + '&timezone=auto&forecast_days=7';
 
-    // Debug: log which path is taken
     const hasAndroidBridge = !!(window.AndroidBridge && window.AndroidBridge.fetchData);
-    console.log('Android bridge available:', hasAndroidBridge, 'URL:', u);
     setApi('load', '⏳ ' + (hasAndroidBridge ? 'Using native fetch...' : 'Using browser fetch...'));
 
-    let data;
+    let raw;
     if (hasAndroidBridge) {
-      const raw = await new Promise((resolve, reject) => {
+      raw = await new Promise((resolve, reject) => {
         const id = 'cb_' + Date.now();
         window[id] = function(b64result, error) {
           delete window[id];
@@ -680,23 +677,22 @@ async function fetchWeather() {
           }
         };
         window.AndroidBridge.fetchData(u, 'window["' + id + '"]');
-        // Timeout after 25s
         setTimeout(() => { if(window[id]) { delete window[id]; reject(new Error('timeout')); } }, 25000);
       });
-      data = JSON.parse(raw);
     } else {
       const r = await fetch(u);
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      data = await r.json();
+      raw = await r.text();
     }
 
-    processForecastSolar(data);
+    const d = JSON.parse(raw);
+    processOpenMeteo(d);
     ST.apiOk = true; ST.lastFetch = new Date();
-    setApi('ok', '✅ Solar forecast · ' + ST.locName + ' · updated ' +
-      ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) +
-      ' · auto-refreshes every 15 min');
-    if ((typeof Notification !== 'undefined' && Notification.permission === 'granted') ||
-        (window.Android && window.AndroidBridge.notificationsGranted && window.AndroidBridge.notificationsGranted())) {
+    setApi('ok', '✅ Weather data loaded · ' + ST.locName + ' · updated '
+      + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+      + ' · refreshes every 15 min');
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted' ||
+        (window.AndroidBridge && window.AndroidBridge.notificationsGranted && window.AndroidBridge.notificationsGranted())) {
       scheduleNotifications(); schedulePeakAlerts();
     }
   } catch(e) {
@@ -705,14 +701,77 @@ async function fetchWeather() {
     const msg = e.message || '';
     const is429 = msg.includes('429');
     const errText = is429
-      ? '⏳ Forecast.Solar rate limit reached (1 req/hour). Auto-retry in 60 min.'
-      : '⚠️ Fetch failed: ' + msg + '. <button class="api-refresh" onclick="fetchWeather()">Retry</button>';
+      ? '⏳ Rate limit reached. Auto-retry in 15 min.'
+      : '⚠️ Fetch failed via ' + (bridge ? 'Android bridge' : 'browser fetch') + ': ' + msg
+        + '. <button class="api-refresh" onclick="fetchWeather()">Retry</button>';
     setApi('err', errText);
-    console.error('Fetch error:', e);
-    if (is429) setTimeout(() => fetchWeather(), 60 * 60 * 1000);
+    if (is429) setTimeout(() => fetchWeather(), 15 * 60 * 1000);
     fallbackEstimate();
   }
   renderAll();
+}
+
+function processOpenMeteo(d) {
+  const cur = d.current || {};
+  ST.irrWm2    = +(cur.direct_radiation || 0);
+  ST.wxTempC   = +(cur.temperature_2m  || 15);
+  ST.cloudCover= +(cur.cloud_cover     || 0);
+  ST.wxCond    = wxLabel(cur.weathercode || 0);
+  ST.wxIcon    = wxIcon(cur.weathercode  || 0);
+
+  // POA irradiance → PV output
+  const dni = +(cur.direct_normal_irradiance || ST.irrWm2);
+  const dhi = +(cur.diffuse_radiation || ST.irrWm2 * 0.15);
+  const ghi = +(cur.direct_radiation  || ST.irrWm2);
+  ST.poaWm2    = calcPOA(dni, dhi, ghi);
+  ST.pvKw      = calcPV(ST.poaWm2);
+  ST.cfGHI     = Math.max(0, 1 - 0.75 * Math.pow((ST.cloudCover/100), 3.4));
+  ST.tempFactor = 1 - SYS.tempCoeff * Math.max(0, ST.wxTempC + (ST.poaWm2/800)*25 - 25);
+
+  // Build todayH from hourly
+  const hr = d.hourly || {};
+  ST.todayH = [];
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  (hr.time || []).forEach((t, i) => {
+    if (!t.startsWith(todayStr)) return;
+    const h = parseInt(t.slice(11,13));
+    const pvKw = calcPV(calcPOA(
+      hr.direct_normal_irradiance?.[i] || 0,
+      hr.diffuse_radiation?.[i] || 0,
+      hr.direct_radiation?.[i] || 0
+    ));
+    ST.todayH.push({ hour: h, pvKw,
+      ghi: hr.direct_radiation?.[i] || 0,
+      dni: hr.direct_normal_irradiance?.[i] || 0,
+      dhi: hr.diffuse_radiation?.[i] || 0
+    });
+  });
+
+  // Build 5-day forecast
+  const day = d.daily || {};
+  FORECAST = [];
+  (day.time || []).slice(0,5).forEach((dateStr, i) => {
+    const dt      = new Date(dateStr + 'T12:00:00');
+    const dayName = i===0 ? 'Today' : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()];
+    const code    = day.weathercode?.[i] || 0;
+    // Estimate daily yield from hourly data for today, otherwise model it
+    let yieldKwh = 0;
+    if (i === 0 && ST.todayH.length) {
+      yieldKwh = +ST.todayH.reduce((s,h) => s + h.pvKw, 0).toFixed(2);
+    } else {
+      const rain = day.precipitation_probability_max?.[i] || 0;
+      const cf   = Math.max(0, 1 - 0.75 * Math.pow(rain/100, 3.4));
+      yieldKwh   = +(SYS.panelKw * 5 * cf).toFixed(2); // ~5 peak sun hours
+    }
+    FORECAST.push({
+      d: dayName, yieldKwh,
+      tempC: day.temperature_2m_max?.[i] || ST.wxTempC,
+      rain:  day.precipitation_probability_max?.[i] || 0,
+      icon:  wxIcon(code)
+    });
+  });
+  while (FORECAST.length < 5) FORECAST.push({d:'--',yieldKwh:0,tempC:15,rain:50,icon:'☁️'});
 }
 
 function processForecastSolar(data) {
@@ -2116,7 +2175,7 @@ initCfgInputs();                             // populate config inputs from save
 restoreBrandSelects();                       // restore saved brand dropdown selections
 initNotifBar();                              // set notification bar state
 requestLocation();                           // ask for GPS immediately on load
-setInterval(fetchWeather, 60*60*1000);       // re-fetch every 60 min (Forecast.Solar free tier limit)
+setInterval(fetchWeather, 15*60*1000);       // re-fetch every 15 min
 setInterval(()=>{
   evolveSoc();
   renderAll();
