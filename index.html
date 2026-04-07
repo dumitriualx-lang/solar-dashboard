@@ -759,6 +759,27 @@ function calcPV(poaWm2) {
   return +Math.min(dcKw * SYS.invEff, SYS.acMax || pkw * SYS.invEff).toFixed(3);
 }
 
+// Clear-sky irradiance model (Bird & Hulstrom) + cloud correction
+function clearSkyIrradiance(lat, lon) {
+  const pos = solarPosition(lat, lon);
+  if (!pos || pos.altitude <= 0) return { ghi:0, dni:0, dhi:0 };
+  const now  = new Date();
+  const doy  = Math.floor((now - new Date(now.getFullYear(),0,0)) / 86400000);
+  const alt  = pos.altitude;
+  const E0   = 1 + 0.033 * Math.cos(2 * Math.PI * doy / 365);
+  const I0   = 1367 * E0;
+  const zenR = (90 - alt) * Math.PI / 180;
+  const AM   = 1 / (Math.cos(zenR) + 0.50572 * Math.pow(96.07995 - alt, -1.6364));
+  const tau_b = 0.98 * Math.exp(-0.103 * AM);
+  const tau_d = 0.271 - 0.294 * tau_b;
+  const sinAlt = Math.sin(alt * Math.PI / 180);
+  const ghi_beam = I0 * sinAlt * tau_b;
+  const ghi_diff = I0 * sinAlt * tau_d;
+  const ghi = ghi_beam + ghi_diff;
+  const dni = ghi_beam / Math.max(0.001, sinAlt);
+  return { ghi: +ghi.toFixed(1), dni: +dni.toFixed(1), dhi: +ghi_diff.toFixed(1) };
+}
+
 function processOpenMeteo(d) {
   const cur = d.current || {};
   const hr  = d.hourly  || {};
