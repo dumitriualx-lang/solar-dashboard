@@ -664,9 +664,17 @@ async function fetchWeather() {
     if (window.Android && window.Android.httpGetAsync) {
       const raw = await new Promise((resolve, reject) => {
         const id = 'cb_' + Date.now();
-        window._androidHttpCallback = function(cbId, result, error) {
+        window._androidHttpCallback = function(cbId, b64result, error) {
           if (cbId !== id) return;
-          if (result) resolve(result); else reject(new Error(error || 'Android fetch failed'));
+          if (b64result) {
+            // Decode Base64 response from Java
+            try {
+              const decoded = atob(b64result);
+              resolve(decoded);
+            } catch(e) { reject(new Error('Base64 decode failed')); }
+          } else {
+            reject(new Error(error || 'Android fetch failed'));
+          }
         };
         window.Android.httpGetAsync(u, id);
       });
