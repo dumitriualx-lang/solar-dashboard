@@ -650,52 +650,104 @@ async function fetchWeather() {
     setApi('load', '⏳ Waiting for GPS location...');
     return;
   }
-  setApi('load', '⏳ Fetching irradiance for ' + f(ST.lat,4) + '°N ' + f(ST.lon,4) + '°E...');
+  setApi('load', '⏳ Fetching solar forecast...');
   try {
-    const u = 'https://api.open-meteo.com/v1/forecast?'
-      + 'latitude='  + ST.lat
-      + '&longitude=' + ST.lon
-      + '&current=temperature_2m,cloud_cover,weathercode,direct_radiation,diffuse_radiation,direct_normal_irradiance'
-      + '&hourly=direct_radiation,diffuse_radiation,direct_normal_irradiance,cloud_cover,temperature_2m,precipitation_probability,weathercode'
-      + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
-      + '&timezone=auto&forecast_days=7';
-    // Use native Android HTTP bridge if available (WebView), otherwise use fetch
-    let d;
+    // Forecast.Solar API — free, no API key, no auth required
+    // Returns hourly solar production estimate based on panel specs
+    const tilt = SYS.tiltDeg || 30;
+    const az   = 0;  // 0 = south in Forecast.Solar convention (Europe)
+    const kwp  = SYS.panelKw;
+    const u = 'https://api.forecast.solar/estimate/'
+      + f(ST.lat,4) + '/' + f(ST.lon,4) + '/'
+      + tilt + '/' + az + '/' + kwp
+      + '?time_zone=auto&damping=0';
+
+    let data;
     if (window.Android && window.Android.httpGetAsync) {
       const raw = await new Promise((resolve, reject) => {
         const id = 'cb_' + Date.now();
         window._androidHttpCallback = function(cbId, b64result, error) {
           if (cbId !== id) return;
           if (b64result) {
-            // Decode Base64 response from Java
-            try {
-              const decoded = atob(b64result);
-              resolve(decoded);
-            } catch(e) { reject(new Error('Base64 decode failed')); }
-          } else {
-            reject(new Error(error || 'Android fetch failed'));
-          }
+            try { resolve(atob(b64result)); }
+            catch(e) { reject(new Error('decode error')); }
+          } else { reject(new Error(error || 'failed')); }
         };
         window.Android.httpGetAsync(u, id);
       });
-      d = JSON.parse(raw);
+      data = JSON.parse(raw);
     } else {
       const r = await fetch(u);
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      d = await r.json();
+      data = await r.json();
     }
-    processData(d);
+
+    processForecastSolar(data);
     ST.apiOk = true; ST.lastFetch = new Date();
-    setApi('ok', '✅ Live irradiance · ' + ST.locName + ' · updated ' +
+    setApi('ok', '✅ Solar forecast · ' + ST.locName + ' · updated ' +
       ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) +
       ' · auto-refreshes every 15 min');
-  if (Notification.permission === 'granted') { scheduleNotifications(); schedulePeakAlerts(); }
+    if (Notification.permission === 'granted' ||
+        (window.Android && window.Android.notificationsGranted && window.Android.notificationsGranted())) {
+      scheduleNotifications(); schedulePeakAlerts();
+    }
   } catch(e) {
     ST.apiOk = false;
-    setApi('err', '⚠️ Cannot reach Open-Meteo (' + e.message + '). <button class="api-refresh" onclick="fetchWeather()">Retry</button>');
+    setApi('err', '⚠️ Cannot reach Forecast.Solar (' + e.message + '). <button class="api-refresh" onclick="fetchWeather()">Retry</button>');
     fallbackEstimate();
   }
   renderAll();
+}
+
+function processForecastSolar(data) {
+  // Forecast.Solar returns watt_hours_period per hour
+  const watts = data.result && data.result.watts ? data.result.watts : {};
+  const wattsDay = data.result && data.result.watt_hours_day ? data.result.watt_hours_day : {};
+
+  const now    = new Date();
+  const nowH   = now.getHours();
+  const today  = now.toISOString().slice(0,10);
+
+  // Build todayH from hourly watts
+  ST.todayH = [];
+  for (let h = 0; h < 24; h++) {
+    const hStr = today + ' ' + String(h).padStart(2,'0') + ':00:00';
+    const w    = watts[hStr] || 0;
+    const pvKw = +(w / 1000).toFixed(3);
+    ST.todayH.push({ hour:h, pvKw, ghi:pvKw*200, dni:pvKw*150, dhi:pvKw*50 });
+  }
+
+  // Current production estimate from current hour
+  const curHStr = today + ' ' + String(nowH).padStart(2,'0') + ':00:00';
+  ST.pvKw = +((watts[curHStr] || 0) / 1000).toFixed(3);
+
+  // Basic weather estimates (Forecast.Solar doesn't provide temp/cloud)
+  ST.irrWm2    = +(ST.pvKw / Math.max(0.001, SYS.acMax) * 1000).toFixed(0);
+  ST.cloudCover= ST.pvKw < SYS.acMax * 0.3 ? 70 : 20;
+  ST.wxTempC   = ST.wxTempC || 15;
+  ST.wxCond    = ST.pvKw > 1 ? 'Sunny' : ST.pvKw > 0.1 ? 'Partly cloudy' : 'Overcast/night';
+  ST.wxIcon    = ST.pvKw > 1 ? '☀️' : ST.pvKw > 0.1 ? '🌤️' : '☁️';
+  ST.poaWm2    = ST.irrWm2;
+  ST.cfGHI     = 1.0;
+
+  // Build 5-day forecast
+  FORECAST = [];
+  const days = Object.keys(wattsDay).sort().slice(0,5);
+  days.forEach((dateStr, i) => {
+    const yieldWh  = wattsDay[dateStr] || 0;
+    const yieldKwh = +(yieldWh / 1000).toFixed(2);
+    const dt       = new Date(dateStr + 'T12:00:00');
+    const dayName  = i===0 ? 'Today' : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dt.getDay()];
+    FORECAST.push({
+      d: dayName, yieldKwh,
+      tempC: ST.wxTempC, rain: yieldKwh < SYS.panelKw * 3 ? 60 : 15,
+      icon: yieldKwh > SYS.panelKw * 4 ? '☀️' : yieldKwh > SYS.panelKw * 2 ? '🌤️' : '🌧️'
+    });
+  });
+  // Pad to 5 days if needed
+  while (FORECAST.length < 5) {
+    FORECAST.push({ d:'--', yieldKwh:0, tempC:15, rain:50, icon:'☁️' });
+  }
 }
 
 function setApi(t, m) {
