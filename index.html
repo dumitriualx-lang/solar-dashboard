@@ -646,11 +646,15 @@ function onLocationOk(lat, lon, name, acc) {
 function setGps(type, html) {
   const el = document.getElementById('gpsBar');
   el.className = 'gps-bar gps-' + type;
-  el.innerHTML = '<span>' + html + '</span>';
-  if (type !== 'req') {
-    // Remove the Allow GPS button once we have a result
-    const btn = el.querySelector('.gps-btn');
-    if (!btn) el.innerHTML += '';
+  const L = LANG[currentLang] || LANG.en;
+  const btnLabel = L.gps_btn || 'Allow GPS';
+  if (type === 'ok') {
+    // GPS acquired — just show message, no button needed
+    el.innerHTML = '<span>' + html + '</span>';
+  } else {
+    // Always keep the button visible so user can retry
+    el.innerHTML = '<span>' + html + '</span>'
+      + '<button class="gps-btn" onclick="requestLocation()" style="margin-left:6px">' + btnLabel + '</button>';
   }
 }
 
@@ -2511,11 +2515,17 @@ const LANG = {
     gps_init: '📍 Requesting your location for accurate solar data...',
     cfg_panel_brand_hint: 'Select to auto-fill typical specs',
     cfg_batt_brand_hint: 'Select to auto-fill capacity & reserve',
-    solar_irr: 'Solar Irradiance',
-    energy_flow: 'Energy Flow',
-    forecast_yield: '5-Day Solar Yield Forecast',
-    schedule_title: 'Smart Appliance Schedule',
-    log_title: 'Energy Log',
+    solar_irr: 'Solar irradiance',
+    grid_conn: 'Grid connection',
+    energy_flow: 'Energy flow',
+    sys_cfg: '⚙️ System configuration',
+    forecast_today: 'Solar forecast — today & week',
+    smart_sched: 'Smart schedule',
+    forecast_yield: '5-day yield forecast',
+    today_curve: "Today's generation curve",
+    alerts_title: 'Alerts',
+    schedule_title: 'Smart appliance schedule',
+    log_title: 'Reading log',
   },
   ro: {
     // Nav
@@ -2588,11 +2598,17 @@ const LANG = {
     gps_init: '📍 Se solicită localizarea pentru date solare precise...',
     cfg_panel_brand_hint: 'Selectați pentru completare automată',
     cfg_batt_brand_hint: 'Selectați pentru capacitate și rezervă',
-    solar_irr: 'Radiație Solară',
-    energy_flow: 'Flux Energie',
-    forecast_yield: 'Prognoză Producție Solară 5 Zile',
-    schedule_title: 'Program Inteligent Aparate',
-    log_title: 'Jurnal Energie',
+    solar_irr: 'Radiație solară',
+    grid_conn: 'Conexiune rețea',
+    energy_flow: 'Flux energie',
+    sys_cfg: '⚙️ Configurare sistem',
+    forecast_today: 'Prognoză solară — azi & săptămână',
+    smart_sched: 'Program inteligent',
+    forecast_yield: 'Prognoză producție 5 zile',
+    today_curve: 'Curba de producție azi',
+    alerts_title: 'Alerte',
+    schedule_title: 'Program aparate inteligent',
+    log_title: 'Jurnal citiri',
     notif_enable: 'Activează',
     live: 'Live',
   }
@@ -2615,17 +2631,12 @@ function setLang(lang) {
 function applyTranslations() {
   const L = LANG[currentLang] || LANG.en;
 
-  // Nav buttons — text node is last child after the icon span
-  const navKeys = ['nav_dash','nav_forecast','nav_sched','nav_log','nav_faq'];
+  // Nav buttons — replace full innerHTML keeping the icon span
+  const navKeys  = ['nav_dash','nav_forecast','nav_sched','nav_log','nav_faq'];
+  const navIcons = ['⚡','📅','🗓️','📋','❓'];
   document.querySelectorAll('.nb').forEach((btn, i) => {
-    if (!navKeys[i]) return;
-    // Find and update the text node (after the icon span)
-    for (let node of btn.childNodes) {
-      if (node.nodeType === 3 && node.textContent.trim()) {
-        node.textContent = L[navKeys[i]] || node.textContent;
-        break;
-      }
-    }
+    if (!navKeys[i] || !L[navKeys[i]]) return;
+    btn.innerHTML = '<span class="ni">' + navIcons[i] + '</span>' + L[navKeys[i]];
   });
 
   // FAQ elements with data-i18n
@@ -2659,18 +2670,22 @@ function applyTranslations() {
   if (notifBtn) notifBtn.textContent = L.notif_enable || 'Enable';
 
   // Card titles — find all .ct elements and translate by content
-  const ctMap = {
-    'Solar Irradiance': L.solar_irr,
-    'Radiație Solară': L.solar_irr,
-    'Energy Flow': L.energy_flow,
-    'Flux Energie': L.energy_flow,
-    '5-Day Solar Yield Forecast': L.forecast_yield,
-    'Prognoză Producție Solară 5 Zile': L.forecast_yield,
-    'Smart Appliance Schedule': L.schedule_title,
-    'Program Inteligent Aparate': L.schedule_title,
-    'Energy Log': L.log_title,
-    'Jurnal Energie': L.log_title,
-  };
+  // Map current text → translation key (handles both EN and RO source)
+  const ctKeys = [
+    ['Solar irradiance','Radiație solară', 'solar_irr'],
+    ['Grid connection','Conexiune rețea', 'grid_conn'],
+    ['Energy flow','Flux energie', 'energy_flow'],
+    ['⚙️ System configuration','⚙️ Configurare sistem', 'sys_cfg'],
+    ['Solar forecast — today & week','Prognoză solară — azi & săptămână', 'forecast_today'],
+    ['Smart schedule','Program inteligent', 'smart_sched'],
+    ['5-day yield forecast','Prognoză producție 5 zile', 'forecast_yield'],
+    ["Today's generation curve",'Curba de producție azi', 'today_curve'],
+    ['Alerts','Alerte', 'alerts_title'],
+    ['Smart appliance schedule','Program aparate inteligent', 'schedule_title'],
+    ['Reading log','Jurnal citiri', 'log_title'],
+  ];
+  const ctMap = {};
+  ctKeys.forEach(([en, ro, key]) => { ctMap[en] = L[key]; ctMap[ro] = L[key]; });
   document.querySelectorAll('.ct').forEach(ct => {
     const text = ct.textContent.trim();
     if (ctMap[text]) ct.textContent = ctMap[text];
