@@ -706,13 +706,9 @@ async function fetchWeather() {
     const d = JSON.parse(raw);
     processOpenMeteo(d);
     ST.apiOk = true; ST.lastFetch = new Date();
-    const _cs = clearSkyIrradiance(ST.lat||44.4, ST.lon||26.17);
-    const _pos = solarPosition(ST.lat||44.4, ST.lon||26.17);
-    setApi('ok', '✅ Weather · ' + ST.locName
-      + ' · GHI=' + Math.round(ST.irrWm2) + ' POA=' + Math.round(ST.poaWm2)
-      + ' alt=' + Math.round(_pos.altitude) + '° csGHI=' + Math.round(_cs.ghi)
-      + ' pvKw=' + f(ST.pvKw,2)
-      + ' · ' + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
+    setApi('ok', '✅ Weather loaded · ' + ST.locName + ' · '
+      + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+      + ' · refreshes every 5 min');
     scheduleNotifications(); schedulePeakAlerts();
   } catch(e) {
     ST.apiOk = false;
@@ -788,17 +784,28 @@ function processOpenMeteo(d) {
   const cur = d.current || {};
   const hr  = d.hourly  || {};
 
-  // Get cloud cover and temperature from Open-Meteo current data
+  // Get weather data from Open-Meteo
   const cloudCoverPct = +(cur.cloud_cover || 0);
   const tempC = +(cur.temperature_2m || 15);
+  const swrRaw = +(cur.shortwave_radiation || 0);
 
-  // Compute irradiance from clear-sky model + cloud cover correction
-  // This is far more accurate than Open-Meteo radiation fields
-  const cs  = clearSkyIrradiance(ST.lat || 44.4, ST.lon || 26.17);
-  const cf  = Math.max(0, 1 - 0.75 * Math.pow(cloudCoverPct / 100, 3.4));
+  // Compute clear-sky irradiance from solar geometry
+  const cs = clearSkyIrradiance(ST.lat || 44.4, ST.lon || 26.17);
+
+  // Derive cloud factor: prefer shortwave_radiation ratio over cloud_cover
+  // (Open-Meteo cloud_cover is model-based and often very wrong)
+  // Use SWR ratio if available and sun is up, otherwise fall back to cloud_cover
+  let cf;
+  if (cs.ghi > 50 && swrRaw > 0) {
+    // SWR ratio capped at 1.1 (slight enhancement possible from reflections)
+    cf = Math.min(1.1, swrRaw / cs.ghi);
+  } else {
+    cf = Math.max(0, 1 - 0.75 * Math.pow(cloudCoverPct / 100, 3.4));
+  }
+
   const ghi = +(cs.ghi * cf).toFixed(1);
   const dni = +(cs.dni * cf).toFixed(1);
-  const dhi = +(cs.dhi * (1 - cf * 0.5)).toFixed(1);
+  const dhi = +(cs.dhi * Math.max(0.2, 1 - cf * 0.5)).toFixed(1);
 
   ST.irrWm2    = ghi;
   ST.wxTempC   = tempC;
