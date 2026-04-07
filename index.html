@@ -204,7 +204,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
 
   <!-- SYSTEM CONFIGURATION -->
   <div class="card">
-    <div class="ct" style="margin-bottom:10px">
+    <div class="ct" style="margin-bottom:10px" data-i18n="sys_cfg">
       ⚙️ System configuration
       <span class="pill p-ok" id="cfgSavedPill" style="display:none">✓ Saved</span>
     </div>
@@ -212,9 +212,9 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
     <!-- Brand dropdowns -->
     <div class="mfr-grid">
       <div class="mfr-group">
-        <div class="mfr-lbl">☀️ Panel brand</div>
+        <div class="mfr-lbl" data-i18n="lbl_panel_brand">☀️ Panel brand</div>
         <select class="mfr-select" id="cfgPanelBrand" onchange="onBrandSelect('panel')">
-          <option value="">— Select brand —</option>
+          <option value="" data-i18n="opt_select_brand">— Select brand —</option>
           <option value="huawei">Huawei Solar</option>
           <option value="longi">LONGi Solar</option>
           <option value="jinko">Jinko Solar</option>
@@ -235,9 +235,9 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
         <div class="mfr-hint" id="panelBrandHint">Select to auto-fill typical specs</div>
       </div>
       <div class="mfr-group">
-        <div class="mfr-lbl">🔋 Battery brand</div>
+        <div class="mfr-lbl" data-i18n="lbl_batt_brand">🔋 Battery brand</div>
         <select class="mfr-select" id="cfgBattBrand" onchange="onBrandSelect('batt')">
-          <option value="">— Select brand —</option>
+          <option value="" data-i18n="opt_select_brand">— Select brand —</option>
           <option value="huawei_5">Huawei Luna 2000 (5 kWh)</option>
           <option value="huawei_10">Huawei Luna 2000 (10 kWh)</option>
           <option value="huawei_15">Huawei Luna 2000 (15 kWh)</option>
@@ -267,7 +267,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
     <!-- Capacity inputs -->
     <div class="cfg-grid">
       <div class="cfg-group">
-        <div class="cfg-lbl">☀️ Panel capacity</div>
+        <div class="cfg-lbl" data-i18n="lbl_panel_kw">☀️ Panel capacity</div>
         <div class="cfg-inp-wrap">
           <input type="number" id="cfgPanel" inputmode="decimal" min="0.5" max="50" step="0.5" value="" oninput="onCfgChange()">
           <span class="cfg-unit">kW</span>
@@ -275,7 +275,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
         <div class="cfg-hint">Total installed peak power</div>
       </div>
       <div class="cfg-group">
-        <div class="cfg-lbl">🔋 Battery capacity</div>
+        <div class="cfg-lbl" data-i18n="lbl_batt_kw">🔋 Battery capacity</div>
         <div class="cfg-inp-wrap">
           <input type="number" id="cfgBatt" inputmode="decimal" min="1" max="200" step="0.5" value="" oninput="onCfgChange()">
           <span class="cfg-unit">kWh</span>
@@ -285,7 +285,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
     </div>
     <div class="cfg-grid">
       <div class="cfg-group">
-        <div class="cfg-lbl">🔋 Battery charge (SOC)</div>
+        <div class="cfg-lbl" data-i18n="lbl_soc">🔋 Battery charge (SOC)</div>
         <div class="cfg-inp-wrap" style="border:.5px solid var(--g)">
           <input type="number" id="cfgSoc" inputmode="numeric" min="0" max="100" step="1" value="" oninput="onSocInput()">
           <span class="cfg-unit">%</span>
@@ -293,7 +293,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
         <div class="cfg-hint" id="cfgSocHint">Enter SOC from FusionSolar · 90% = full · 10% = empty (reserve)</div>
       </div>
       <div class="cfg-group">
-        <div class="cfg-lbl">⚡ Stored energy</div>
+        <div class="cfg-lbl" data-i18n="lbl_stored">⚡ Stored energy</div>
         <div class="cfg-inp-wrap" style="opacity:.65">
           <input type="text" id="cfgSocKwh" readonly style="font-size:14px;font-weight:700;color:var(--g);background:none;border:none;outline:none;width:100%;text-align:right;font-family:inherit">
           <span class="cfg-unit">kWh</span>
@@ -303,7 +303,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
     </div>
     <div class="cfg-grid" style="margin-bottom:0">
       <div class="cfg-group">
-        <div class="cfg-lbl">🔒 Reserve %</div>
+        <div class="cfg-lbl" data-i18n="lbl_reserve">🔒 Reserve %</div>
         <div class="cfg-inp-wrap">
           <input type="number" id="cfgRes" inputmode="numeric" min="5" max="30" step="1" value="" oninput="onCfgChange()">
           <span class="cfg-unit">%</span>
@@ -311,7 +311,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
         <div class="cfg-hint">Firmware-locked reserve</div>
       </div>
       <div class="cfg-group">
-        <div class="cfg-lbl">⚡ Usable capacity</div>
+        <div class="cfg-lbl" data-i18n="lbl_usable">⚡ Usable capacity</div>
         <div class="cfg-inp-wrap" style="opacity:.7">
           <input type="text" id="cfgUsable" readonly style="font-size:14px;font-weight:700;color:var(--g);background:none;border:none;outline:none;width:100%;text-align:right;font-family:inherit">
           <span class="cfg-unit">kWh</span>
@@ -319,13 +319,13 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
         <div class="cfg-hint">Auto-calculated (gross − reserve)</div>
       </div>
     </div>
-    <button class="cfg-save" onclick="saveCfgAndApply()">💾 Save configuration</button>
+    <button class="cfg-save" onclick="saveCfgAndApply()" data-i18n="btn_save">💾 Save configuration</button>
     <div class="cfg-saved" id="cfgSavedMsg"></div>
   </div>
 
   <!-- CONSUMPTION — only remaining manual input -->
   <div class="cons-card">
-    <div class="cons-label">🏠 Home consumption — enter from FusionSolar</div>
+    <div class="cons-label" data-i18n="lbl_consumption">🏠 Home consumption — enter from solar app</div>
     <div class="cons-row">
       <div class="cons-inp-wrap">
         <input type="number" id="iCons" inputmode="decimal" value="" min="0" max="20" step="0.01" placeholder="0.00" oninput="onConsInput()">
@@ -337,15 +337,15 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
   </div>
 
   <div class="metrics">
-    <div class="mc"><div class="mc-lbl">Solar AC output</div><div class="mc-val cg" id="mv0">-- kW</div><div class="mc-sub" id="ms0">Awaiting GPS...</div></div>
-    <div class="mc"><div class="mc-lbl">Home load</div><div class="mc-val" id="mv1">-- kW</div><div class="mc-sub" id="ms1">--</div></div>
-    <div class="mc"><div class="mc-lbl">Battery flow</div><div class="mc-val" id="mv2">-- kW</div><div class="mc-sub" id="ms2">--</div></div>
-    <div class="mc"><div class="mc-lbl">Grid</div><div class="mc-val" id="mv3">-- kW</div><div class="mc-sub" id="ms3">--</div></div>
+    <div class="mc"><div class="mc-lbl" data-i18n="lbl_solar_ac">Solar AC output</div><div class="mc-val cg" id="mv0">-- kW</div><div class="mc-sub" id="ms0">Awaiting GPS...</div></div>
+    <div class="mc"><div class="mc-lbl" data-i18n="lbl_home_load">Home load</div><div class="mc-val" id="mv1">-- kW</div><div class="mc-sub" id="ms1">--</div></div>
+    <div class="mc"><div class="mc-lbl" data-i18n="lbl_batt_flow">Battery flow</div><div class="mc-val" id="mv2">-- kW</div><div class="mc-sub" id="ms2">--</div></div>
+    <div class="mc"><div class="mc-lbl" data-i18n="lbl_grid">Grid</div><div class="mc-val" id="mv3">-- kW</div><div class="mc-sub" id="ms3">--</div></div>
 
   </div>
 
   <div class="card">
-    <div class="ct">Solar irradiance <span id="irrPill" class="pill p-info">Awaiting GPS</span></div>
+    <div class="ct" data-i18n="solar_irr">Solar irradiance <span id="irrPill" class="pill p-info">Awaiting GPS</span></div>
     <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t2);margin-bottom:4px">
       <span>0 W/m²</span><span id="irrVal" style="font-weight:700;color:var(--tx)">-- W/m²</span><span>1000 W/m²</span>
     </div>
@@ -383,16 +383,16 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
   </div>
 
   <div class="card">
-    <div class="ct">Energy flow <span id="fTs" style="font-size:10px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--t3)"></span></div>
+    <div class="ct" data-i18n="energy_flow">Energy flow <span id="fTs" style="font-size:10px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--t3)"></span></div>
     <div class="flow" id="flowG"><div style="grid-column:span 3;text-align:center;padding:20px;color:var(--t2);font-size:11px">Awaiting GPS and irradiance data...</div></div>
   </div>
 
   <!-- GRID EXPORT / IMPORT PANEL -->
   <div class="card">
-    <div class="ct">Grid connection <span class="pill" id="gridPill">—</span></div>
+    <div class="ct" data-i18n="grid_conn">Grid connection <span class="pill" id="gridPill">—</span></div>
     <div class="grid-panel">
       <div class="grid-stat">
-        <div class="gs-lbl">Now</div>
+        <div class="gs-lbl" data-i18n="lbl_now">Now</div>
         <div class="gs-val" id="gsNow">— kW</div>
         <div class="gs-sub" id="gsNowSub">—</div>
       </div>
@@ -419,7 +419,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
 
   <!-- FORECAST PRODUCTION PANEL -->
   <div class="card" id="forecastProdCard">
-    <div class="ct">Solar forecast — today &amp; week <span class="pill p-ok" id="fcProdPill">—</span></div>
+    <div class="ct" data-i18n="forecast_today">Solar forecast — today &amp; week <span class="pill p-ok" id="fcProdPill">—</span></div>
     <div id="fcProdBody">
       <div class="empty-log">Awaiting forecast data...</div>
     </div>
@@ -439,7 +439,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
 
 <div id="pgForecast" class="page">
   <div class="card">
-    <div class="ct">5-day yield forecast <span class="pill p-ok">Live · Open-Meteo</span></div>
+    <div class="ct" data-i18n="forecast_yield">5-day yield forecast <span class="pill p-ok">Live · Open-Meteo</span></div>
     <div class="wstrip" id="ws"><div class="empty-log" style="width:100%">Awaiting GPS...</div></div>
     <div class="chart-sm"><canvas id="fC"></canvas></div>
     <div class="leg" style="margin-top:8px">
@@ -449,7 +449,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
     </div>
   </div>
   <div class="card" style="margin-top:10px">
-    <div class="ct">Today's generation curve <span class="pill p-info">from live irradiance</span></div>
+    <div class="ct" data-i18n="today_curve">Today's generation curve <span class="pill p-info">from live irradiance</span></div>
     <div class="chart-wrap"><canvas id="dayC"></canvas></div>
     <div class="leg" style="margin-top:8px">
       <span class="li"><span class="lln" style="background:#1D9E75"></span>Solar kW (from API)</span>
@@ -458,18 +458,18 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
     </div>
   </div>
   <div class="card" style="margin-top:10px">
-    <div class="ct">Alerts</div>
+    <div class="ct" data-i18n="alerts_title">Alerts</div>
     <div id="altsHidden"><div class="empty-log">Loading...</div></div>
   </div>
 </div>
 
 <div id="pgSched" class="page">
-  <div class="card"><div class="ct">Smart appliance schedule</div><div class="sched" id="sch"><div class="empty-log">Awaiting forecast data...</div></div></div>
+  <div class="card"><div class="ct" data-i18n="schedule_title">Smart appliance schedule</div><div class="sched" id="sch"><div class="empty-log">Awaiting forecast data...</div></div></div>
 </div>
 
 <div id="pgLog" class="page">
   <div class="card">
-    <div class="ct">Reading log <span class="pill p-info" id="logPill">0 entries</span></div>
+    <div class="ct" data-i18n="log_title">Reading log <span class="pill p-info" id="logPill">0 entries</span></div>
     <div id="logBody"><div class="empty-log">No readings yet.<br>Enter consumption and tap <b>Log ↗</b> to record.</div></div>
   </div>
 </div>
@@ -687,59 +687,27 @@ function applyTranslations() {
     btn.innerHTML = '<span class="ni">' + navIcons[i] + '</span>' + L[navKeys[i]];
   });
 
-  // FAQ elements with data-i18n
+  // Translate ALL elements with data-i18n attribute
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
-    if (L[key]) el.textContent = L[key];
+    if (L[key] !== undefined) el.textContent = L[key];
   });
 
-  // Header live tag
-  const el = id => document.getElementById(id);
-  const txt = (id, key) => { const e=el(id); if(e && L[key]) e.textContent=L[key]; };
-  const html = (id, key) => { const e=el(id); if(e && L[key]) e.innerHTML=L[key]; };
+  // Specific elements by ID
+  const ge = id => document.getElementById(id);
+  const st = (id, key) => { const e = ge(id); if (e && L[key]) e.textContent = L[key]; };
 
-  txt('liveTag', 'live');
+  st('liveTag', 'live');
+  st('notifBtn', 'notif_enable');
+  st('cfgSocHint', 'cfg_soc_hint');
+  st('panelBrandHint', 'cfg_panel_brand_hint');
+  st('battBrandHint', 'cfg_batt_brand_hint');
 
-  // GPS bar initial message
-  if (el('gpsMsg')) el('gpsMsg').textContent = L.gps_init || '📍 Requesting your location for accurate solar data...';
+  // GPS bar button text
   const gpsBtnEl = document.querySelector('#gpsBar .gps-btn');
   if (gpsBtnEl) gpsBtnEl.textContent = L.gps_btn || 'Allow GPS';
 
-  // Config section labels — find by traversing label elements
-  const labelMap = {
-    'panelBrandHint': 'cfg_panel_brand_hint',
-    'battBrandHint':  'cfg_batt_brand_hint',
-    'cfgSocHint':     'cfg_soc_hint',
-  };
-  Object.entries(labelMap).forEach(([id, key]) => txt(id, key));
-
-  // Notification button
-  const notifBtn = el('notifBtn');
-  if (notifBtn) notifBtn.textContent = L.notif_enable || 'Enable';
-
-  // Card titles — find all .ct elements and translate by content
-  // Map current text → translation key (handles both EN and RO source)
-  const ctKeys = [
-    ['Solar irradiance','Radiație solară', 'solar_irr'],
-    ['Grid connection','Conexiune rețea', 'grid_conn'],
-    ['Energy flow','Flux energie', 'energy_flow'],
-    ['⚙️ System configuration','⚙️ Configurare sistem', 'sys_cfg'],
-    ['Solar forecast — today & week','Prognoză solară — azi & săptămână', 'forecast_today'],
-    ['Smart schedule','Program inteligent', 'smart_sched'],
-    ['5-day yield forecast','Prognoză producție 5 zile', 'forecast_yield'],
-    ["Today's generation curve",'Curba de producție azi', 'today_curve'],
-    ['Alerts','Alerte', 'alerts_title'],
-    ['Smart appliance schedule','Program aparate inteligent', 'schedule_title'],
-    ['Reading log','Jurnal citiri', 'log_title'],
-  ];
-  const ctMap = {};
-  ctKeys.forEach(([en, ro, key]) => { ctMap[en] = L[key]; ctMap[ro] = L[key]; });
-  document.querySelectorAll('.ct').forEach(ct => {
-    const text = ct.textContent.trim();
-    if (ctMap[text]) ct.textContent = ctMap[text];
-  });
-
-  // Notification bar messages (re-init to pick up new language)
+  // Notification bar messages
   initNotifBar();
 }
 
