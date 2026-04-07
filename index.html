@@ -166,7 +166,13 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
       <h1>☀️ Solar Dashboard</h1>
       <div class="hdr-sub" id="hdrSub"><span id="hdrSysName"></span><span id="clk">--:--:--</span></div>
     </div>
-    <div class="live-pill"><div class="live-dot"></div><span id="liveTag">Live</span></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <select id="langSelect" onchange="setLang(this.value)" style="background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;outline:none">
+        <option value="en">🇬🇧 EN</option>
+        <option value="ro">🇷🇴 RO</option>
+      </select>
+      <div class="live-pill"><div class="live-dot"></div><span id="liveTag">Live</span></div>
+    </div>
   </div>
   <div class="hdr-stats">
     <span id="hdrPv">☀️ -- kW</span>
@@ -2405,6 +2411,10 @@ document.getElementById('logPill').textContent=rlog.length+' entries';
 initCfgInputs();                             // populate config inputs from saved/default values
 restoreBrandSelects();                       // restore saved brand dropdown selections
 initNotifBar();                              // set notification bar state
+// Init language
+document.getElementById('langSelect').value = currentLang;
+applyTranslations();
+
 requestLocation();                           // ask for GPS immediately on load
 setInterval(fetchWeather, 5*60*1000);        // re-fetch every 5 min
 setInterval(()=>{
@@ -2418,50 +2428,232 @@ setInterval(()=>{
   }
 }, 30000);  // evolve SOC + re-render every 30s
 setInterval(updateClock, 1000);              // clock every second
+
+
+// ═══════════════════════════════════════════════════════════════
+// TRANSLATIONS
+// ═══════════════════════════════════════════════════════════════
+const LANG = {
+  en: {
+    // Nav
+    nav_dash: 'Dashboard', nav_forecast: 'Forecast', nav_sched: 'Schedule',
+    nav_log: 'Log', nav_faq: 'FAQ',
+    // Header
+    live: 'Live',
+    // GPS
+    gps_req: '📍 Requesting GPS permission...',
+    gps_no_support: '❌ Geolocation not supported. Enable GPS to get solar data.',
+    gps_denied: '⚠️ Location permission denied.',
+    gps_unavail: '⚠️ GPS unavailable.',
+    gps_timeout: '⚠️ Location timeout.',
+    gps_btn: 'Enable GPS',
+    // API
+    api_wait_gps: '⏳ Waiting for GPS location...',
+    api_fetching: '⏳ Fetching weather...',
+    api_ok_suffix: '· refreshes every 5 min',
+    api_retry: 'Retry',
+    // Config labels
+    cfg_panel_kw: 'Panel capacity (kW)',
+    cfg_batt_kw: 'Battery capacity (kWh)',
+    cfg_reserve: 'Reserve (%)',
+    cfg_soc: 'Battery SOC (%)',
+    cfg_soc_hint: 'Enter SOC from solar app · 90% = full · 10% = empty (reserve)',
+    cfg_usable: 'Usable',
+    cfg_cons: 'Home consumption',
+    cfg_save: 'Save configuration',
+    cfg_panel_brand: 'Panel brand',
+    cfg_batt_brand: 'Battery brand',
+    // Dashboard labels
+    solar_irr: 'Solar Irradiance',
+    battery: 'Battery',
+    energy_flow: 'Energy Flow',
+    grid: 'Grid',
+    home_load: 'Home load',
+    panels: 'Panels',
+    idle: 'idle', charging: 'charging', discharging: 'discharging',
+    // Notifications
+    notif_enable: 'Enable',
+    notif_test: 'Test',
+    notif_active: '🔔 Native alerts active · you\'ll be notified at peak solar windows',
+    notif_enable_prompt: '🔔 Enable notifications for solar production alerts',
+    notif_pwa: '📱 For notifications install as PWA from Chrome browser.',
+    notif_blocked: '🔕 Notifications blocked — enable in browser/phone settings',
+    notif_req_prompt: '🔔 Enable notifications to get alerts when it\'s best to run large appliances',
+    // Forecast
+    forecast_yield: '5-Day Solar Yield Forecast',
+    today: 'Today',
+    // Schedule
+    schedule_title: 'Smart Appliance Schedule',
+    // Log
+    log_title: 'Energy Log',
+    // FAQ
+    faq_title: '❓ How this app works',
+    faq_intro: 'This dashboard estimates your solar panel production in real time using weather data from Open-Meteo and your system configuration. It combines live solar irradiance, panel tilt, temperature derating and your inverter efficiency to calculate AC output.',
+    faq_solar_title: '⚡ Solar production',
+    faq_solar_body: 'Calculated from Direct Normal Irradiance (DNI), Diffuse Horizontal Irradiance (DHI) and your panel angle (Plane of Array model). Temperature derating is applied using NOCT 45°C and a −0.37%/°C coefficient. Inverter efficiency is configured in your system settings.',
+    faq_cons_title: '⚠️ Consumption — manual input required',
+    faq_cons_body: 'The app cannot read your actual household consumption automatically. You must enter your current consumption manually in kW on the Dashboard. Check your solar panel application or smart meter for the real value. Without this input, energy flow calculations (battery, grid) will not be accurate.',
+    faq_batt_title: '🔋 Battery',
+    faq_batt_body: 'The battery SOC you enter maps to the usable range: 10% = empty (reserve floor), 90% = full (charge ceiling). Enter the SOC shown in your solar panel application. The app evolves SOC over time based on calculated charge/discharge flows. Battery priority: Solar → Home → Battery → Grid.',
+    faq_forecast_title: '📅 Forecast',
+    faq_forecast_body: '7-day hourly forecast uses Open-Meteo weather data. Daily yield is estimated from cloud cover and irradiance forecast. Tap any day in the strip to see its hourly generation curve.',
+    faq_notif_title: '🔔 Notifications',
+    faq_notif_body: 'Smart alerts check every 15 minutes whether solar surplus is enough to run each appliance in your schedule. You get a specific alert per appliance: "Run washing machine now" when surplus covers it, or "Wait until 13:00" when production will be sufficient later.',
+    faq_data_title: '📡 Data sources',
+    faq_data_body: 'Weather & irradiance: Open-Meteo (free, no API key, updates every 5 min). Location: device GPS. All calculations run locally on your device — no data is sent anywhere.',
+  },
+  ro: {
+    // Nav
+    nav_dash: 'Panou', nav_forecast: 'Prognoză', nav_sched: 'Program',
+    nav_log: 'Jurnal', nav_faq: 'Ajutor',
+    // Header
+    live: 'Live',
+    // GPS
+    gps_req: '📍 Se solicită permisiunea GPS...',
+    gps_no_support: '❌ Geolocalizarea nu este suportată. Activați GPS-ul.',
+    gps_denied: '⚠️ Permisiunea de localizare a fost refuzată.',
+    gps_unavail: '⚠️ GPS indisponibil.',
+    gps_timeout: '⚠️ Timp expirat pentru localizare.',
+    gps_btn: 'Activează GPS',
+    // API
+    api_wait_gps: '⏳ Se așteaptă localizarea GPS...',
+    api_fetching: '⏳ Se încarcă datele meteo...',
+    api_ok_suffix: '· reîmprospătat la 5 min',
+    api_retry: 'Reîncearcă',
+    // Config labels
+    cfg_panel_kw: 'Capacitate panouri (kW)',
+    cfg_batt_kw: 'Capacitate baterie (kWh)',
+    cfg_reserve: 'Rezervă (%)',
+    cfg_soc: 'SOC baterie (%)',
+    cfg_soc_hint: 'Introduceți SOC din aplicația solară · 90% = plin · 10% = gol (rezervă)',
+    cfg_usable: 'Utilizabil',
+    cfg_cons: 'Consum casnic',
+    cfg_save: 'Salvează configurația',
+    cfg_panel_brand: 'Marcă panouri',
+    cfg_batt_brand: 'Marcă baterie',
+    // Dashboard labels
+    solar_irr: 'Radiație Solară',
+    battery: 'Baterie',
+    energy_flow: 'Flux Energie',
+    grid: 'Rețea',
+    home_load: 'Consum casnic',
+    panels: 'Panouri',
+    idle: 'inactiv', charging: 'încărcare', discharging: 'descărcare',
+    // Notifications
+    notif_enable: 'Activează',
+    notif_test: 'Test',
+    notif_active: '🔔 Alerte native active · vei fi notificat la vârful solar',
+    notif_enable_prompt: '🔔 Activează notificările pentru alerte de producție solară',
+    notif_pwa: '📱 Pentru notificări instalați ca PWA din Chrome.',
+    notif_blocked: '🔕 Notificările sunt blocate — activați din setările telefonului',
+    notif_req_prompt: '🔔 Activ\u0103 notific\u0103rile pentru a \u0219ti c\u00e2nd e cel mai bine s\u0103 porne\u0219ti aparatele',
+    // Forecast
+    forecast_yield: 'Prognoză Producție Solară 5 Zile',
+    today: 'Azi',
+    // Schedule
+    schedule_title: 'Program Inteligent Aparate',
+    // Log
+    log_title: 'Jurnal Energie',
+    // FAQ
+    faq_title: '❓ Cum funcționează aplicația',
+    faq_intro: 'Acest panou estimează producția panourilor solare în timp real folosind date meteo de la Open-Meteo și configurația sistemului tău. Combină radiația solară live, unghiul panourilor, deratarea termică și eficiența invertorului pentru a calcula puterea AC.',
+    faq_solar_title: '⚡ Producție solară',
+    faq_solar_body: 'Calculată din Radiația Normală Directă (DNI), Radiația Difuză Orizontală (DHI) și unghiul panoului (model Plane of Array). Deratarea termică se aplică folosind NOCT 45°C și un coeficient de −0,37%/°C. Eficiența invertorului este configurată în setările sistemului.',
+    faq_cons_title: '⚠️ Consum — introducere manuală necesară',
+    faq_cons_body: 'Aplicația nu poate citi automat consumul real al casei. Trebuie să introduci manual consumul curent în kW pe Panou. Verifică aplicația panourilor solare sau contorul inteligent pentru valoarea reală. Fără această intrare, calculele fluxului de energie (baterie, rețea) nu vor fi precise.',
+    faq_batt_title: '🔋 Baterie',
+    faq_batt_body: 'SOC-ul bateriei introdus se mapează pe intervalul utilizabil: 10% = gol (rezervă), 90% = plin (limită încărcare). Introduceți SOC-ul din aplicația panourilor solare. Aplicația evoluează SOC-ul în timp pe baza fluxurilor calculate. Prioritate: Solar → Casă → Baterie → Rețea.',
+    faq_forecast_title: '📅 Prognoză',
+    faq_forecast_body: 'Prognoza orară pe 7 zile folosește datele meteo Open-Meteo. Producția zilnică este estimată din acoperirea cu nori și prognoza de radiație. Apasă pe orice zi din bandă pentru a vedea curba de producție orară.',
+    faq_notif_title: '🔔 Notificări',
+    faq_notif_body: 'Alertele inteligente verifică la fiecare 15 minute dacă surplusul solar este suficient pentru a porni fiecare aparat din program. Primești o alertă specifică per aparat: "Pornește mașina de spălat acum" când surplusul acoperă consumul, sau "Așteaptă până la 13:00" când producția va fi suficientă mai târziu.',
+    faq_data_title: '📡 Surse de date',
+    faq_data_body: 'Date meteo și radiație: Open-Meteo (gratuit, fără cheie API, actualizat la 5 min). Locație: GPS dispozitiv. Toate calculele rulează local pe dispozitivul tău — nicio dată nu este trimisă nicăieri.',
+  }
+};
+
+let currentLang = localStorage.getItem('solarLang') || 'en';
+
+function t(key) {
+  return (LANG[currentLang] && LANG[currentLang][key]) || LANG.en[key] || key;
+}
+
+function setLang(lang) {
+  currentLang = lang;
+  localStorage.setItem('solarLang', lang);
+  document.getElementById('langSelect').value = lang;
+  applyTranslations();
+  renderAll();
+}
+
+function applyTranslations() {
+  const L = LANG[currentLang] || LANG.en;
+
+  // Nav buttons
+  const navLabels = ['Dash','Forecast','Sched','Log','Faq'];
+  const navKeys   = ['nav_dash','nav_forecast','nav_sched','nav_log','nav_faq'];
+  document.querySelectorAll('.nb').forEach((btn, i) => {
+    if (navKeys[i]) btn.childNodes[1] && (btn.childNodes[1].textContent = L[navKeys[i]] || btn.childNodes[1].textContent);
+  });
+
+  // All elements with data-i18n attribute
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (L[key]) el.textContent = L[key];
+  });
+
+  // Live tag
+  const liveTag = document.getElementById('liveTag');
+  if (liveTag) liveTag.textContent = L.live || 'Live';
+
+  // Notification bar messages (re-init)
+  initNotifBar();
+}
+
 </script>
 
 <div class="page" id="pgFaq">
   <div class="card">
-    <div class="ct">❓ How this app works</div>
-    <p style="font-size:14px;line-height:1.7;color:var(--tx);margin:0 0 12px">
+    <div class="ct" data-i18n="faq_title">❓ How this app works</div>
+    <p style="font-size:14px;line-height:1.7;color:var(--tx);margin:0 0 12px" data-i18n="faq_intro">
       This dashboard estimates your solar panel production in real time using weather data
       from Open-Meteo and your system configuration. It combines live solar irradiance,
       panel tilt, temperature derating and your inverter efficiency to calculate AC output.
     </p>
 
-    <div style="font-size:13px;font-weight:700;color:var(--g);margin-bottom:6px">⚡ Solar production</div>
-    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+    <div style="font-size:13px;font-weight:700;color:var(--g);margin-bottom:6px" data-i18n="faq_solar_title">⚡ Solar production</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px" data-i18n="faq_solar_body">
       Calculated from Direct Normal Irradiance (DNI), Diffuse Horizontal Irradiance (DHI)
       and your panel angle (Plane of Array model). Temperature derating is applied using
-      NOCT 45°C and a −0.37%/°C coefficient. Inverter efficiency is fixed at 98.4%
-      (Huawei SUN2000-5KTL-M1).
+      NOCT 45°C and a −0.37%/°C coefficient. Inverter efficiency is configured in your
+      system settings.
     </p>
 
-    <div style="font-size:13px;font-weight:700;color:var(--am);margin-bottom:6px">⚠️ Consumption — manual input required</div>
-    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+    <div style="font-size:13px;font-weight:700;color:var(--am);margin-bottom:6px" data-i18n="faq_cons_title">⚠️ Consumption — manual input required</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px" data-i18n="faq_cons_body">
       <strong style="color:var(--tx)">The app cannot read your actual household consumption automatically.</strong>
       You must enter your current consumption manually in kW on the Dashboard.
-      Check your Huawei FusionSolar app or your smart meter for the real value.
+      Check your solar panel application or smart meter for the real value.
       Without this input, energy flow calculations (battery, grid) will not be accurate.
     </p>
 
-    <div style="font-size:13px;font-weight:700;color:var(--bl);margin-bottom:6px">🔋 Battery</div>
-    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+    <div style="font-size:13px;font-weight:700;color:var(--bl);margin-bottom:6px" data-i18n="faq_batt_title">🔋 Battery</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px" data-i18n="faq_batt_body">
       The battery SOC you enter maps to the usable range: 10% = empty (reserve floor),
-      90% = full (charge ceiling). Enter the SOC shown in FusionSolar.
+      90% = full (charge ceiling). Enter the SOC shown in your solar panel application.
       The app evolves SOC over time based on calculated charge/discharge flows.
       Battery priority: Solar → Home → Battery → Grid.
     </p>
 
-    <div style="font-size:13px;font-weight:700;color:var(--g);margin-bottom:6px">📅 Forecast</div>
-    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+    <div style="font-size:13px;font-weight:700;color:var(--g);margin-bottom:6px" data-i18n="faq_forecast_title">📅 Forecast</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px" data-i18n="faq_forecast_body">
       7-day hourly forecast uses Open-Meteo weather data. Daily yield is estimated
       from cloud cover and irradiance forecast. Tap any day in the strip to see
       its hourly generation curve.
     </p>
 
-    <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:6px">🔔 Notifications</div>
-    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+    <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:6px" data-i18n="faq_notif_title">🔔 Notifications</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px" data-i18n="faq_notif_body">
       Smart alerts check every 15 minutes whether solar surplus is enough to run
       each appliance in your schedule. You get a specific alert per appliance:
       "Run washing machine now" when surplus covers it, or "Wait until 13:00"
@@ -2469,9 +2661,9 @@ setInterval(updateClock, 1000);              // clock every second
       when the system switches between states.
     </p>
 
-    <div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:6px">📡 Data sources</div>
-    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0">
-      Weather &amp; irradiance: <strong style="color:var(--tx)">Open-Meteo</strong> (free, no API key, updates every 15 min).<br>
+    <div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:6px" data-i18n="faq_data_title">📡 Data sources</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0" data-i18n="faq_data_body">
+      Weather &amp; irradiance: <strong style="color:var(--tx)">Open-Meteo</strong> (free, no API key, updates every 5 min).<br>
       Location: device GPS.<br>
       All calculations run locally on your device — no data is sent anywhere.
     </p>
