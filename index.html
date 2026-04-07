@@ -690,7 +690,7 @@ async function fetchWeather() {
     setApi('ok', '✅ Solar forecast · ' + ST.locName + ' · updated ' +
       ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) +
       ' · auto-refreshes every 15 min');
-    if (Notification.permission === 'granted' ||
+    if ((typeof Notification !== 'undefined' && Notification.permission === 'granted') ||
         (window.Android && window.AndroidBridge.notificationsGranted && window.AndroidBridge.notificationsGranted())) {
       scheduleNotifications(); schedulePeakAlerts();
     }
@@ -698,6 +698,7 @@ async function fetchWeather() {
     ST.apiOk = false;
     const bridge = !!(window.AndroidBridge && window.AndroidBridge.fetchData);
     setApi('err', '⚠️ Fetch failed via ' + (bridge?'Android bridge':'browser fetch') + ': ' + e.message + '. <button class="api-refresh" onclick="fetchWeather()">Retry</button>');
+    console.error('Fetch error:', e);
     fallbackEstimate();
   }
   renderAll();
@@ -1462,16 +1463,16 @@ async function requestNotifPermission() {
     return;
   }
   // Browser / PWA notifications
-  if (!('Notification' in window)) {
+  if ((typeof Notification === 'undefined' || !('Notification' in window))) {
     setNotifBar('off', '📱 For notifications, install as PWA from Chrome browser.');
     return;
   }
-  if (Notification.permission === 'granted') {
+  if ((typeof Notification !== 'undefined' && Notification.permission === 'granted')) {
     setNotifBar('ok', '🔔 Notifications already enabled. Will alert before peak solar windows.');
     scheduleNotifications();
     return;
   }
-  const perm = await Notification.requestPermission();
+  const perm = await (typeof Notification !== 'undefined' ? Notification.requestPermission() : Promise.resolve('denied'));
   if (perm === 'granted') {
     setNotifBar('ok', '✅ Notifications enabled! You\'ll be alerted before peak solar windows.');
     saveCfg({ ...loadCfg(), notifEnabled: true });
@@ -1494,7 +1495,7 @@ function setNotifBar(type, msg) {
 function testNotifications() {
   // Fire both notification types immediately (bypasses debounce) for testing
   const hasAndroid = window.AndroidBridgeBridge && window.AndroidBridge.showNotification;
-  if (!hasAndroid && Notification.permission !== 'granted') {
+  if (!hasAndroid && (typeof Notification === 'undefined' || Notification.permission !== 'granted')) {
     alert('Notifications not enabled. Tap Enable first.');
     return;
   }
@@ -1549,17 +1550,21 @@ function initNotifBar() {
     return;
   }
   // Browser / PWA
-  if (!('Notification' in window)) {
-    setNotifBar('off', '📱 For notifications install as PWA from Chrome browser.');
-    return;
-  }
-  if (Notification.permission === 'granted') {
-    setNotifBar('ok', '🔔 Notifications active · alerts scheduled around peak solar windows');
-    scheduleNotifications();
-  } else if (Notification.permission === 'denied') {
-    setNotifBar('off', '🔕 Notifications blocked — enable in browser/phone settings');
-  } else {
-    setNotifBar('req', '🔔 Enable notifications to get alerts when it\'s best to run large appliances');
+  try {
+    if ((typeof Notification === 'undefined' || !('Notification' in window))) {
+      setNotifBar('off', '📱 For notifications install as PWA from Chrome browser.');
+      return;
+    }
+    if ((typeof Notification !== 'undefined' && Notification.permission === 'granted')) {
+      setNotifBar('ok', '🔔 Notifications active · alerts scheduled around peak solar windows');
+      scheduleNotifications();
+    } else if ((typeof Notification !== 'undefined' && Notification.permission === 'denied')) {
+      setNotifBar('off', '🔕 Notifications blocked — enable in browser/phone settings');
+    } else {
+      setNotifBar('req', '🔔 Enable notifications to get alerts when it\'s best to run large appliances');
+    }
+  } catch(e) {
+    setNotifBar('req', '🔔 Enable notifications for solar production alerts');
   }
 }
 
@@ -1598,7 +1603,7 @@ function getBestWindow() {
 }
 
 function scheduleNotifications() {
-  if (Notification.permission !== 'granted') return;
+  if ((typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
 
   // Clear any existing scheduled timers
   scheduledNotifTimers.forEach(t => clearTimeout(t));
@@ -1665,7 +1670,7 @@ function showNotification(title, body, tag) {
     window.AndroidBridge.showNotification(title, body, tag || 'solar');
     return;
   }
-  if (Notification.permission !== 'granted') return;
+  if ((typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready.then(reg => {
       reg.showNotification(title, {
@@ -2018,7 +2023,7 @@ function renderSmartSched() {
 const NOTIF_DEBOUNCE_MS = 30 * 1000;
 
 function triggerApplianceNotif(type, app) {
-  if (Notification.permission !== 'granted') return;
+  if ((typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
   const key = app.id + '_' + type;
   if (notifTimers[key]) clearTimeout(notifTimers[key]);
   notifTimers[key] = setTimeout(() => {
@@ -2051,7 +2056,7 @@ function triggerApplianceNotif(type, app) {
 
 // Schedule "peak coming" alert for top appliances
 function schedulePeakAlerts() {
-  if (Notification.permission !== 'granted') return;
+  if ((typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
   if (!ST.todayH || !ST.todayH.length) return;
   const now   = new Date();
   const nowMs = now.getTime();
