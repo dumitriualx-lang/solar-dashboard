@@ -1066,11 +1066,81 @@ function renderStrip() {
   if(!FORECAST.length) return;
   const need=ST.consKw*24;
   document.getElementById('ws').innerHTML=FORECAST.map((d,i)=>
-    '<div class="wd '+(i===0?'today':'')+'"><div class="wi">'+d.icon+'</div>'+
+    '<div class="wd '+(i===0?'today':'')+'" onclick="selectForecastDay('+i+')" style="cursor:pointer" id="wd'+i+'">'+
+    '<div class="wi">'+d.icon+'</div>'+
     '<div class="wn">'+d.d+'</div><div class="wt">'+f(d.tempC,0)+'°C</div>'+
     '<div class="wkwh" style="color:'+(d.yieldKwh>=need?'#1D9E75':d.yieldKwh>=need*.5?'#BA7517':'#A32D2D')+'">'+f(d.yieldKwh,1)+' kWh</div>'+
     '<div class="wr">'+d.rain+'% 🌧</div></div>'
   ).join('');
+}
+
+function selectForecastDay(idx) {
+  // Highlight selected day
+  FORECAST.forEach((_,i) => {
+    const el = document.getElementById('wd'+i);
+    if (!el) return;
+    if (i === idx) {
+      el.style.outline = '2px solid var(--g)';
+      el.style.outlineOffset = '2px';
+    } else {
+      el.style.outline = '';
+    }
+  });
+
+  // Update the day curve chart title
+  const d = FORECAST[idx];
+  const chartCard = document.querySelector('#pgForecast .card:nth-child(2) .ct');
+  if (chartCard) {
+    chartCard.innerHTML = (idx===0?'Today':'<b>'+d.d+'</b>')+' · generation curve ' +
+      '<span class="pill p-info">'+d.icon+' '+f(d.tempC,0)+'°C · '+f(d.yieldKwh,1)+' kWh · '+d.rain+'% rain</span>';
+  }
+
+  // Rebuild day chart for selected day
+  if (idx === 0) {
+    buildDayChart();
+  } else {
+    buildDayChartForDay(idx);
+  }
+}
+
+function buildDayChartForDay(dayIdx) {
+  if (!FORECAST.length) return;
+  if (dchart) dchart.destroy();
+
+  // Estimate hourly curve for selected day using a solar arc model
+  const d = FORECAST[dayIdx];
+  const peakKw = d.yieldKwh / 6; // rough peak from daily total
+  const lbls = [], genD = [], conD = [], batD = [];
+  for (let h = 0; h < 24; h++) {
+    lbls.push(h+':00');
+    // Bell curve from 6am to 8pm
+    const mid = 13, spread = 3.5;
+    const solar = h >= 6 && h <= 20
+      ? Math.max(0, peakKw * Math.exp(-Math.pow(h - mid, 2) / (2 * spread * spread)))
+      : 0;
+    const gen = +solar.toFixed(3);
+    genD.push(gen);
+    conD.push(ST.consKw);
+    batD.push(gen > ST.consKw ? +Math.min(gen - ST.consKw, SYS.battMaxC).toFixed(3) : 0);
+  }
+
+  dchart = new Chart(document.getElementById('dayC').getContext('2d'), {
+    data: { labels: lbls, datasets: [
+      { type:'line', data:genD, borderColor:'#1D9E75', backgroundColor:'rgba(29,158,117,.1)',
+        fill:true, tension:.4, pointRadius:0, borderWidth:2 },
+      { type:'line', data:conD, borderColor:'#D85A30', fill:false, tension:0,
+        pointRadius:0, borderWidth:1.5, borderDash:[5,4] },
+      { type:'bar',  data:batD, backgroundColor:'rgba(55,138,221,.25)',
+        borderColor:'#378ADD', borderWidth:1, borderRadius:3 },
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ ticks:{ font:{size:9}, color:'#888', maxTicksLimit:12 }, grid:{ color:'rgba(128,128,128,.06)' } },
+        y:{ ticks:{ font:{size:9}, color:'#888', callback:v=>f(v,1)+'kW' }, grid:{ color:'rgba(128,128,128,.06)' }, beginAtZero:true }
+      }
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
