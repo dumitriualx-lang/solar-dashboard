@@ -659,9 +659,21 @@ async function fetchWeather() {
       + '&hourly=direct_radiation,diffuse_radiation,direct_normal_irradiance,cloud_cover,temperature_2m,precipitation_probability,weathercode'
       + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
       + '&timezone=auto&forecast_days=7';
-    const r = await fetch(u);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
+    // Use native Android HTTP bridge if available (WebView), otherwise use fetch
+    let d;
+    if (window.Android && window.Android.httpGet) {
+      const raw = await new Promise((resolve, reject) => {
+        setTimeout(() => {
+          const result = window.Android.httpGet(u);
+          if (result) resolve(result); else reject(new Error('Android fetch failed'));
+        }, 0);
+      });
+      d = JSON.parse(raw);
+    } else {
+      const r = await fetch(u);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      d = await r.json();
+    }
     processData(d);
     ST.apiOk = true; ST.lastFetch = new Date();
     setApi('ok', '✅ Live irradiance · ' + ST.locName + ' · updated ' +
@@ -1371,12 +1383,26 @@ function restoreBrandSelects() {
 let scheduledNotifTimers = [];
 
 async function requestNotifPermission() {
+  // Android WebView native notifications
+  if (window.Android && window.Android.showNotification) {
+    if (window.Android.notificationsGranted && window.Android.notificationsGranted()) {
+      setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
+      saveCfg({ ...loadCfg(), notifEnabled: true });
+      scheduleNotifications();
+    } else {
+      if (window.Android.requestNotifications) window.Android.requestNotifications();
+      setNotifBar('ok', '🔔 Allow notifications in the system prompt · then tap Enable again');
+    }
+    return;
+  }
+  // Browser / PWA notifications
   if (!('Notification' in window)) {
     setNotifBar('off', '📱 For notifications, install as PWA from Chrome browser.');
     return;
   }
   if (Notification.permission === 'granted') {
     setNotifBar('ok', '🔔 Notifications already enabled. Will alert before peak solar windows.');
+    scheduleNotifications();
     return;
   }
   const perm = await Notification.requestPermission();
@@ -1444,12 +1470,25 @@ function testNotifications() {
 }
 
 function initNotifBar() {
+  // Android WebView native notifications
+  if (window.Android && window.Android.showNotification) {
+    if (window.Android.notificationsGranted && window.Android.notificationsGranted()) {
+      setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
+      saveCfg({ ...loadCfg(), notifEnabled: true });
+      scheduleNotifications();
+    } else {
+      setNotifBar('req', '🔔 Enable notifications for solar production alerts');
+    }
+    return;
+  }
+  // Browser / PWA
   if (!('Notification' in window)) {
-    setNotifBar('off', '❌ Notifications not supported in this browser.');
+    setNotifBar('off', '📱 For notifications install as PWA from Chrome browser.');
     return;
   }
   if (Notification.permission === 'granted') {
     setNotifBar('ok', '🔔 Notifications active · alerts scheduled around peak solar windows');
+    scheduleNotifications();
   } else if (Notification.permission === 'denied') {
     setNotifBar('off', '🔕 Notifications blocked — enable in browser/phone settings');
   } else {
@@ -1554,6 +1593,11 @@ function schedulemorningNotif() {
 }
 
 function showNotification(title, body, tag) {
+  // Use native Android notification bridge if available
+  if (window.Android && window.Android.showNotification) {
+    window.Android.showNotification(title, body, tag || 'solar');
+    return;
+  }
   if (Notification.permission !== 'granted') return;
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready.then(reg => {
