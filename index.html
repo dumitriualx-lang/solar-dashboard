@@ -669,8 +669,8 @@ async function fetchWeather() {
     const u = 'https://api.open-meteo.com/v1/forecast?'
       + 'latitude='  + f(ST.lat,4)
       + '&longitude=' + f(ST.lon,4)
-      + '&current=temperature_2m,cloud_cover,weathercode,direct_radiation,diffuse_radiation,direct_normal_irradiance'
-      + '&hourly=direct_radiation,diffuse_radiation,direct_normal_irradiance,cloud_cover,temperature_2m,precipitation_probability,weathercode'
+      + '&current=temperature_2m,cloud_cover,weathercode,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance'
+      + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,cloud_cover,temperature_2m,precipitation_probability,weathercode'
       + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
       + '&timezone=auto&forecast_days=7';
 
@@ -754,16 +754,17 @@ function calcPV(poaWm2) {
 
 function processOpenMeteo(d) {
   const cur = d.current || {};
-  ST.irrWm2    = +(cur.direct_radiation || 0);
+  // shortwave_radiation = true GHI (direct_radiation = beam on horizontal only)
+  const ghi = +(cur.shortwave_radiation || (+(cur.direct_radiation||0) + +(cur.diffuse_radiation||0)) || 0);
+  ST.irrWm2    = ghi;
   ST.wxTempC   = +(cur.temperature_2m  || 15);
   ST.cloudCover= +(cur.cloud_cover     || 0);
   ST.wxCond    = wxLabel(cur.weathercode || 0);
   ST.wxIcon    = wxIcon(cur.weathercode  || 0);
 
-  // POA irradiance → PV output
-  const dni = +(cur.direct_normal_irradiance || ST.irrWm2);
-  const dhi = +(cur.diffuse_radiation || ST.irrWm2 * 0.15);
-  const ghi = +(cur.direct_radiation  || ST.irrWm2);
+  // POA irradiance → PV output using correct irradiance components
+  const dni = +(cur.direct_normal_irradiance || ghi * 0.85);
+  const dhi = +(cur.diffuse_radiation || ghi * 0.15);
   ST.poaWm2    = calcPOA(dni, dhi, ghi, SYS.tiltDeg || 30, 180);
   ST.pvKw      = calcPV(ST.poaWm2);
   ST.cfGHI     = Math.max(0, 1 - 0.75 * Math.pow((ST.cloudCover/100), 3.4));
@@ -777,10 +778,12 @@ function processOpenMeteo(d) {
   (hr.time || []).forEach((t, i) => {
     if (!t.startsWith(todayStr)) return;
     const h = parseInt(t.slice(11,13));
+    const ghi_h = hr.shortwave_radiation?.[i] ||
+      ((hr.direct_radiation?.[i]||0) + (hr.diffuse_radiation?.[i]||0)) || 0;
     const pvKw = calcPV(calcPOA(
-      hr.direct_normal_irradiance?.[i] || 0,
-      hr.diffuse_radiation?.[i] || 0,
-      hr.direct_radiation?.[i] || 0,
+      hr.direct_normal_irradiance?.[i] || ghi_h * 0.85,
+      hr.diffuse_radiation?.[i] || ghi_h * 0.15,
+      ghi_h,
       SYS.tiltDeg || 30, 180
     ));
     ST.todayH.push({ hour: h, pvKw,
@@ -2351,7 +2354,7 @@ initCfgInputs();                             // populate config inputs from save
 restoreBrandSelects();                       // restore saved brand dropdown selections
 initNotifBar();                              // set notification bar state
 requestLocation();                           // ask for GPS immediately on load
-setInterval(fetchWeather, 15*60*1000);       // re-fetch every 15 min
+setInterval(fetchWeather, 5*60*1000);        // re-fetch every 5 min
 setInterval(()=>{
   evolveSoc();
   renderAll();
