@@ -167,10 +167,52 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                if (url.startsWith("https://dumitriualx-lang.github.io")) {
+                if (url.startsWith("https://dumitriualx-lang.github.io") ||
+                    url.startsWith("https://api.open-meteo.com") ||
+                    url.startsWith("https://nominatim.openstreetmap.org")) {
                     return false;
                 }
                 return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                // Inject fetch polyfill using XMLHttpRequest for WebView compatibility
+                view.evaluateJavascript(
+                    "(function() {" +
+                    "  if (window._fetchPolyfilled) return;" +
+                    "  window._fetchPolyfilled = true;" +
+                    "  var origFetch = window.fetch;" +
+                    "  window.fetch = function(url, opts) {" +
+                    "    return new Promise(function(resolve, reject) {" +
+                    "      var xhr = new XMLHttpRequest();" +
+                    "      var method = (opts && opts.method) ? opts.method : 'GET';" +
+                    "      xhr.open(method, url, true);" +
+                    "      xhr.onload = function() {" +
+                    "        var resp = {" +
+                    "          ok: xhr.status >= 200 && xhr.status < 300," +
+                    "          status: xhr.status," +
+                    "          json: function() { return Promise.resolve(JSON.parse(xhr.responseText)); }," +
+                    "          text: function() { return Promise.resolve(xhr.responseText); }" +
+                    "        };" +
+                    "        resolve(resp);" +
+                    "      };" +
+                    "      xhr.onerror = function() { reject(new Error('Network error')); };" +
+                    "      xhr.send(opts && opts.body ? opts.body : null);" +
+                    "    });" +
+                    "  };" +
+                    "})();",
+                    null
+                );
+                // Hide notification bar in WebView — not supported
+                view.evaluateJavascript(
+                    "(function() {" +
+                    "  var bar = document.getElementById('notifBar');" +
+                    "  if (bar) bar.style.display = 'none';" +
+                    "})();",
+                    null
+                );
             }
         });
 
