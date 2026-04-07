@@ -763,59 +763,48 @@ function processOpenMeteo(d) {
   const cur = d.current || {};
   const hr  = d.hourly  || {};
 
-  // Use current-hour HOURLY irradiance — more accurate than backward-averaged 'current' field
-  const now      = new Date();
-  const todayStr = now.toISOString().slice(0,10);
-  const curH     = now.getHours();
-  // Find the hourly index matching the current hour
-  let curIdx = -1;
-  (hr.time || []).forEach((t, i) => {
-    const tH = parseInt(t.slice(11,13));
-    const tD = t.slice(0,10);
-    if (tD === todayStr && tH === curH) curIdx = i;
-  });
+  // Get cloud cover and temperature from Open-Meteo current data
+  const cloudCoverPct = +(cur.cloud_cover || 0);
+  const tempC = +(cur.temperature_2m || 15);
 
-  // Prefer hourly data for current hour (point estimate), fall back to current field
-  const ghi = curIdx >= 0
-    ? +(hr.shortwave_radiation?.[curIdx] || 0)
-    : +(cur.shortwave_radiation || (+(cur.direct_radiation||0) + +(cur.diffuse_radiation||0)) || 0);
-  const dni = curIdx >= 0
-    ? +(hr.direct_normal_irradiance?.[curIdx] || ghi * 0.85)
-    : +(cur.direct_normal_irradiance || ghi * 0.85);
-  const dhi = curIdx >= 0
-    ? +(hr.diffuse_radiation?.[curIdx] || ghi * 0.15)
-    : +(cur.diffuse_radiation || ghi * 0.15);
+  // Compute irradiance from clear-sky model + cloud cover correction
+  // This is far more accurate than Open-Meteo radiation fields
+  const cs  = clearSkyIrradiance(ST.lat || 44.4, ST.lon || 26.17);
+  const cf  = Math.max(0, 1 - 0.75 * Math.pow(cloudCoverPct / 100, 3.4));
+  const ghi = +(cs.ghi * cf).toFixed(1);
+  const dni = +(cs.dni * cf).toFixed(1);
+  const dhi = +(cs.dhi * (1 - cf * 0.5)).toFixed(1);
 
   ST.irrWm2    = ghi;
-  ST.wxTempC   = +(cur.temperature_2m  || 15);
-  ST.cloudCover= +(cur.cloud_cover     || 0);
+  ST.wxTempC   = tempC;
+  ST.cloudCover= cloudCoverPct;
   ST.wxCond    = wxLabel(cur.weathercode || 0);
   ST.wxIcon    = wxIcon(cur.weathercode  || 0);
 
-  // POA irradiance → PV output
   ST.poaWm2    = calcPOA(dni, dhi, ghi, SYS.tiltDeg || 30, 180);
   ST.pvKw      = calcPV(ST.poaWm2);
-  ST.cfGHI     = Math.max(0, 1 - 0.75 * Math.pow((ST.cloudCover/100), 3.4));
-  ST.tempFactor = 1 - SYS.tempCoeff * Math.max(0, ST.wxTempC + (ST.poaWm2/800)*25 - 25);
+  ST.cfGHI     = cf;
+  ST.tempFactor = 1 - SYS.tempCoeff * Math.max(0, tempC + (ST.poaWm2/800)*25 - 25);
 
-  // Build todayH from hourly
+  // Build todayH from hourly — use Open-Meteo cloud cover per hour with clear-sky model
+  const now      = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const todayStr = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+  const curH     = now.getHours();
+
   ST.todayH = [];
   (hr.time || []).forEach((t, i) => {
     if (!t.startsWith(todayStr)) return;
-    const h = parseInt(t.slice(11,13));
-    const ghi_h = hr.shortwave_radiation?.[i] ||
-      ((hr.direct_radiation?.[i]||0) + (hr.diffuse_radiation?.[i]||0)) || 0;
-    const pvKw = calcPV(calcPOA(
-      hr.direct_normal_irradiance?.[i] || ghi_h * 0.85,
-      hr.diffuse_radiation?.[i] || ghi_h * 0.15,
-      ghi_h,
-      SYS.tiltDeg || 30, 180
-    ));
-    ST.todayH.push({ hour: h, pvKw,
-      ghi: ghi_h,
-      dni: hr.direct_normal_irradiance?.[i] || 0,
-      dhi: hr.diffuse_radiation?.[i] || 0
-    });
+    const h    = parseInt(t.slice(11,13));
+    const cc_h = hr.cloud_cover?.[i] || 0;
+    const cf_h = Math.max(0, 1 - 0.75 * Math.pow(cc_h / 100, 3.4));
+    // Use Open-Meteo shortwave if available, else clear-sky scaled by cloud factor
+    const swr  = hr.shortwave_radiation?.[i] || 0;
+    const ghi_h = swr > 0 ? swr : +(cs.ghi * cf_h).toFixed(1);
+    const dni_h = hr.direct_normal_irradiance?.[i] || ghi_h * 0.85;
+    const dhi_h = hr.diffuse_radiation?.[i] || ghi_h * 0.15;
+    const pvKw  = calcPV(calcPOA(dni_h, dhi_h, ghi_h, SYS.tiltDeg || 30, 180));
+    ST.todayH.push({ hour: h, pvKw, ghi: ghi_h, dni: dni_h, dhi: dhi_h });
   });
 
   // Build 5-day forecast
@@ -830,12 +819,12 @@ function processOpenMeteo(d) {
       yieldKwh = +ST.todayH.reduce((s,h) => s + h.pvKw, 0).toFixed(2);
     } else {
       const rain = day.precipitation_probability_max?.[i] || 0;
-      const cf   = Math.max(0, 1 - 0.75 * Math.pow(rain/100, 3.4));
-      yieldKwh   = +(SYS.panelKw * 5 * cf).toFixed(2);
+      const cf_d = Math.max(0, 1 - 0.75 * Math.pow(rain/100, 3.4));
+      yieldKwh   = +(( SYS.panelKw || 5) * 5 * cf_d).toFixed(2);
     }
     FORECAST.push({
       d: dayName, yieldKwh,
-      tempC: day.temperature_2m_max?.[i] || ST.wxTempC,
+      tempC: day.temperature_2m_max?.[i] || tempC,
       rain:  day.precipitation_probability_max?.[i] || 0,
       icon:  wxIcon(code)
     });
