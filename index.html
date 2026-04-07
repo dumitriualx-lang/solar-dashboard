@@ -1098,26 +1098,26 @@ function evolveSoc() {
 
   const nowMin = now / 60000;
 
-  // Battery low + grid starting (crosses from battery to grid)
-  if (fl.gridImport > 0.05 && (fl.battFlow >= -0.05) &&
+  // Grid power activated
+  if (fl.gridImport > 0.05 && fl.battFlow >= -0.05 &&
       (!ST._lastGridNotif || nowMin - ST._lastGridNotif > 15)) {
     ST._lastGridNotif = nowMin;
     showNotification(
       '⚡ Grid power active',
-      'Battery at ' + Math.round(ST.battSoc) + '%. Grid supplying ' +
+      'Battery at ' + socToDisplay(ST.battSoc) + '%. Grid supplying ' +
       f(fl.gridImport, 2) + ' kW. Solar: ' + f(ST.pvKw, 2) + ' kW.',
       'grid-import'
     );
   }
 
-  // Battery discharged to reserve
+  // Battery at reserve
   if (ST.battSoc <= hardFlr + 2 && prevSoc > hardFlr + 2 &&
       (!ST._lastBattLowNotif || nowMin - ST._lastBattLowNotif > 15)) {
     ST._lastBattLowNotif = nowMin;
     showNotification(
-      '🔋 Battery at reserve level',
-      'Battery reached ' + Math.round(ST.battSoc) + '% (reserve floor). ' +
-      'Grid will cover remaining load. Solar: ' + f(ST.pvKw, 2) + ' kW.',
+      '🔋 Battery at reserve — grid starting',
+      'Battery at ' + socToDisplay(ST.battSoc) + '% (reserve floor). ' +
+      'Grid covering ' + f(fl.gridImport,2) + ' kW. Solar: ' + f(ST.pvKw,2) + ' kW.',
       'batt-low'
     );
   }
@@ -1126,11 +1126,20 @@ function evolveSoc() {
   if (ST.battSoc >= 99 && prevSoc < 99 &&
       (!ST._lastBattFullNotif || nowMin - ST._lastBattFullNotif > 15)) {
     ST._lastBattFullNotif = nowMin;
+    const surplus = +(ST.pvKw - (ST.consKw||0)).toFixed(2);
+    const runnable = APPLIANCES.filter(a => a.kw <= surplus).map(a => a.icon+' '+a.name).slice(0,3).join(', ');
     showNotification(
-      '🌞 Battery fully charged!',
-      'Battery at 100%. Excess solar (' + f(fl.gridExport, 2) + ' kW) exporting to grid.',
+      '🌞 Battery full — use free solar!',
+      'Battery 100%. Exporting ' + f(fl.gridExport,2) + ' kW to grid.' +
+      (runnable ? ' Run: ' + runnable + '.' : ''),
       'batt-full'
     );
+  }
+
+  // Per-appliance smart alerts every 15 min
+  if (!ST._lastAppCheck || nowMin - ST._lastAppCheck > 15) {
+    ST._lastAppCheck = nowMin;
+    checkApplianceAlerts();
   }
 }
 
@@ -1762,44 +1771,99 @@ function scheduleNotifications() {
     (typeof Notification !== 'undefined' && Notification.permission === 'granted');
   if (!notifOk) return;
 
-  // Clear any existing scheduled timers
   scheduledNotifTimers.forEach(t => clearTimeout(t));
   scheduledNotifTimers = [];
 
   const win = getBestWindow();
-  if (!win) return;
-
-  const startLabel = win.startH + ':00';
-  const endLabel   = (win.endH + 1) + ':00';
-
-  // Notification 1 — "window starting soon"
-  const t1 = setTimeout(() => {
-    showNotification(
-      '☀️ Best solar window starting soon!',
-      'Peak production ' + win.peakKw + ' kW · ' + startLabel + '–' + endLabel +
-      '. Run washing machine, dishwasher or water heater now to use free solar energy.',
-      'solar-peak-start'
-    );
-  }, win.notifMs);
-  scheduledNotifTimers.push(t1);
-
-  // Notification 2 — reminder at peak hour
-  const peakMs = win.notifMs + 15 * 60000;
-  if (peakMs > 0) {
-    const t2 = setTimeout(() => {
-      showNotification(
-        '⚡ Solar peak now — ' + win.peakKw + ' kW!',
-        'This is the best hour to run large appliances (' + startLabel + '–' + endLabel + '). Battery is charging — switch on heavy loads now.',
-        'solar-peak-now'
-      );
-    }, peakMs);
-    scheduledNotifTimers.push(t2);
+  if (win) {
+    // Notify 15 min before the best solar window
+    const t1 = setTimeout(() => {
+      const runnable = APPLIANCES.filter(a => a.kw <= win.peakKw - (ST.consKw || 0))
+        .sort((a,b) => b.kw - a.kw);
+      if (runnable.length > 0) {
+        const names = runnable.slice(0,3).map(a => a.icon + ' ' + a.name).join(', ');
+        showNotification(
+          '☀️ Solar window in 15 min — ' + f(win.peakKw,1) + ' kW',
+          'You can run: ' + names + '. Switch them on at ' + win.startH + ':00 to use free solar energy.',
+          'solar-peak-start'
+        );
+      } else {
+        showNotification(
+          '☀️ Solar window in 15 min — ' + f(win.peakKw,1) + ' kW',
+          'Peak production at ' + win.startH + ':00. Good time to reduce grid draw.',
+          'solar-peak-start'
+        );
+      }
+    }, win.notifMs);
+    scheduledNotifTimers.push(t1);
   }
 
-  // Morning forecast notification at 07:30
+  // Morning forecast at 07:30
   schedulemorningNotif();
+}
 
-  console.log('Notifications scheduled: window', startLabel, '–', endLabel, 'in', Math.round(win.notifMs/60000), 'min');
+// Real-time smart appliance alerts — called every 15 min from evolveSoc
+function checkApplianceAlerts() {
+  const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
+    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  if (!notifOk) return;
+
+  const fl      = calcFlow();
+  const surplus = +(ST.pvKw - (ST.consKw || 0)).toFixed(2);
+  const nowMin  = Date.now() / 60000;
+
+  // For each appliance check if surplus covers it — send individual notification
+  APPLIANCES.forEach(app => {
+    const key = 'notif_' + app.id;
+    const lastSent = ST._appNotif && ST._appNotif[key] ? ST._appNotif[key] : 0;
+    if (nowMin - lastSent < 15) return; // throttle per appliance
+
+    if (surplus >= app.kw) {
+      // Surplus covers this appliance — good time to run it
+      if (!ST._appNotif) ST._appNotif = {};
+      ST._appNotif[key] = nowMin;
+      const extra = +(surplus - app.kw).toFixed(2);
+      showNotification(
+        app.icon + ' Run ' + app.name + ' now!',
+        'Solar surplus +' + f(surplus,2) + ' kW covers ' + app.name + ' (' + app.kw + ' kW).' +
+        (extra > 0.1 ? ' Still ' + f(extra,2) + ' kW to spare.' : '') +
+        ' Battery: ' + socToDisplay(ST.battSoc) + '%.',
+        'run-' + app.id
+      );
+    } else if (surplus < app.kw && surplus > 0 && ST.todayH && ST.todayH.length) {
+      // Not enough now — find next window when it will be enough
+      const now = new Date();
+      const nowH = now.getHours() + now.getMinutes()/60;
+      const futureH = ST.todayH.find(h => h.hour > nowH && (h.pvKw - (ST.consKw||0)) >= app.kw);
+      if (futureH) {
+        // Only send "wait" notification once per 60 min per appliance
+        const waitKey = 'wait_' + app.id;
+        const lastWait = ST._appNotif && ST._appNotif[waitKey] ? ST._appNotif[waitKey] : 0;
+        if (nowMin - lastWait < 60) return;
+        if (!ST._appNotif) ST._appNotif = {};
+        ST._appNotif[waitKey] = nowMin;
+        showNotification(
+          '⏰ ' + app.name + ' — wait until ' + futureH.hour + ':00',
+          app.name + ' needs ' + app.kw + ' kW. Current surplus ' + f(surplus,2) + ' kW.' +
+          ' Solar will reach ' + f(futureH.pvKw,2) + ' kW at ' + futureH.hour + ':00.',
+          'wait-' + app.id
+        );
+      }
+    } else if (surplus < 0 && fl.gridImport > 0.1) {
+      // Running on grid — suggest stopping this appliance
+      const stopKey = 'stop_' + app.id;
+      const lastStop = ST._appNotif && ST._appNotif[stopKey] ? ST._appNotif[stopKey] : 0;
+      if (nowMin - lastStop < 60) return;
+      if (!ST._appNotif) ST._appNotif = {};
+      ST._appNotif[stopKey] = nowMin;
+      showNotification(
+        '⚠️ Stop ' + app.name + ' — grid active',
+        'Solar dropped. ' + app.name + ' is now drawing ' + app.kw + ' kW from grid (' +
+        f(fl.gridImport,2) + ' kW import). Consider stopping it.',
+        'stop-' + app.id
+      );
+    }
+  });
 }
 
 function schedulemorningNotif() {
