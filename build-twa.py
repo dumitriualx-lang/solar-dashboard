@@ -186,12 +186,14 @@ public class MainActivity extends Activity {
                 final String finalError = error;
                 mainHandler.post(() -> {
                     if (finalResult != null) {
-                        String safe = finalResult.replace("\\", "\\\\").replace("'", "\\'");
+                        String b64 = android.util.Base64.encodeToString(
+                            finalResult.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                            android.util.Base64.NO_WRAP);
                         webView.evaluateJavascript(
-                            "window._androidHttpCallback('" + callbackId + "', '" + safe + "', null);", null);
+                            "window._androidHttpCallback('" + callbackId + "','" + b64 + "',null);", null);
                     } else {
                         webView.evaluateJavascript(
-                            "window._androidHttpCallback('" + callbackId + "', null, '" + finalError + "');", null);
+                            "window._androidHttpCallback('" + callbackId + "',null,'error');", null);
                     }
                 });
             }).start();
