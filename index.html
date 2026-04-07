@@ -323,7 +323,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
     <div class="cons-label">🏠 Home consumption — enter from FusionSolar</div>
     <div class="cons-row">
       <div class="cons-inp-wrap">
-        <input type="number" id="iCons" inputmode="decimal" value="0.48" min="0" max="20" step="0.01" oninput="onConsInput()">
+        <input type="number" id="iCons" inputmode="decimal" value="" min="0" max="20" step="0.01" placeholder="0.00" oninput="onConsInput()">
         <span class="cons-unit">kW</span>
       </div>
       <button class="log-btn" onclick="snap()">Log ↗</button>
@@ -528,10 +528,10 @@ let ST = {
   apiOk: false, lastFetch: null,
 
   // Battery — derived from energy balance, SOC evolves over time
-  battSoc: 84,
+  battSoc: savedCfg.battSoc || 50,
 
   // Consumption — only manual input
-  consKw: 0.48,
+  consKw: savedCfg.consKw || 0,
 
   // Grid accumulation — tracks today's export/import in kWh
   gridExportKwh: 0,
@@ -728,13 +728,13 @@ function wxIcon(code) {
 }
 
 function calcPV(poaWm2) {
-  // Convert POA irradiance to AC output kW for Huawei SUN2000-5KTL-M1
-  const tempC  = ST.wxTempC || 25;
-  const noct   = SYS.noct || 45;
-  const tCell  = tempC + (noct - 20) / 800 * poaWm2;
-  const tFactor = 1 - (SYS.tempCoeff || 0.0037) * Math.max(0, tCell - 25);
-  const dcKw   = SYS.panelKw * (poaWm2 / 1000) * tFactor;
-  return +Math.min(dcKw * (SYS.invEff || 0.984), SYS.acMax || 5).toFixed(3);
+  if (!SYS.panelKw || !poaWm2) return 0;
+  const tempC   = ST.wxTempC || 25;
+  const noct    = 45;
+  const tCell   = tempC + (noct - 20) / 800 * poaWm2;
+  const tFactor = 1 - 0.0037 * Math.max(0, tCell - 25);
+  const dcKw    = SYS.panelKw * (poaWm2 / 1000) * tFactor;
+  return +Math.min(dcKw * 0.984, SYS.acMax || 5).toFixed(3);
 }
 
 function processOpenMeteo(d) {
@@ -1019,10 +1019,11 @@ function fallbackEstimate() {
 function calcFlow() {
   // Huawei Luna 2000 accurate flow model
   // Priority: Solar → Home → Battery → Grid
-  // At reserve SOC: battery & grid share deficit; hard floor = zero battery
-  const pv      = ST.pvKw,  cons = ST.consKw, soc = ST.battSoc;
-  const resPct  = Math.round(SYS.battRes * 100);    // e.g. 10
-  const hardFlr = Math.max(1, Math.round(resPct / 2)); // e.g. 5
+  const pv      = ST.pvKw  || 0;
+  const cons    = ST.consKw || 0;
+  const soc     = ST.battSoc || 50;
+  const resPct  = Math.round((SYS.battRes || 0.1) * 100);
+  const hardFlr = Math.max(1, Math.round(resPct / 2));
 
   const s2h = Math.min(pv, cons);   // solar directly to home
   const pvS = pv - s2h;             // solar surplus after home
@@ -1079,8 +1080,8 @@ function evolveSoc() {
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
-const f = (v,d=2) => Number(v).toFixed(d);
-const stored = () => +(ST.battSoc/100*SYS.battUse).toFixed(3);
+const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
+const stored = () => SYS.battUse ? +(ST.battSoc/100 * SYS.battUse).toFixed(3) : 0;
 
 function updateClock() {
   const el = document.getElementById('clk');
@@ -1092,6 +1093,7 @@ function updateClock() {
 // ═══════════════════════════════════════════════════════════════
 function onConsInput() {
   ST.consKw = Math.max(0, parseFloat(document.getElementById('iCons').value)||0);
+  saveCfg({ ...loadCfg(), consKw: ST.consKw });
   renderMetrics(); renderBattery(); renderFlow(); renderAlerts();
 }
 
@@ -1792,6 +1794,7 @@ function initCfgInputs() {
   if (savedCfg.battGross) document.getElementById('cfgBatt').value  = savedCfg.battGross;
   if (savedCfg.battRes)   document.getElementById('cfgRes').value   = Math.round(savedCfg.battRes * 100);
   if (savedCfg.battSoc)   document.getElementById('cfgSoc').value   = Math.round(savedCfg.battSoc);
+  if (savedCfg.consKw)    document.getElementById('iCons').value    = savedCfg.consKw;
   updateUsableDisplay();
   updateSocDisplay();
 }
