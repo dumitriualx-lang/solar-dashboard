@@ -1188,14 +1188,14 @@ function renderMetrics() {
   const fl = calcFlow(), st = stored(), bkp = st/Math.max(0.01,ST.consKw);
   const sp = ST.consKw>0 ? Math.min(100,Math.round(fl.solar2home/ST.consKw*100)) : 0;
   document.getElementById('hdrPv').textContent   = '☀️ '+f(ST.pvKw,2)+' kW';
-  document.getElementById('hdrBatt').textContent = '🔋 '+Math.round(ST.battSoc)+'%';
+  document.getElementById('hdrBatt').textContent = '🔋 '+socToDisplay(ST.battSoc)+'%';
   document.getElementById('hdrWx').textContent   = '🌡️ '+f(ST.wxTempC,0)+'°C';
   document.getElementById('hdrGrid').textContent = fl.gridExport>0.01?'⚡ +'+f(fl.gridExport,2)+' kW':fl.gridImport>0.01?'⚡ −'+f(fl.gridImport,2)+' kW':'⚡ grid off';
   document.getElementById('liveTag').textContent = fl.battFlow>0.01?'Charging':fl.battFlow<-0.01?'Discharging':'Live';
   const data = [
     {v:f(ST.pvKw,2)+' kW', s:Math.round(ST.irrWm2)+' W/m² · DC '+f(ST.pvKw/SYS.invEff,3)+' kW · '+f(ST.pvKw/SYS.acMax*100,0)+'% of '+f(SYS.acMax,2)+'kW AC max · temp factor '+f(ST.tempFactor*100,0)+'%', c:ST.pvKw>SYS.acMax*0.4?'cg':ST.pvKw>0.1?'ca':''},
     {v:f(ST.consKw,2)+' kW', s:sp+'% solar'+(fl.batt2home>0.01?' + '+f(fl.batt2home,2)+' batt':'')+(fl.gridImport>0.01?' + '+f(fl.gridImport,2)+' grid':''), c:''},
-    {v:(fl.battFlow>=0?'+':'')+f(fl.battFlow,2)+' kW', s:f(st,2)+' kWh stored · SOC '+Math.round(ST.battSoc)+'%', c:fl.battFlow>0.01?'cb':fl.battFlow<-0.01?'ca':''},
+    {v:(fl.battFlow>=0?'+':'')+f(fl.battFlow,2)+' kW', s:f(st,2)+' kWh stored · SOC '+socToDisplay(ST.battSoc)+'%', c:fl.battFlow>0.01?'cb':fl.battFlow<-0.01?'ca':''},
     {v:(fl.gridExport>0.01?'+':fl.gridImport>0.01?'−':'')+f(Math.max(fl.gridExport,fl.gridImport),2)+' kW', s:fl.gridExport>0.01?'feed-in / exporting':fl.gridImport>0.01?'importing from grid':'not used · self-sufficient', c:fl.gridExport>0.01?'cg':fl.gridImport>0.01?'cr':''},
   ];
   data.forEach((d,i)=>{
@@ -1238,7 +1238,7 @@ function renderIrr() {
 // RENDER — BATTERY
 // ═══════════════════════════════════════════════════════════════
 function renderBattery() {
-  const fl  = calcFlow(), soc = Math.round(ST.battSoc), st = stored();
+  const fl  = calcFlow(), soc = Math.round(ST.battSoc), st = stored(), dispSoc = socToDisplay(ST.battSoc);
   const chr = fl.battFlow > 0.01, dis = fl.battFlow < -0.01;
   const bkp = f(st / Math.max(0.01, ST.consKw), 1);
   const col = soc > 60 ? '#1D9E75' : soc > 30 ? '#BA7517' : '#A32D2D';
@@ -1251,7 +1251,7 @@ function renderBattery() {
   if (brandLabel) brandLabel.textContent = battSpec ? battSpec.name : 'Battery';
 
   // Compact strip elements
-  document.getElementById('bPct').textContent = socToDisplay(soc) + '%';
+  document.getElementById('bPct').textContent = dispSoc + '%';
   document.getElementById('bPct').style.color = col;
   document.getElementById('battKwhLbl').textContent = f(st,2) + ' / ' + f(SYS.battUse,1) + ' kWh';
   document.getElementById('battBackupLbl').textContent = bkp + 'h backup';
@@ -1260,7 +1260,7 @@ function renderBattery() {
 
   // Progress bar width = soc%, reserve floor shown via 10% left gap
   const fillEl = document.getElementById('bFill');
-  fillEl.style.width = Math.max(socToDisplay(soc), 3) + '%';
+  fillEl.style.width = Math.max(+dispSoc, 3) + '%';
   fillEl.style.background = col;
 
   // Pill
@@ -1300,7 +1300,7 @@ function renderFlow() {
     '<div class="fsub">'+f(fl.solar2home,2)+' solar'+(fl.batt2home>0.005?' +'+f(fl.batt2home,2)+' batt':'')+'</div></div>'+
     '<div class="fnode" style="border-color:'+bc+'55"><div class="fic">🔋</div><div class="flb">'+(document.getElementById('cfgBattBrand')&&BATT_BRANDS[document.getElementById('cfgBattBrand').value]?BATT_BRANDS[document.getElementById('cfgBattBrand').value].name:'Battery')+'</div>'+
     '<div class="fvl" style="color:'+bc+'">'+(fl.battFlow>=0?'+':'')+f(fl.battFlow,2)+' kW</div>'+
-    '<div class="fsub">'+Math.round(ST.battSoc)+'% · '+f(stored(),2)+' kWh</div></div>'+
+    '<div class="fsub">'+socToDisplay(ST.battSoc)+'% · '+f(stored(),2)+' kWh'+(fl.solar2batt>0.01?' · ⚡charging':fl.batt2home>0.01?' · ↓discharging':' · idle')+'</div></div>'+
     '</div><div style="display:flex;gap:6px;align-items:center">'+arr(gk,gc,gr)+
     '<div class="fnode" style="flex:1;border-color:'+gc+'55"><div class="fic">⚡</div><div class="flb">Grid</div>'+
     '<div class="fvl" style="color:'+gc+'">'+(fl.gridExport>0.01?'+'+f(fl.gridExport,2):fl.gridImport>0.01?'−'+f(fl.gridImport,2):'0.00')+' kW</div>'+
