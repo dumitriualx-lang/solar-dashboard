@@ -647,10 +647,9 @@ async function reverseGeocode(lat, lon) {
 // ═══════════════════════════════════════════════════════════════
 async function fetchWeather() {
   if (!ST.lat || !ST.lon) {
-    setApi('load', '⏳ Waiting for GPS location...');
-    return;
+    setApi('load', '⏳ Waiting for GPS location...'); return;
   }
-  setApi('load', '⏳ Fetching weather & irradiance...');
+  setApi('load', '⏳ Fetching weather...');
   try {
     const u = 'https://api.open-meteo.com/v1/forecast?'
       + 'latitude='  + f(ST.lat,4)
@@ -660,18 +659,33 @@ async function fetchWeather() {
       + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
       + '&timezone=auto&forecast_days=7';
 
-    // Normal fetch() — intercepted by Java shouldInterceptRequest on Android
-    const r = await fetch(u);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
+    let raw;
+    if (window.AppBridge && window.AppBridge.fetchWeather) {
+      // Android native fetch via AppBridge
+      raw = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('timeout')), 30000);
+        window.__nativeWeatherResult = function(b64) {
+          clearTimeout(timer);
+          delete window.__nativeWeatherResult;
+          try { resolve(atob(b64)); }
+          catch(e) { reject(new Error('decode failed')); }
+        };
+        window.AppBridge.fetchWeather(u);
+      });
+      if (!raw || raw === 'null') throw new Error('empty response');
+    } else {
+      const r = await fetch(u);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      raw = await r.text();
+    }
 
+    const d = JSON.parse(raw);
     processOpenMeteo(d);
     ST.apiOk = true; ST.lastFetch = new Date();
     setApi('ok', '✅ Weather loaded · ' + ST.locName + ' · '
       + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
       + ' · refreshes every 15 min');
-    scheduleNotifications();
-    schedulePeakAlerts();
+    scheduleNotifications(); schedulePeakAlerts();
   } catch(e) {
     ST.apiOk = false;
     setApi('err', '⚠️ ' + e.message
@@ -1491,13 +1505,13 @@ let scheduledNotifTimers = [];
 
 async function requestNotifPermission() {
   // Android WebView native notifications
-  if (window.NativeBridge && window.NativeBridge.show) {
-    if (window.NativeBridge.granted && window.NativeBridge.granted()) {
+  if (window.AppBridge && window.AppBridge.showNotif) {
+    if (window.NativeBridge.granted && window.AppBridge.notifGranted()) {
       setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
       saveCfg({ ...loadCfg(), notifEnabled: true });
       scheduleNotifications();
     } else {
-      if (window.AndroidBridge.requestNotifications) window.NativeBridge.request();
+      if (window.AndroidBridge.requestNotifications) window.AppBridge.requestNotif();
       setNotifBar('ok', '🔔 Allow notifications in the system prompt · then tap Enable again');
     }
     return;
@@ -1534,7 +1548,7 @@ function setNotifBar(type, msg) {
 
 function testNotifications() {
   // Fire both notification types immediately (bypasses debounce) for testing
-  const hasAndroid = window.NativeBridge && window.NativeBridge.show;
+  const hasAndroid = window.AppBridge && window.AppBridge.showNotif;
   if (!hasAndroid && (typeof Notification === 'undefined' || Notification.permission !== 'granted')) {
     alert('Notifications not enabled. Tap Enable first.');
     return;
@@ -1579,8 +1593,8 @@ function testNotifications() {
 
 function initNotifBar() {
   // Android WebView native notifications
-  if (window.NativeBridge && window.NativeBridge.show) {
-    if (window.NativeBridge.granted && window.NativeBridge.granted()) {
+  if (window.AppBridge && window.AppBridge.showNotif) {
+    if (window.NativeBridge.granted && window.AppBridge.notifGranted()) {
       setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
       saveCfg({ ...loadCfg(), notifEnabled: true });
       scheduleNotifications();
@@ -1706,8 +1720,8 @@ function schedulemorningNotif() {
 
 function showNotification(title, body, tag) {
   // Use native Android notification bridge if available
-  if (window.NativeBridge && window.NativeBridge.show) {
-    window.NativeBridge.show(title, body);
+  if (window.AppBridge && window.AppBridge.showNotif) {
+    window.AppBridge.showNotif(title, body);
     return;
   }
   if ((typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
