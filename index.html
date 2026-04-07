@@ -1176,7 +1176,7 @@ function evolveSoc() {
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
 const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
-const stored = () => +((ST.battSoc/100) * (SYS.battUse || 4.5)).toFixed(3);
+const stored = () => SYS.battUse ? +((ST.battSoc/100) * SYS.battUse).toFixed(3) : 0;
 
 function updateClock() {
   const el = document.getElementById('clk');
