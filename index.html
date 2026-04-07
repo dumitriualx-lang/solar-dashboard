@@ -697,6 +697,36 @@ async function fetchWeather() {
   renderAll();
 }
 
+function wxLabel(code) {
+  if (code === 0) return 'Clear sky';
+  if (code <= 3) return 'Partly cloudy';
+  if (code <= 9) return 'Cloudy';
+  if (code <= 19) return 'Foggy';
+  if (code <= 29) return 'Drizzle';
+  if (code <= 39) return 'Rain';
+  if (code <= 49) return 'Snow';
+  if (code <= 59) return 'Rain showers';
+  if (code <= 69) return 'Snow showers';
+  if (code <= 79) return 'Hail';
+  if (code <= 84) return 'Rain showers';
+  if (code <= 94) return 'Thunderstorm';
+  return 'Thunderstorm';
+}
+
+function wxIcon(code) {
+  if (code === 0) return '☀️';
+  if (code <= 2) return '🌤️';
+  if (code <= 3) return '☁️';
+  if (code <= 9) return '🌫️';
+  if (code <= 19) return '🌫️';
+  if (code <= 49) return '🌧️';
+  if (code <= 59) return '🌦️';
+  if (code <= 69) return '❄️';
+  if (code <= 79) return '🌨️';
+  if (code <= 84) return '🌦️';
+  return '⛈️';
+}
+
 function processOpenMeteo(d) {
   const cur = d.current || {};
   ST.irrWm2    = +(cur.direct_radiation || 0);
@@ -1594,9 +1624,9 @@ function testNotifications() {
 }
 
 function initNotifBar() {
-  // Android WebView native notifications
+  // Android native notifications via AppBridge
   if (window.AppBridge && window.AppBridge.showNotif) {
-    if (window.NativeBridge.granted && window.AppBridge.notifGranted()) {
+    if (window.AppBridge.notifGranted && window.AppBridge.notifGranted()) {
       setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
       saveCfg({ ...loadCfg(), notifEnabled: true });
       scheduleNotifications();
@@ -1607,14 +1637,14 @@ function initNotifBar() {
   }
   // Browser / PWA
   try {
-    if ((typeof Notification === 'undefined' || !('Notification' in window))) {
+    if (typeof Notification === 'undefined') {
       setNotifBar('off', '📱 For notifications install as PWA from Chrome browser.');
       return;
     }
-    if ((typeof Notification !== 'undefined' && Notification.permission === 'granted')) {
+    if (Notification.permission === 'granted') {
       setNotifBar('ok', '🔔 Notifications active · alerts scheduled around peak solar windows');
       scheduleNotifications();
-    } else if ((typeof Notification !== 'undefined' && Notification.permission === 'denied')) {
+    } else if (Notification.permission === 'denied') {
       setNotifBar('off', '🔕 Notifications blocked — enable in browser/phone settings');
     } else {
       setNotifBar('req', '🔔 Enable notifications to get alerts when it\'s best to run large appliances');
