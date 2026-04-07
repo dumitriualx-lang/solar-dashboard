@@ -33,7 +33,15 @@ rootProject.name = "SolarDashboard"
 include ":app"
 """)
 
-write(os.path.join(ROOT, "build.gradle"), "// Top-level build file\n")
+write(os.path.join(ROOT, "build.gradle"), """// Top-level build file
+configurations.all {
+    resolutionStrategy {
+        force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
+        force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22"
+        force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22"
+    }
+}
+""")
 
 write(os.path.join(ROOT, "gradle.properties"), """android.useAndroidX=true
 android.enableJetifier=true
@@ -76,7 +84,7 @@ android {
 dependencies {
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "androidx.webkit:webkit:1.8.0"
-    implementation "androidx.core:core:1.12.0"
+    implementation "androidx.core:core:1.10.1"
 }
 """ % (PKG, PKG, KEYSTORE))
 
