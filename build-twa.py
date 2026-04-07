@@ -146,60 +146,52 @@ import java.net.URL;
 public class MainActivity extends Activity {
     private WebView webView;
     private Handler mainHandler;
-    private static final String URL = "https://dumitriualx-lang.github.io/solar-dashboard/";
+    private static final String APP_URL = "https://dumitriualx-lang.github.io/solar-dashboard/";
     private static final String CHANNEL_ID = "solar_alerts";
-    private static final String CHANNEL_NAME = "Solar Alerts";
     private int notifId = 1;
 
-    // JavaScript bridge — called from the web page
-    public class SolarBridge {
-        // Native HTTP fetch — runs in background thread, calls back to JS
-        @JavascriptInterface
-        public void httpGetAsync(String urlStr, String callbackId) {
-            new Thread(() -> {
-                String result = null;
-                String error = null;
-                try {
-                    URL url = new URL(urlStr);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    conn.setConnectTimeout(15000);
-                    conn.setReadTimeout(20000);
-                    conn.setRequestProperty("Accept", "application/json");
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)");
-                    int code = conn.getResponseCode();
-                    if (code == 200) {
-                        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                        StringBuilder sb = new StringBuilder();
-                        String line;
-                        while ((line = br.readLine()) != null) sb.append(line);
-                        br.close();
-                        result = sb.toString();
-                    } else {
-                        error = "HTTP " + code;
-                    }
-                    conn.disconnect();
-                } catch (Exception e) {
-                    error = e.getMessage();
+    // Fetch URL in background thread, return result to JS callback
+    private void fetchUrl(String urlStr, String jsCallback) {
+        new Thread(() -> {
+            String result = null;
+            try {
+                URL url = new URL(urlStr);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(20000);
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)");
+                if (conn.getResponseCode() == 200) {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) sb.append(line);
+                    br.close();
+                    result = sb.toString();
                 }
-                final String finalResult = result;
-                final String finalError = error;
-                mainHandler.post(() -> {
-                    if (finalResult != null) {
-                        String b64 = android.util.Base64.encodeToString(
-                            finalResult.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                            android.util.Base64.NO_WRAP);
-                        webView.evaluateJavascript(
-                            "window._androidHttpCallback('" + callbackId + "','" + b64 + "',null);", null);
-                    } else {
-                        webView.evaluateJavascript(
-                            "window._androidHttpCallback('" + callbackId + "',null,'error');", null);
-                    }
-                });
-            }).start();
+                conn.disconnect();
+            } catch (Exception e) { result = null; }
+            final String b64 = result != null ?
+                android.util.Base64.encodeToString(
+                    result.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    android.util.Base64.NO_WRAP) : null;
+            mainHandler.post(() -> {
+                String js = b64 != null
+                    ? jsCallback + "('" + b64 + "', null);"
+                    : jsCallback + "(null, 'fetch_failed');";
+                webView.evaluateJavascript(js, null);
+            });
+        }).start();
+    }
+
+    // JavaScript bridge
+    public class SolarBridge {
+        @JavascriptInterface
+        public void fetchData(String urlStr, String callbackFn) {
+            fetchUrl(urlStr, callbackFn);
         }
 
-        // Show native Android notification
         @JavascriptInterface
         public void showNotification(String title, String body, String tag) {
             mainHandler.post(() -> {
@@ -216,19 +208,17 @@ public class MainActivity extends Activity {
                 PendingIntent pi = PendingIntent.getActivity(MainActivity.this, 0, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
                 builder.setContentIntent(pi);
-                NotificationManagerCompat nm = NotificationManagerCompat.from(MainActivity.this);
-                try { nm.notify(notifId++, builder.build()); } catch (Exception ignored) {}
+                try {
+                    NotificationManagerCompat.from(MainActivity.this).notify(notifId++, builder.build());
+                } catch (Exception ignored) {}
             });
         }
 
-        // Check if notifications are granted
         @JavascriptInterface
         public boolean notificationsGranted() {
-            NotificationManagerCompat nm = NotificationManagerCompat.from(MainActivity.this);
-            return nm.areNotificationsEnabled();
+            return NotificationManagerCompat.from(MainActivity.this).areNotificationsEnabled();
         }
 
-        // Request notification permission (Android 13+)
         @JavascriptInterface
         public void requestNotifications() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -239,13 +229,12 @@ public class MainActivity extends Activity {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH);
-            channel.setDescription("Solar production alerts");
-            channel.enableLights(true);
-            channel.setLightColor(Color.parseColor("#1D9E75"));
-            NotificationManager nm = getSystemService(NotificationManager.class);
-            nm.createNotificationChannel(channel);
+            NotificationChannel ch = new NotificationChannel(
+                CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
+            ch.setDescription("Solar production alerts");
+            ch.enableLights(true);
+            ch.setLightColor(Color.parseColor("#1D9E75"));
+            ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(ch);
         }
     }
 
@@ -256,37 +245,36 @@ public class MainActivity extends Activity {
         createNotificationChannel();
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-        );
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
         webView = new WebView(this);
         webView.setBackgroundColor(Color.parseColor("#1D9E75"));
         setContentView(webView);
 
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setGeolocationEnabled(true);
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-        settings.setBuiltInZoomControls(false);
-        settings.setDisplayZoomControls(false);
-        settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        WebSettings s = webView.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setDatabaseEnabled(true);
+        s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        s.setGeolocationEnabled(true);
+        s.setAllowFileAccess(true);
+        s.setAllowContentAccess(true);
+        s.setLoadWithOverviewMode(true);
+        s.setUseWideViewPort(true);
+        s.setBuiltInZoomControls(false);
+        s.setDisplayZoomControls(false);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        s.setJavaScriptCanOpenWindowsAutomatically(false);
 
-        // Add JavaScript bridge
-        webView.addJavascriptInterface(new SolarBridge(), "Android");
+        // Register bridge BEFORE loading URL
+        SolarBridge bridge = new SolarBridge();
+        webView.addJavascriptInterface(bridge, "AndroidBridge");
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
-            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                callback.invoke(origin, true, false);
+            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback cb) {
+                cb.invoke(origin, true, false);
             }
             @Override
             public void onPermissionRequest(android.webkit.PermissionRequest request) {
@@ -297,20 +285,14 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                String url = request.getUrl().toString();
-                if (url.startsWith("https://dumitriualx-lang.github.io") ||
-                    url.startsWith("https://api.forecast.solar") ||
-                    url.startsWith("https://nominatim.openstreetmap.org")) {
-                    return false;
-                }
-                return true;
+                return false; // allow all URLs to load in WebView
             }
         });
 
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
-            webView.loadUrl(URL);
+            webView.loadUrl(APP_URL);
         }
     }
 
@@ -322,14 +304,12 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
-        }
+        if (webView.canGoBack()) webView.goBack();
+        else super.onBackPressed();
     }
 }
 """)
+
 
 
 write(os.path.join(RES, "values", "strings.xml"), """<?xml version="1.0" encoding="utf-8"?>
