@@ -175,8 +175,10 @@ public class MainActivity extends Activity {
                 return sb.toString();
             }
             conn.disconnect();
-        } catch (Exception e) { /* ignore */ }
-        return null;
+            return "HTTP_ERROR_" + code;
+        } catch (Exception e) {
+            return "JAVA_ERROR_" + e.getClass().getSimpleName() + "_" + e.getMessage();
+        }
     }
 
     public class AppBridge {
@@ -185,10 +187,9 @@ public class MainActivity extends Activity {
         public void fetchWeather(String urlStr) {
             new Thread(() -> {
                 String result = httpGet(urlStr);
-                final String json = (result != null) ? result : "null";
-                // Escape for JS injection
+                if (result == null) result = "NULL_RESULT";
                 final String escaped = android.util.Base64.encodeToString(
-                    json.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    result.getBytes(java.nio.charset.StandardCharsets.UTF_8),
                     android.util.Base64.NO_WRAP);
                 mainHandler.post(() ->
                     webView.evaluateJavascript(
