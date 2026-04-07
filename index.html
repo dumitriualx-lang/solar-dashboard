@@ -754,27 +754,45 @@ function calcPV(poaWm2) {
 
 function processOpenMeteo(d) {
   const cur = d.current || {};
-  // shortwave_radiation = true GHI (direct_radiation = beam on horizontal only)
-  const ghi = +(cur.shortwave_radiation || (+(cur.direct_radiation||0) + +(cur.diffuse_radiation||0)) || 0);
+  const hr  = d.hourly  || {};
+
+  // Use current-hour HOURLY irradiance — more accurate than backward-averaged 'current' field
+  const now      = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  const curH     = now.getHours();
+  // Find the hourly index matching the current hour
+  let curIdx = -1;
+  (hr.time || []).forEach((t, i) => {
+    const tH = parseInt(t.slice(11,13));
+    const tD = t.slice(0,10);
+    if (tD === todayStr && tH === curH) curIdx = i;
+  });
+
+  // Prefer hourly data for current hour (point estimate), fall back to current field
+  const ghi = curIdx >= 0
+    ? +(hr.shortwave_radiation?.[curIdx] || 0)
+    : +(cur.shortwave_radiation || (+(cur.direct_radiation||0) + +(cur.diffuse_radiation||0)) || 0);
+  const dni = curIdx >= 0
+    ? +(hr.direct_normal_irradiance?.[curIdx] || ghi * 0.85)
+    : +(cur.direct_normal_irradiance || ghi * 0.85);
+  const dhi = curIdx >= 0
+    ? +(hr.diffuse_radiation?.[curIdx] || ghi * 0.15)
+    : +(cur.diffuse_radiation || ghi * 0.15);
+
   ST.irrWm2    = ghi;
   ST.wxTempC   = +(cur.temperature_2m  || 15);
   ST.cloudCover= +(cur.cloud_cover     || 0);
   ST.wxCond    = wxLabel(cur.weathercode || 0);
   ST.wxIcon    = wxIcon(cur.weathercode  || 0);
 
-  // POA irradiance → PV output using correct irradiance components
-  const dni = +(cur.direct_normal_irradiance || ghi * 0.85);
-  const dhi = +(cur.diffuse_radiation || ghi * 0.15);
+  // POA irradiance → PV output
   ST.poaWm2    = calcPOA(dni, dhi, ghi, SYS.tiltDeg || 30, 180);
   ST.pvKw      = calcPV(ST.poaWm2);
   ST.cfGHI     = Math.max(0, 1 - 0.75 * Math.pow((ST.cloudCover/100), 3.4));
   ST.tempFactor = 1 - SYS.tempCoeff * Math.max(0, ST.wxTempC + (ST.poaWm2/800)*25 - 25);
 
   // Build todayH from hourly
-  const hr = d.hourly || {};
   ST.todayH = [];
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0,10);
   (hr.time || []).forEach((t, i) => {
     if (!t.startsWith(todayStr)) return;
     const h = parseInt(t.slice(11,13));
@@ -787,7 +805,7 @@ function processOpenMeteo(d) {
       SYS.tiltDeg || 30, 180
     ));
     ST.todayH.push({ hour: h, pvKw,
-      ghi: hr.direct_radiation?.[i] || 0,
+      ghi: ghi_h,
       dni: hr.direct_normal_irradiance?.[i] || 0,
       dhi: hr.diffuse_radiation?.[i] || 0
     });
@@ -800,14 +818,13 @@ function processOpenMeteo(d) {
     const dt      = new Date(dateStr + 'T12:00:00');
     const dayName = i===0 ? 'Today' : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()];
     const code    = day.weathercode?.[i] || 0;
-    // Estimate daily yield from hourly data for today, otherwise model it
     let yieldKwh = 0;
     if (i === 0 && ST.todayH.length) {
       yieldKwh = +ST.todayH.reduce((s,h) => s + h.pvKw, 0).toFixed(2);
     } else {
       const rain = day.precipitation_probability_max?.[i] || 0;
       const cf   = Math.max(0, 1 - 0.75 * Math.pow(rain/100, 3.4));
-      yieldKwh   = +(SYS.panelKw * 5 * cf).toFixed(2); // ~5 peak sun hours
+      yieldKwh   = +(SYS.panelKw * 5 * cf).toFixed(2);
     }
     FORECAST.push({
       d: dayName, yieldKwh,
