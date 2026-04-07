@@ -354,7 +354,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:18px">🔋</span>
         <div>
-          <div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em" id="battBrandLabel">Luna 2000 CO</div>
+          <div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em" id="battBrandLabel">--</div>
           <div style="display:flex;align-items:baseline;gap:6px;margin-top:1px">
             <span style="font-size:20px;font-weight:700;color:var(--tx)" id="bPct">--%</span>
             <span style="font-size:11px;color:var(--t2)" id="battKwhLbl">-- kWh</span>
@@ -508,6 +508,8 @@ const SYS = {
   get battMaxC() { return this._battMaxC; },
   get battMaxD() { return this._battMaxD; },
   get acMax()    { return this.panelKw ? +(this.panelKw * this.invEff * this.dcLoss).toFixed(3) : 5; },
+  tempCoeff: 0.0037,   // %/°C power loss above 25°C (standard silicon panels)
+  noct:      45,       // Nominal Operating Cell Temperature °C
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -728,13 +730,13 @@ function wxIcon(code) {
 }
 
 function calcPV(poaWm2) {
-  if (!SYS.panelKw || !poaWm2) return 0;
-  const tempC   = ST.wxTempC || 25;
-  const noct    = 45;
-  const tCell   = tempC + (noct - 20) / 800 * poaWm2;
-  const tFactor = 1 - 0.0037 * Math.max(0, tCell - 25);
-  const dcKw    = SYS.panelKw * (poaWm2 / 1000) * tFactor;
-  return +Math.min(dcKw * 0.984, SYS.acMax || 5).toFixed(3);
+  if (!poaWm2) return 0;
+  const pkw     = SYS.panelKw || 5;   // use 5kW estimate if not configured
+  const tempC   = ST.wxTempC  || 25;
+  const tCell   = tempC + (SYS.noct - 20) / 800 * poaWm2;
+  const tFactor = 1 - SYS.tempCoeff * Math.max(0, tCell - 25);
+  const dcKw    = pkw * (poaWm2 / 1000) * tFactor;
+  return +Math.min(dcKw * SYS.invEff, SYS.acMax || pkw * SYS.invEff).toFixed(3);
 }
 
 function processOpenMeteo(d) {
@@ -1813,10 +1815,10 @@ function onCfgChange() {
 }
 
 function updateUsableDisplay() {
-  const gross = parseFloat(document.getElementById('cfgBatt').value) || SYS.battGross;
-  const res   = (parseFloat(document.getElementById('cfgRes').value)  || 10) / 100;
-  const usable = +(gross * (1 - res)).toFixed(2);
-  document.getElementById('cfgUsable').value = usable;
+  const gross  = parseFloat(document.getElementById('cfgBatt').value) || SYS.battGross || 0;
+  const res    = (parseFloat(document.getElementById('cfgRes').value) || Math.round((SYS.battRes||0.1)*100)) / 100;
+  const usable = gross ? +(gross * (1 - res)).toFixed(2) : '';
+  document.getElementById('cfgUsable').value = usable || '';
 }
 
 function saveCfgAndApply() {
