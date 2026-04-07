@@ -141,6 +141,7 @@ import androidx.core.app.NotificationManagerCompat;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import javax.net.ssl.HttpsURLConnection;
 import java.net.URL;
 
 public class MainActivity extends Activity {
@@ -156,19 +157,27 @@ public class MainActivity extends Activity {
             String result = null;
             try {
                 URL url = new URL(urlStr);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                javax.net.ssl.HttpsURLConnection conn =
+                    (javax.net.ssl.HttpsURLConnection) url.openConnection();
                 conn.setRequestMethod("GET");
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(20000);
+                conn.setConnectTimeout(20000);
+                conn.setReadTimeout(25000);
+                conn.setInstanceFollowRedirects(true);
                 conn.setRequestProperty("Accept", "application/json");
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)");
-                if (conn.getResponseCode() == 200) {
-                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile)");
+                conn.setRequestProperty("Accept-Encoding", "identity");
+                conn.connect();
+                int code = conn.getResponseCode();
+                if (code == 200) {
+                    BufferedReader br = new BufferedReader(
+                        new InputStreamReader(conn.getInputStream(), "UTF-8"));
                     StringBuilder sb = new StringBuilder();
                     String line;
                     while ((line = br.readLine()) != null) sb.append(line);
                     br.close();
                     result = sb.toString();
+                } else {
+                    result = null;
                 }
                 conn.disconnect();
             } catch (Exception e) { result = null; }
