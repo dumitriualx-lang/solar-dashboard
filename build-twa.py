@@ -133,7 +133,6 @@ import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -141,12 +140,11 @@ import android.view.Window;
 import android.view.WindowManager;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
-import java.io.ByteArrayInputStream;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
     private WebView webView;
@@ -155,8 +153,7 @@ public class MainActivity extends Activity {
     private static final String CHANNEL_ID = "solar_alerts";
     private int notifId = 1;
 
-    // Perform native HTTP GET and return response bytes
-    private byte[] nativeGet(String urlStr) {
+    private String httpGet(String urlStr) {
         try {
             URL url = new URL(urlStr);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -164,52 +161,72 @@ public class MainActivity extends Activity {
             conn.setConnectTimeout(20000);
             conn.setReadTimeout(20000);
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)");
-            conn.setRequestProperty("Accept", "application/json, */*");
+            conn.setRequestProperty("Accept", "application/json");
             conn.setInstanceFollowRedirects(true);
             int code = conn.getResponseCode();
             if (code == 200) {
-                java.io.InputStream is = conn.getInputStream();
-                byte[] buf = new byte[4096];
-                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
-                int n;
-                while ((n = is.read(buf)) != -1) bos.write(buf, 0, n);
+                BufferedReader br = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
                 conn.disconnect();
-                return bos.toByteArray();
+                return sb.toString();
             }
             conn.disconnect();
         } catch (Exception e) { /* ignore */ }
         return null;
     }
 
-    // Notification bridge
-    public class NotifBridge {
+    public class AppBridge {
+        // Called from JS to fetch weather - runs HTTP in background, injects result back
         @JavascriptInterface
-        public void show(String title, String body) {
+        public void fetchWeather(String urlStr) {
+            new Thread(() -> {
+                String result = httpGet(urlStr);
+                final String json = (result != null) ? result : "null";
+                // Escape for JS injection
+                final String escaped = android.util.Base64.encodeToString(
+                    json.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    android.util.Base64.NO_WRAP);
+                mainHandler.post(() ->
+                    webView.evaluateJavascript(
+                        "window.__nativeWeatherResult('" + escaped + "');", null));
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void showNotif(String title, String body) {
             mainHandler.post(() -> {
-                NotificationCompat.Builder b = new NotificationCompat.Builder(MainActivity.this, CHANNEL_ID)
+                NotificationCompat.Builder b = new NotificationCompat.Builder(
+                    MainActivity.this, CHANNEL_ID)
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
                     .setContentTitle(title).setContentText(body)
                     .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setAutoCancel(true).setColor(Color.parseColor("#1D9E75"));
+                    .setAutoCancel(true)
+                    .setColor(Color.parseColor("#1D9E75"));
                 Intent i = new Intent(MainActivity.this, MainActivity.class);
                 i.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 b.setContentIntent(PendingIntent.getActivity(MainActivity.this, 0, i,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
-                try { NotificationManagerCompat.from(MainActivity.this).notify(notifId++, b.build()); }
-                catch (Exception ignored) {}
+                try {
+                    NotificationManagerCompat.from(MainActivity.this).notify(notifId++, b.build());
+                } catch (Exception ignored) {}
             });
         }
 
         @JavascriptInterface
-        public boolean granted() {
+        public boolean notifGranted() {
             return NotificationManagerCompat.from(MainActivity.this).areNotificationsEnabled();
         }
 
         @JavascriptInterface
-        public void request() {
+        public void requestNotif() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
+                requestPermissions(
+                    new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
         }
     }
 
@@ -249,10 +266,8 @@ public class MainActivity extends Activity {
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        s.setCacheMode(WebSettings.LOAD_DEFAULT);
 
-        // Register notification bridge
-        webView.addJavascriptInterface(new NotifBridge(), "NativeBridge");
+        webView.addJavascriptInterface(new AppBridge(), "AppBridge");
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -268,31 +283,6 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 return false;
-            }
-
-            // KEY FIX: intercept API calls and serve them via native Java HTTP
-            @Override
-            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                String url = request.getUrl().toString();
-                // Only intercept Open-Meteo API calls
-                if (url.contains("api.open-meteo.com") || url.contains("api.forecast.solar")) {
-                    byte[] data = nativeGet(url);
-                    if (data != null) {
-                        return new WebResourceResponse(
-                            "application/json", "UTF-8", 200, "OK",
-                            new java.util.HashMap<String, String>() {{
-                                put("Access-Control-Allow-Origin", "*");
-                                put("Content-Type", "application/json; charset=UTF-8");
-                            }},
-                            new ByteArrayInputStream(data)
-                        );
-                    }
-                    // Return empty error response
-                    return new WebResourceResponse("application/json", "UTF-8", 503,
-                        "Service Unavailable", new java.util.HashMap<>(),
-                        new ByteArrayInputStream("{}".getBytes()));
-                }
-                return null; // let WebView handle everything else normally
             }
         });
 
@@ -313,6 +303,7 @@ public class MainActivity extends Activity {
     }
 }
 """)
+
 
 
 
