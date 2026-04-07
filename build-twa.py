@@ -299,7 +299,7 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 if (url.startsWith("https://dumitriualx-lang.github.io") ||
-                    url.startsWith("https://api.open-meteo.com") ||
+                    url.startsWith("https://api.forecast.solar") ||
                     url.startsWith("https://nominatim.openstreetmap.org")) {
                     return false;
                 }
