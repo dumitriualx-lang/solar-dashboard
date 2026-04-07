@@ -99,7 +99,9 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.NoTitleBar"
         android:allowBackup="true"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -141,7 +143,6 @@ import androidx.core.app.NotificationManagerCompat;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import javax.net.ssl.HttpsURLConnection;
 import java.net.URL;
 
 public class MainActivity extends Activity {
@@ -155,40 +156,49 @@ public class MainActivity extends Activity {
     private void fetchUrl(String urlStr, String jsCallback) {
         new Thread(() -> {
             String result = null;
+            String errorMsg = "unknown";
             try {
-                URL url = new URL(urlStr);
-                javax.net.ssl.HttpsURLConnection conn =
-                    (javax.net.ssl.HttpsURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(20000);
-                conn.setReadTimeout(25000);
-                conn.setInstanceFollowRedirects(true);
-                conn.setRequestProperty("Accept", "application/json");
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile)");
-                conn.setRequestProperty("Accept-Encoding", "identity");
-                conn.connect();
-                int code = conn.getResponseCode();
-                if (code == 200) {
-                    BufferedReader br = new BufferedReader(
-                        new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                java.net.URL url = new java.net.URL(urlStr);
+                java.net.URLConnection rawConn = url.openConnection();
+                rawConn.setConnectTimeout(20000);
+                rawConn.setReadTimeout(25000);
+                rawConn.setRequestProperty("Accept", "application/json");
+                rawConn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                rawConn.setRequestProperty("Accept-Encoding", "identity");
+                rawConn.connect();
+                java.io.InputStream is;
+                if (rawConn instanceof java.net.HttpURLConnection) {
+                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) rawConn;
+                    int code = conn.getResponseCode();
+                    errorMsg = "HTTP " + code;
+                    if (code == 200) {
+                        is = conn.getInputStream();
+                    } else {
+                        is = null;
+                    }
+                } else {
+                    is = rawConn.getInputStream();
+                }
+                if (is != null) {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
                     StringBuilder sb = new StringBuilder();
                     String line;
                     while ((line = br.readLine()) != null) sb.append(line);
                     br.close();
                     result = sb.toString();
-                } else {
-                    result = null;
                 }
-                conn.disconnect();
-            } catch (Exception e) { result = null; }
+            } catch (Exception e) {
+                errorMsg = e.getClass().getSimpleName() + ": " + e.getMessage();
+            }
             final String b64 = result != null ?
                 android.util.Base64.encodeToString(
                     result.getBytes(java.nio.charset.StandardCharsets.UTF_8),
                     android.util.Base64.NO_WRAP) : null;
+            final String errFinal = errorMsg;
             mainHandler.post(() -> {
                 String js = b64 != null
                     ? jsCallback + "('" + b64 + "', null);"
-                    : jsCallback + "(null, 'fetch_failed');";
+                    : jsCallback + "(null, 'ERR:" + errFinal.replace("'","") + "');";
                 webView.evaluateJavascript(js, null);
             });
         }).start();
@@ -320,6 +330,22 @@ public class MainActivity extends Activity {
 """)
 
 
+
+write(os.path.join(RES, "xml", "network_security_config.xml"), """<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+            <certificates src="user"/>
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">api.forecast.solar</domain>
+        <domain includeSubdomains="true">api.open-meteo.com</domain>
+        <domain includeSubdomains="true">dumitriualx-lang.github.io</domain>
+    </domain-config>
+</network-security-config>
+""")
 
 write(os.path.join(RES, "values", "strings.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <resources>
