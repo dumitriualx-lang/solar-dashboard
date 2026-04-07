@@ -496,18 +496,18 @@ function saveCfg(obj) {
 }
 const savedCfg = loadCfg();
 const SYS = {
-  panelKw:   savedCfg.panelKw   || 5,       // kW peak — user configurable
-  tiltDeg:   savedCfg.tiltDeg   || 30,      // panel tilt angle — user configurable
-  invEff:    0.984,                           // SUN2000-5KTL-M1 (fixed)
-  dcLoss:    0.97,                            // wiring + soiling (fixed)
-  battGross: savedCfg.battGross || 5,        // kWh gross — user configurable
-  battRes:   savedCfg.battRes   || 0.10,     // reserve fraction (10%)
+  panelKw:   savedCfg.panelKw   || null,     // kW peak — must be set by user
+  tiltDeg:   savedCfg.tiltDeg   || 30,       // panel tilt angle
+  invEff:    0.984,                            // SUN2000-5KTL-M1 (fixed)
+  dcLoss:    0.97,                             // wiring + soiling (fixed)
+  battGross: savedCfg.battGross || null,      // kWh gross — must be set by user
+  battRes:   savedCfg.battRes   || 0.10,      // reserve fraction (10%)
   _battMaxC: savedCfg.battMaxC  || 2.5,
   _battMaxD: savedCfg.battMaxD  || 2.5,
-  get battUse()  { return +(this.battGross * (1 - this.battRes)).toFixed(3); },
+  get battUse()  { return this.battGross ? +(this.battGross * (1 - this.battRes)).toFixed(3) : 0; },
   get battMaxC() { return this._battMaxC; },
   get battMaxD() { return this._battMaxD; },
-  get acMax()    { return +(this.panelKw * this.invEff * this.dcLoss).toFixed(3); },
+  get acMax()    { return this.panelKw ? +(this.panelKw * this.invEff * this.dcLoss).toFixed(3) : 5; },
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -1787,10 +1787,11 @@ function showNotification(title, body, tag) {
 // SYSTEM CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
 function initCfgInputs() {
-  document.getElementById('cfgPanel').value = SYS.panelKw;
-  document.getElementById('cfgBatt').value  = SYS.battGross;
-  document.getElementById('cfgRes').value   = Math.round(SYS.battRes * 100);
-  document.getElementById('cfgSoc').value   = Math.round(ST.battSoc);
+  // Only populate if user has previously saved — otherwise leave blank
+  if (savedCfg.panelKw)   document.getElementById('cfgPanel').value = savedCfg.panelKw;
+  if (savedCfg.battGross) document.getElementById('cfgBatt').value  = savedCfg.battGross;
+  if (savedCfg.battRes)   document.getElementById('cfgRes').value   = Math.round(savedCfg.battRes * 100);
+  if (savedCfg.battSoc)   document.getElementById('cfgSoc').value   = Math.round(savedCfg.battSoc);
   updateUsableDisplay();
   updateSocDisplay();
 }
