@@ -50,8 +50,8 @@ android {
         applicationId "%s"
         minSdk 21
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 2
+        versionName "1.0.1"
         manifestPlaceholders = [
             hostName:     "dumitriualx-lang.github.io",
             defaultUrl:   "https://dumitriualx-lang.github.io/solar-dashboard/",
@@ -92,7 +92,6 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="Solar Dashboard"
         android:icon="@mipmap/ic_launcher"
@@ -228,6 +227,31 @@ public class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                 requestPermissions(
                     new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
+        }
+
+        @JavascriptInterface
+        public void saveSoc(float soc, float panelKw, float battGross, float battRes, float consKw) {
+            getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putFloat("soc", soc)
+                .putFloat("panel_kw", panelKw)
+                .putFloat("batt_gross", battGross)
+                .putFloat("batt_res", battRes)
+                .putFloat("cons_kw", consKw)
+                .apply();
+        }
+
+        @JavascriptInterface
+        public String loadSoc() {
+            android.content.SharedPreferences p =
+                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
+            float soc      = p.getFloat("soc",        -1f);
+            float panelKw  = p.getFloat("panel_kw",    0f);
+            float battGross= p.getFloat("batt_gross",  0f);
+            float battRes  = p.getFloat("batt_res",    0f);
+            float consKw   = p.getFloat("cons_kw",     0f);
+            if (soc < 0) return "";
+            return soc + "," + panelKw + "," + battGross + "," + battRes + "," + consKw;
         }
 
         @JavascriptInterface
@@ -396,6 +420,19 @@ public class MainActivity extends Activity {
                 "applyGpsFromNative(" + lat + "," + lon + ",'" +
                 name.replace("'", "\'") + "');";
             webView.evaluateJavascript(js, null);
+        }
+
+        // Restore SOC and config from SharedPreferences
+        float soc       = prefs.getFloat("soc",       -1f);
+        float panelKw   = prefs.getFloat("panel_kw",   0f);
+        float battGross = prefs.getFloat("batt_gross",  0f);
+        float battRes   = prefs.getFloat("batt_res",    0f);
+        float consKw    = prefs.getFloat("cons_kw",     0f);
+        if (soc >= 0 && panelKw > 0 && battGross > 0) {
+            String js2 = "if(typeof applyStateFromNative==='function')" +
+                "applyStateFromNative(" + soc + "," + panelKw + "," +
+                battGross + "," + battRes + "," + consKw + ");";
+            webView.evaluateJavascript(js2, null);
         }
     }
 
