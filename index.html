@@ -605,6 +605,8 @@ function applyPosition(pos) {
   ST.lat = lat; ST.lon = lon; ST.gpsAccuracy = acc; ST.gpsOk = true;
   ST.locName = f(lat,4) + '°N ' + f(lon,4) + '°E';
   setGps('ok', '📍 ' + ST.locName + (acc ? ' · ±' + acc + 'm' : ''));
+  // Persist location so it survives app restarts
+  try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: ST.locName })); } catch(e) {}
   if (moved) fetchWeather();
 }
 
@@ -2354,7 +2356,20 @@ document.getElementById('logPill').textContent=rlog.length+' entries';
 initCfgInputs();                             // populate config inputs from saved/default values
 restoreBrandSelects();                       // restore saved brand dropdown selections
 initNotifBar();                              // set notification bar state
-setTimeout(requestLocation, 500);           // auto-request after page settles loading first
+
+// Restore last known GPS position instantly — no waiting for GPS fix
+try {
+  const saved = JSON.parse(localStorage.getItem('solarGps') || 'null');
+  if (saved && saved.lat && saved.lon) {
+    ST.lat = saved.lat; ST.lon = saved.lon;
+    ST.locName = saved.name || (f(saved.lat,4) + '°N ' + f(saved.lon,4) + '°E');
+    ST.gpsOk = true;
+    setGps('ok', '📍 ' + ST.locName + ' (cached)');
+    fetchWeather(); // fetch immediately with cached coords
+  }
+} catch(e) {}
+
+setTimeout(requestLocation, 1000);          // refresh GPS in background
 setInterval(fetchWeather, 5*60*1000);        // re-fetch every 5 min
 setInterval(()=>{
   evolveSoc();
