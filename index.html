@@ -571,9 +571,6 @@ let dchart, fchart, lastFlowT = Date.now();
 let geoWatchId = null;
 
 // ═══════════════════════════════════════════════════════════════
-// GPS — request + watch position
-// Uses watchPosition so it updates automatically as user moves
-// Falls back gracefully with a clear error message
 // ═══════════════════════════════════════════════════════════════
 function onGpsBtnClick() {
   // In native app with new AppBridge: trigger OS permission dialog
@@ -606,15 +603,9 @@ function applyPosition(pos) {
   const moved = !ST.lat || !ST.lon ||
     Math.abs(lat - ST.lat) > 0.005 || Math.abs(lon - ST.lon) > 0.005;
   ST.lat = lat; ST.lon = lon; ST.gpsAccuracy = acc; ST.gpsOk = true;
-  reverseGeocode(lat, lon).then(name => {
-    ST.locName = name;
-    setGps('ok', '📍 ' + name + ' · ' + f(lat,4) + '°N ' + f(lon,4) + '°E' + (acc ? ' · ±' + acc + 'm' : ''));
-  });
+  ST.locName = f(lat,4) + '°N ' + f(lon,4) + '°E';
+  setGps('ok', '📍 ' + ST.locName + (acc ? ' · ±' + acc + 'm' : ''));
   if (moved) fetchWeather();
-  // Start watching position for updates
-  if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
-  geoWatchId = navigator.geolocation.watchPosition(applyPosition, ()=>{},
-    { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 });
 }
 
 function onLocationErr(err) {
@@ -646,24 +637,6 @@ function setGps(type, html) {
 }
 
 // Reverse geocode using Open-Meteo's geocoding — no API key needed
-async function reverseGeocode(lat, lon) {
-  try {
-    const r = await fetch(
-      'https://nominatim.openstreetmap.org/reverse?lat=' + lat +
-      '&lon=' + lon + '&format=json&zoom=10',
-      { headers: { 'Accept-Language': 'en' } }
-    );
-    const d = await r.json();
-    // Build a short name: village/town/city + county/state
-    const a = d.address || {};
-    const place = a.village || a.town || a.city || a.municipality || a.county || '';
-    const region = a.county || a.state || '';
-    return place && region ? place + ', ' + region : (place || region || f(lat,3) + '°N');
-  } catch(e) {
-    return f(lat,4) + '°N ' + f(lon,4) + '°E';
-  }
-}
-
 // ═══════════════════════════════════════════════════════════════
 // OPEN-METEO — fetch irradiance for current GPS position
 // ═══════════════════════════════════════════════════════════════
