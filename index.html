@@ -691,6 +691,9 @@ async function fetchWeather() {
   if (!ST.lat || !ST.lon) {
     setApi('load', '⏳ Waiting for GPS location...'); return;
   }
+  // Prevent concurrent fetches — AppBridge uses a single callback slot
+  if (ST._fetchInProgress) return;
+  ST._fetchInProgress = true;
   setApi('load', '⏳ Fetching weather...');
   try {
     const u = 'https://api.open-meteo.com/v1/forecast?'
@@ -725,13 +728,13 @@ async function fetchWeather() {
 
     const d = JSON.parse(raw);
     processOpenMeteo(d);
-    ST.apiOk = true; ST.lastFetch = new Date();
+    ST.apiOk = true; ST.lastFetch = new Date(); ST._fetchInProgress = false;
     setApi('ok', '✅ Weather loaded · ' + ST.locName + ' · '
       + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
-      + ' · refreshes every 5 min');
+      + ' · refreshes every min');
     scheduleAllNotifications(); notifyRealtime();
   } catch(e) {
-    ST.apiOk = false;
+    ST.apiOk = false; ST._fetchInProgress = false;
     setApi('err', '⚠️ ' + e.message
       + ' <button class="api-refresh" onclick="fetchWeather()">Retry</button>');
     fallbackEstimate();
@@ -2502,7 +2505,20 @@ initNotifBar();                              // set notification bar state
     setTimeout(requestLocation, 1000);
   }
 })();
-setInterval(fetchWeather, 60*1000);           // re-fetch every 1 min
+setInterval(() => {
+  // If GPS temporarily null but we have cached coords, restore before fetching
+  if (!ST.lat || !ST.lon) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('solarGps') || 'null');
+      if (saved && saved.lat && saved.lon) {
+        ST.lat = saved.lat; ST.lon = saved.lon;
+        ST.locName = saved.name || (saved.lat.toFixed(4) + '°N');
+        ST.gpsOk = true;
+      }
+    } catch(e) {}
+  }
+  fetchWeather();
+}, 60*1000);                                  // re-fetch every 1 min
 setInterval(()=>{
   applyAutoConsumption();  // auto-fill consumption from learned profile
   evolveSoc();
