@@ -765,49 +765,36 @@ function processOpenMeteo(d) {
   ST.wxCond    = wxLabel(cur.weathercode || 0);
   ST.wxIcon    = wxIcon(cur.weathercode  || 0);
 
-  // Find current hour's index in hourly data
-  // Hourly values are point forecasts — more responsive to cloud changes
-  // than cur.* which are backward hourly averages
-  const now2     = new Date();
-  const pad2     = n => String(n).padStart(2,'0');
-  const todayStr2 = now2.getFullYear()+'-'+pad2(now2.getMonth()+1)+'-'+pad2(now2.getDate());
-  const curH2    = now2.getHours();
-  let curIdx = -1;
-  (hr.time || []).forEach((t, i) => {
-    if (t.startsWith(todayStr2) && parseInt(t.slice(11,13)) === curH2) curIdx = i;
-  });
-
-  // Use hourly values for current hour; fall back to cur.*
-  const swr    = curIdx >= 0 ? +(hr.shortwave_radiation?.[curIdx]    || cur.shortwave_radiation    || 0)
-                              : +(cur.shortwave_radiation || 0);
-  const dniRaw = curIdx >= 0 ? +(hr.direct_normal_irradiance?.[curIdx] || cur.direct_normal_irradiance || 0)
-                              : +(cur.direct_normal_irradiance || 0);
-  const ccHour = curIdx >= 0 ? +(hr.cloud_cover?.[curIdx] || cur.cloud_cover || 0)
-                              : +(cur.cloud_cover || 0);
-  ST.cloudCover = ccHour;
+  // Use direct_radiation + diffuse_radiation from Open-Meteo
+  // direct_radiation = beam on horizontal surface (drops immediately when clouds block sun)
+  // diffuse_radiation = sky scatter (stays high under clouds)
+  // These respond faster to cloud changes than shortwave_radiation or cloud_cover
+  const directRad  = +(cur.direct_radiation  || 0);  // beam on horizontal W/m²
+  const diffuseRad = +(cur.diffuse_radiation || 0);  // diffuse W/m²
+  const swr        = +(cur.shortwave_radiation || directRad + diffuseRad || 0);
+  ST.cloudCover = +(cur.cloud_cover || 0);
   const pos = solarPosition(ST.lat, ST.lon);
   const cosZen = Math.max(0.001, Math.cos((90 - pos.altitude) * Math.PI / 180));
 
-  // Clear-sky irradiance (physical upper bound)
-  const cs = clearSkyIrradiance(ST.lat, ST.lon);
-  // Cloud cover correction (Boland model)
-  const cf = Math.max(0, 1 - 0.75 * Math.pow(ST.cloudCover / 100, 3.4));
-  const ghiCC = cs.ghi * cf;  // cloud-cover-corrected clear-sky
-
   let ghi, dni, dhi;
-  if (swr > 0 && pos.altitude > 2) {
-    // Use MIN of SWR and cloud-corrected clear-sky:
-    // - SWR is a backward hourly average — too high when clouds just appeared
-    // - cloud_cover updates more frequently — catches new clouds faster
-    // Taking the minimum gives the most accurate real-time estimate
-    ghi = Math.min(swr, ghiCC);
-    // Derive DNI: prefer Open-Meteo DNI, scale it by the GHI adjustment
-    const scale = swr > 0 ? ghi / swr : 1;
-    dni = Math.min(dniRaw > 0 ? dniRaw * scale : (ghi * 0.85) / cosZen, 950);
-    dhi = Math.max(0, ghi - dni * cosZen);
+  if (pos.altitude > 2 && (directRad > 0 || diffuseRad > 0)) {
+    // Sun is up and radiation data available
+    // direct_radiation drops immediately when clouds block beam — most responsive field
+    ghi = directRad + diffuseRad;
+    dhi = diffuseRad;
+    dni = Math.min(directRad / Math.max(0.001, cosZen), 950);
+  } else if (swr > 0 && pos.altitude > 2) {
+    // Fall back to SWR with cloud correction
+    const cs = clearSkyIrradiance(ST.lat, ST.lon);
+    const cf = Math.max(0, 1 - 0.75 * Math.pow(ST.cloudCover / 100, 3.4));
+    ghi = Math.min(swr, cs.ghi) * cf;
+    dhi = ghi * 0.15;
+    dni = Math.min((ghi - dhi) / Math.max(0.001, cosZen), 950);
   } else {
-    // Night or no SWR data — use cloud-corrected clear-sky
-    ghi = +ghiCC.toFixed(1);
+    // Night or no data — use cloud-corrected clear-sky
+    const cs = clearSkyIrradiance(ST.lat, ST.lon);
+    const cf = Math.max(0, 1 - 0.75 * Math.pow(ST.cloudCover / 100, 3.4));
+    ghi = +(cs.ghi * cf).toFixed(1);
     dni = +(cs.dni * cf).toFixed(1);
     dhi = +(cs.dhi * Math.max(0.2, 1 - cf * 0.5)).toFixed(1);
   }
