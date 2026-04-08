@@ -575,13 +575,17 @@ let geoWatchId = null;
 // Called by native onResume to restore GPS from SharedPreferences
 // This fires before JS may have read localStorage, ensuring coords are set
 function applyGpsFromNative(lat, lon, name) {
-  if (ST.gpsOk && ST.lat && ST.lon) return; // already have GPS, skip
+  // Called by native Android on every resume with last known location
+  // Always apply — native location is more authoritative than cached JS state
+  if (!lat || !lon) return;
+  const moved = !ST.lat || !ST.lon ||
+    Math.abs(lat - ST.lat) > 0.005 || Math.abs(lon - ST.lon) > 0.005;
   ST.lat = lat; ST.lon = lon;
   ST.locName = name || (lat.toFixed(4) + '°N ' + lon.toFixed(4) + '°E');
   ST.gpsOk = true;
   setGps('ok', '📍 ' + ST.locName);
   try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: ST.locName })); } catch(e) {}
-  fetchWeather();
+  if (moved || !ST.apiOk) fetchWeather();
 }
 
 function onGpsBtnClick() {
