@@ -1844,59 +1844,43 @@ function checkApplianceAlerts() {
   const fl      = calcFlow();
   const surplus = +(ST.pvKw - (ST.consKw || 0)).toFixed(2);
   const nowMin  = Date.now() / 60000;
+  if (!ST._appNotif) ST._appNotif = {};
 
-  // For each appliance check if surplus covers it — send individual notification
-  APPLIANCES.forEach(app => {
-    const key = 'notif_' + app.id;
-    const lastSent = ST._appNotif && ST._appNotif[key] ? ST._appNotif[key] : 0;
-    if (nowMin - lastSent < 15) return; // throttle per appliance
+  // Throttle: one combined notification per 15 min
+  if (ST._appNotif._lastCheck && nowMin - ST._appNotif._lastCheck < 15) return;
+  ST._appNotif._lastCheck = nowMin;
 
-    if (surplus >= app.kw) {
-      // Surplus covers this appliance — good time to run it
-      if (!ST._appNotif) ST._appNotif = {};
-      ST._appNotif[key] = nowMin;
-      const extra = +(surplus - app.kw).toFixed(2);
+  const now  = new Date();
+  const nowH = now.getHours() + now.getMinutes()/60;
+
+  if (surplus >= 0.2) {
+    // Collect all appliances the surplus can run right now
+    const runnable = APPLIANCES.filter(a => surplus >= a.kw);
+    if (runnable.length) {
+      const names = runnable.map(a => a.icon + ' ' + a.name).join(', ');
+      const best  = runnable[runnable.length - 1]; // highest kw that fits
       showNotification(
-        app.icon + ' Run ' + app.name + ' now!',
-        'Solar surplus +' + f(surplus,2) + ' kW covers ' + app.name + ' (' + app.kw + ' kW).' +
-        (extra > 0.1 ? ' Still ' + f(extra,2) + ' kW to spare.' : '') +
-        ' Battery: ' + socToDisplay(ST.battSoc) + '%.',
-        'run-' + app.id
+        '☀️ Run appliances now — +' + f(surplus,2) + ' kW surplus',
+        'Good time to run: ' + names + '. Battery: ' + socToDisplay(ST.battSoc) + '%.',
+        'run-appliances'
       );
-    } else if (surplus < app.kw && surplus > 0 && ST.todayH && ST.todayH.length) {
-      // Not enough now — find next window when it will be enough
-      const now = new Date();
-      const nowH = now.getHours() + now.getMinutes()/60;
-      const futureH = ST.todayH.find(h => h.hour > nowH && (h.pvKw - (ST.consKw||0)) >= app.kw);
-      if (futureH) {
-        // Only send "wait" notification once per 60 min per appliance
-        const waitKey = 'wait_' + app.id;
-        const lastWait = ST._appNotif && ST._appNotif[waitKey] ? ST._appNotif[waitKey] : 0;
-        if (nowMin - lastWait < 60) return;
-        if (!ST._appNotif) ST._appNotif = {};
-        ST._appNotif[waitKey] = nowMin;
-        showNotification(
-          '⏰ ' + app.name + ' — wait until ' + futureH.hour + ':00',
-          app.name + ' needs ' + app.kw + ' kW. Current surplus ' + f(surplus,2) + ' kW.' +
-          ' Solar will reach ' + f(futureH.pvKw,2) + ' kW at ' + futureH.hour + ':00.',
-          'wait-' + app.id
-        );
-      }
-    } else if (surplus < 0 && fl.gridImport > 0.1) {
-      // Running on grid — suggest stopping this appliance
-      const stopKey = 'stop_' + app.id;
-      const lastStop = ST._appNotif && ST._appNotif[stopKey] ? ST._appNotif[stopKey] : 0;
-      if (nowMin - lastStop < 60) return;
-      if (!ST._appNotif) ST._appNotif = {};
-      ST._appNotif[stopKey] = nowMin;
+      return;
+    }
+  }
+
+  // Not enough now — find next window for the lightest appliance
+  if (surplus < APPLIANCES[0].kw && ST.todayH && ST.todayH.length) {
+    const lightest = APPLIANCES.slice().sort((a,b) => a.kw - b.kw)[0];
+    const futureH  = ST.todayH.find(h => h.hour > nowH && (h.pvKw - (ST.consKw||0)) >= lightest.kw);
+    if (futureH) {
       showNotification(
-        '⚠️ Stop ' + app.name + ' — grid active',
-        'Solar dropped. ' + app.name + ' is now drawing ' + app.kw + ' kW from grid (' +
-        f(fl.gridImport,2) + ' kW import). Consider stopping it.',
-        'stop-' + app.id
+        '⏰ Best solar window at ' + futureH.hour + ':00',
+        'Solar will produce ' + f(futureH.pvKw,2) + ' kW at ' + futureH.hour +
+        ':00 — good time to run ' + lightest.icon + ' ' + lightest.name + ' and more.',
+        'wait-appliances'
       );
     }
-  });
+  }
 }
 
 function schedulemorningNotif() {
