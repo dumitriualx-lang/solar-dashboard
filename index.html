@@ -1188,14 +1188,30 @@ function evolveSoc() {
   const nowMin = now / 60000;
 
   // Grid power activated
-  if (fl.gridImport > 0.05 && fl.battFlow >= -0.05 &&
-      (!ST._lastGridNotif || nowMin - ST._lastGridNotif > 15)) {
+  if (fl.gridImport > 0.05 &&
+      (!ST._lastGridNotif || nowMin - ST._lastGridNotif > 60)) {
     ST._lastGridNotif = nowMin;
     showNotification(
       '⚡ Grid power active',
-      'Battery at ' + socToDisplay(ST.battSoc) + '%. Grid supplying ' +
-      f(fl.gridImport, 2) + ' kW. Solar: ' + f(ST.pvKw, 2) + ' kW.',
+      'Drawing ' + f(fl.gridImport, 2) + ' kW from grid. ' +
+      'Battery: ' + socToDisplay(ST.battSoc) + '%. Solar: ' + f(ST.pvKw, 2) + ' kW.',
       'grid-import'
+    );
+  }
+
+  // Solar production ended — now running on battery
+  const prevPvOn = ST._pvWasOn;
+  ST._pvWasOn = ST.pvKw > 0.1;
+  if (prevPvOn && !ST._pvWasOn &&
+      fl.battFlow < -0.05 &&
+      (!ST._lastSolarEndNotif || nowMin - ST._lastSolarEndNotif > 120)) {
+    ST._lastSolarEndNotif = nowMin;
+    const bkp = f(stored() / Math.max(0.01, ST.consKw), 1);
+    showNotification(
+      '🌙 Solar ended — running on battery',
+      'Production dropped to ' + f(ST.pvKw, 2) + ' kW. ' +
+      'Battery at ' + socToDisplay(ST.battSoc) + '% · ~' + bkp + 'h backup remaining.',
+      'solar-ended'
     );
   }
 
