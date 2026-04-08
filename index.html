@@ -323,7 +323,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
 
   <!-- CONSUMPTION — only remaining manual input -->
   <div class="cons-card">
-    <div class="cons-label">🏠 Home consumption — enter from solar app</div>
+    <div class="cons-label" id="consLabel">🏠 Home consumption — enter from solar app</div>
     <div class="cons-row">
       <div class="cons-inp-wrap">
         <input type="number" id="iCons" inputmode="decimal" value="" min="0" max="20" step="0.01" placeholder="0.00" oninput="onConsInput()">
@@ -331,7 +331,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
       </div>
       <button class="log-btn" onclick="snap()">Log ↗</button>
     </div>
-    <div class="cons-hint">Solar output and battery flow are calculated automatically from your GPS location + live irradiance</div>
+    <div class="cons-hint" id="consHint">Log readings at different times of day — the app learns your usage pattern and fills this automatically</div>
   </div>
 
   <div class="metrics">
@@ -1241,7 +1241,9 @@ function updateClock() {
 // ═══════════════════════════════════════════════════════════════
 function onConsInput() {
   ST.consKw = Math.max(0, parseFloat(document.getElementById('iCons').value)||0);
+  ST._lastManualCons = Date.now(); // mark manual override — auto paused for 60 min
   saveCfg({ ...loadCfg(), consKw: ST.consKw, battSoc: socToDisplay(ST.battSoc) });
+  updateConsLabel();
   renderMetrics(); renderBattery(); renderFlow(); renderAlerts();
 }
 
@@ -2156,7 +2158,7 @@ function renderForecastProduction() {
   if (!FORECAST.length || !ST.todayH) return;
 
   const fl          = calcFlow();
-  const dailyNeed   = ST.consKw * 24;
+  const dailyNeed   = profileDailyKwh() || (ST.consKw * 24);
   const today       = FORECAST[0];
   const weekTotal   = FORECAST.reduce((a,d) => a+d.yieldKwh, 0);
   const weekNeed    = dailyNeed * FORECAST.length;
@@ -2321,6 +2323,105 @@ const NOTIF_DEBOUNCE_MS = 30 * 1000;
 // ═══════════════════════════════════════════════════════════════
 // FULL RENDER
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// CONSUMPTION PROFILE — learns from logged readings
+// ═══════════════════════════════════════════════════════════════
+
+// Build hourly average consumption profile from log
+// Returns array of 24 values (index = hour), null if not enough data
+function buildConsProfile() {
+  const buckets = Array.from({length:24}, () => ({ sum:0, count:0 }));
+  rlog.forEach(r => {
+    if (!r.cons || r.cons <= 0) return;
+    const h = new Date(r.t).getHours();
+    buckets[h].sum   += r.cons;
+    buckets[h].count += 1;
+  });
+  // Only use hours with at least 2 readings for reliability
+  return buckets.map(b => b.count >= 2 ? +(b.sum / b.count).toFixed(3) : null);
+}
+
+// Get predicted consumption for a given hour (interpolates gaps)
+function autoConsKw(hour) {
+  const profile = buildConsProfile();
+  if (profile[hour] !== null) return profile[hour];
+
+  // Interpolate from nearest known hours
+  for (let d = 1; d <= 12; d++) {
+    const prev = profile[(hour - d + 24) % 24];
+    const next = profile[(hour + d) % 24];
+    if (prev !== null && next !== null) return +((prev + next) / 2).toFixed(3);
+    if (prev !== null) return prev;
+    if (next !== null) return next;
+  }
+  return null; // no data at all
+}
+
+// Get daily consumption estimate from profile (for forecast)
+function profileDailyKwh() {
+  const profile = buildConsProfile();
+  const known = profile.filter(v => v !== null);
+  if (known.length < 3) return null;
+  // Fill gaps with day average, sum all 24 hours
+  const avg = known.reduce((a,b) => a+b, 0) / known.length;
+  return +(profile.map(v => v !== null ? v : avg).reduce((a,b) => a+b, 0)).toFixed(2);
+}
+
+// Profile confidence: % of hours with data
+function profileConfidence() {
+  const profile = buildConsProfile();
+  const filled = profile.filter(v => v !== null).length;
+  return Math.round((filled / 24) * 100);
+}
+
+// Apply auto consumption — called every 30s
+// Only auto-applies if user hasn't manually entered a value in the last 60 min
+function applyAutoConsumption() {
+  if (!rlog.length) return;
+  const manualAge = Date.now() - (ST._lastManualCons || 0);
+  if (manualAge < 60 * 60 * 1000) return; // user override active for 60 min
+
+  const hour = new Date().getHours();
+  const predicted = autoConsKw(hour);
+  if (predicted === null) return; // not enough data yet
+
+  if (Math.abs((ST.consKw || 0) - predicted) < 0.01) return; // already correct
+
+  ST.consKw = predicted;
+  // Update input field to show predicted value
+  const el = document.getElementById('iCons');
+  if (el && document.activeElement !== el) {
+    el.value = predicted.toFixed(2);
+  }
+  // Update label to show auto state
+  updateConsLabel();
+}
+
+function updateConsLabel() {
+  const label = document.getElementById('consLabel');
+  if (!label) return;
+  const manualAge = Date.now() - (ST._lastManualCons || 0);
+  const isManual  = manualAge < 60 * 60 * 1000;
+  const conf      = profileConfidence();
+  const dailyKwh  = profileDailyKwh();
+  const hour      = new Date().getHours();
+  const predicted = autoConsKw(hour);
+
+  if (isManual) {
+    label.textContent = '🏠 Home consumption — manual (auto resumes in ' +
+      Math.ceil((3600000 - manualAge) / 60000) + ' min)';
+    label.style.color = 'var(--am)';
+  } else if (predicted !== null && conf >= 25) {
+    label.textContent = '🏠 Home consumption — auto from profile (' + conf + '% hours learned' +
+      (dailyKwh ? ' · est. ' + dailyKwh + ' kWh/day' : '') + ')';
+    label.style.color = 'var(--g)';
+  } else {
+    label.textContent = '🏠 Home consumption — enter from solar app' +
+      (rlog.length > 0 ? ' (' + rlog.length + ' logs · need more for auto)' : '');
+    label.style.color = '';
+  }
+}
+
 function renderAll(){renderMetrics();renderIrr();renderBattery();renderFlow();renderGridPanel();renderForecastProduction();renderSmartSched();renderAlerts();}
 
 // ═══════════════════════════════════════════════════════════════
@@ -2399,16 +2500,20 @@ initNotifBar();                              // set notification bar state
 })();
 setInterval(fetchWeather, 60*1000);           // re-fetch every 1 min
 setInterval(()=>{
+  applyAutoConsumption();  // auto-fill consumption from learned profile
   evolveSoc();
   renderAll();
+  updateConsLabel();
   // Keep SOC config field in sync with auto-evolved state (only if not being edited)
   const socEl = document.getElementById('cfgSoc');
   if (socEl && document.activeElement !== socEl) {
     socEl.value = Math.round(ST.battSoc);
     updateSocDisplay();
   }
-}, 30000);  // evolve SOC + re-render every 30s
+}, 30000);  // evolve SOC + auto consumption + re-render every 30s
 setInterval(updateClock, 1000);              // clock every second
+applyAutoConsumption();  // apply profile on startup if available
+updateConsLabel();       // show profile status in label
 
 
 </script>
