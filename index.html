@@ -184,7 +184,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
   <!-- GPS STATUS BAR -->
   <div class="gps-bar gps-req" id="gpsBar">
     <span id="gpsMsg">📍 Requesting your location for accurate solar data...</span>
-    <button class="gps-btn" id="gpsBtnEl" onclick="requestLocation()">Allow GPS</button>
+    <button class="gps-btn" id="gpsBtnEl" onclick="onGpsBtnClick()">Allow GPS</button>
   </div>
 
   <!-- API STATUS BAR -->
@@ -575,28 +575,25 @@ let geoWatchId = null;
 // Uses watchPosition so it updates automatically as user moves
 // Falls back gracefully with a clear error message
 // ═══════════════════════════════════════════════════════════════
-function requestLocation() {
-  // Native app: check OS permission, request if needed (same pattern as notifications)
-  if (window.AppBridge) {
-    if (typeof AppBridge.locationPermissionGranted === 'function' &&
-        !AppBridge.locationPermissionGranted()) {
-      AppBridge.requestLocationPermission();
-      setGps('req', '📍 Allow location in the system prompt · then tap Allow GPS again');
-      return;
-    }
+function onGpsBtnClick() {
+  // In native app: trigger OS permission dialog (same as notification button)
+  if (window.AppBridge && typeof AppBridge.requestLocationPermission === 'function') {
+    AppBridge.requestLocationPermission();
+    setGps('req', '📍 Allow location access in the system prompt...');
+    return;
   }
+  // In browser: call geolocation directly
+  requestLocation();
+}
+
+function requestLocation() {
   if (!('geolocation' in navigator)) {
     setGps('err', '❌ Geolocation not supported.');
     return;
   }
   setGps('req', '📍 Requesting GPS...');
   navigator.geolocation.getCurrentPosition(
-    pos => {
-      applyPosition(pos);
-      if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
-      geoWatchId = navigator.geolocation.watchPosition(applyPosition, ()=>{},
-        { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 });
-    },
+    pos => applyPosition(pos),
     err => onLocationErr(err),
     { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
   );
@@ -606,21 +603,18 @@ function applyPosition(pos) {
   const lat = pos.coords.latitude;
   const lon = pos.coords.longitude;
   const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
-
-  // Only re-fetch weather if location changed significantly (>500m)
   const moved = !ST.lat || !ST.lon ||
     Math.abs(lat - ST.lat) > 0.005 || Math.abs(lon - ST.lon) > 0.005;
-
   ST.lat = lat; ST.lon = lon; ST.gpsAccuracy = acc; ST.gpsOk = true;
-
-  // Reverse-geocode with Open-Meteo's admin name
   reverseGeocode(lat, lon).then(name => {
     ST.locName = name;
     setGps('ok', '📍 ' + name + ' · ' + f(lat,4) + '°N ' + f(lon,4) + '°E' + (acc ? ' · ±' + acc + 'm' : ''));
-    // hdrSub updated by updateHdrSysName() when brands are selected
   });
-
   if (moved) fetchWeather();
+  // Start watching position for updates
+  if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
+  geoWatchId = navigator.geolocation.watchPosition(applyPosition, ()=>{},
+    { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 });
 }
 
 function onLocationErr(err) {
