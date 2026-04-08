@@ -776,29 +776,28 @@ function processOpenMeteo(d) {
   const pos = solarPosition(ST.lat, ST.lon);
   const cosZen = Math.max(0.001, Math.cos((90 - pos.altitude) * Math.PI / 180));
 
-  // Clear-sky model (physical upper bound)
+  // GHI = MIN(SWR, clear-sky) — SWR measures actual radiation, clear-sky is the ceiling
+  // This correctly handles: haze/thin cloud (SWR<csGHI → SWR wins),
+  // full clear (SWR≈csGHI → both same), impossible readings (SWR>csGHI → capped)
   const cs = clearSkyIrradiance(ST.lat, ST.lon);
 
-  // Beam transmittance: ratio of actual direct_radiation to clear-sky expectation
-  // When clouds block the sun, direct_radiation drops immediately
-  // csDirectHoriz = what direct_radiation would be on a perfectly clear day
-  const csDirectHoriz = cs.dni * cosZen;
-  const beamRatio = csDirectHoriz > 10 ? directRad / csDirectHoriz : 1.0;
-
   let ghi, dni, dhi;
-  if (pos.altitude > 2 && beamRatio < 0.4 && (directRad > 0 || diffuseRad > 0)) {
-    // Beam significantly blocked → clouds present → use direct+diffuse directly
-    // direct_radiation is most responsive to sudden cloud changes
-    ghi = directRad + diffuseRad;
-    dhi = diffuseRad;
-    dni = Math.min(directRad / Math.max(0.001, cosZen), 950);
+  if (pos.altitude > 2 && swr > 0) {
+    // Use SWR as GHI — ground truth for total radiation reaching surface
+    // Cap at clear-sky (physically impossible to exceed)
+    ghi = Math.min(swr, cs.ghi);
+    // Use direct_radiation / diffuse_radiation for beam/diffuse split
+    // direct_radiation drops immediately when clouds block sun
+    dhi = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
+    dni = Math.min(directRad > 0 ? directRad / Math.max(0.001, cosZen) : (ghi - dhi) / Math.max(0.001, cosZen), 950);
   } else if (pos.altitude > 2) {
-    // Clear or mostly clear sky → use clear-sky model (more accurate on clear days)
-    ghi = cs.ghi;
-    dni = cs.dni;
-    dhi = cs.dhi;
+    // No SWR data — fall back to cloud-corrected clear-sky
+    const cf = Math.max(0, 1 - 0.75 * Math.pow(ST.cloudCover / 100, 3.4));
+    ghi = cs.ghi * cf;
+    dni = cs.dni * cf;
+    dhi = cs.dhi * Math.max(0.2, 1 - cf * 0.5);
   } else {
-    // Night — zero output
+    // Night
     ghi = 0; dni = 0; dhi = 0;
   }
 
@@ -2290,7 +2289,7 @@ try {
 } catch(e) {}
 
 setTimeout(requestLocation, 1000);          // refresh GPS in background
-setInterval(fetchWeather, 5*60*1000);        // re-fetch every 5 min
+setInterval(fetchWeather, 60*1000);           // re-fetch every 1 min
 setInterval(()=>{
   evolveSoc();
   renderAll();
