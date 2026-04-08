@@ -576,31 +576,29 @@ let geoWatchId = null;
 // Falls back gracefully with a clear error message
 // ═══════════════════════════════════════════════════════════════
 function requestLocation() {
-  console.log("GPS Button Pressed in APK");
-  setGps('req', '⏳ Requesting System GPS...');
-
-  if (!navigator.geolocation) {
-    setGps('err', '❌ GPS not supported.');
+  // Native app: check OS permission, request if needed (same pattern as notifications)
+  if (window.AppBridge) {
+    if (typeof AppBridge.locationPermissionGranted === 'function' &&
+        !AppBridge.locationPermissionGranted()) {
+      AppBridge.requestLocationPermission();
+      setGps('req', '📍 Allow location in the system prompt · then tap Allow GPS again');
+      return;
+    }
+  }
+  if (!('geolocation' in navigator)) {
+    setGps('err', '❌ Geolocation not supported.');
     return;
   }
-
-  // In an APK, we must use high accuracy to trigger the Android Permission Dialog
+  setGps('req', '📍 Requesting GPS...');
   navigator.geolocation.getCurrentPosition(
     pos => {
       applyPosition(pos);
       if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
-      geoWatchId = navigator.geolocation.watchPosition(applyPosition, (e)=>{}, 
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+      geoWatchId = navigator.geolocation.watchPosition(applyPosition, ()=>{},
+        { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 });
     },
-    err => {
-      // If code is 1, it means the Android OS denied the request
-      if (err.code === 1) {
-        setGps('err', '⚠️ Permission Denied. Check Android App Settings.');
-      } else {
-        setGps('err', '⚠️ Location unavailable. Is GPS toggled ON in your phone?');
-      }
-    },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    err => onLocationErr(err),
+    { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
   );
 }
 
@@ -2419,13 +2417,7 @@ document.getElementById('logPill').textContent=rlog.length+' entries';
 initCfgInputs();                             // populate config inputs from saved/default values
 restoreBrandSelects();                       // restore saved brand dropdown selections
 initNotifBar();                              // set notification bar state
-// Wire GPS button via addEventListener (more reliable than inline onclick in WebView)
-document.getElementById('gpsBtnEl').addEventListener('click', function() {
-  requestLocation();
-});
-// Don't auto-request on load — wait for user to tap Allow GPS
-// This prevents immediate denial before permission prompt appears
-setTimeout(requestLocation, 1000);          // small delay lets WebView finish loading first
+setTimeout(requestLocation, 500);           // auto-request after page settles loading first
 setInterval(fetchWeather, 5*60*1000);        // re-fetch every 5 min
 setInterval(()=>{
   evolveSoc();
