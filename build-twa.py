@@ -531,9 +531,6 @@ public class SolarWorker extends Worker {
         Context ctx = getApplicationContext();
         createChannel(ctx);
 
-        // TEST: always send notification to confirm pipeline works
-        sendNotif(ctx, "Solar Worker Active", "Background worker is running at " + new java.util.Date().toString());
-
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         float lat      = prefs.getFloat("gps_lat",    0f);
         float lon      = prefs.getFloat("gps_lon",    0f);
