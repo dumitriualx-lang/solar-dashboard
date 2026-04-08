@@ -352,21 +352,51 @@ public class MainActivity extends Activity {
     @Override
     public void onResume() {
         super.onResume();
-        // Re-inject cached GPS from SharedPreferences when app resumes
-        // This ensures GPS is available even if WebView lost its state
-        mainHandler.postDelayed(() -> {
-            android.content.SharedPreferences prefs =
-                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
-            float lat = prefs.getFloat("gps_lat", 0f);
-            float lon = prefs.getFloat("gps_lon", 0f);
-            String name = prefs.getString("gps_name", "");
-            if (lat != 0f && lon != 0f) {
-                String js = "if(typeof applyGpsFromNative==='function')" +
-                    "applyGpsFromNative(" + lat + "," + lon + ",'" +
-                    name.replace("'", "\'") + "');";
-                webView.evaluateJavascript(js, null);
+        // On resume: try to get last known location from Android LocationManager
+        // This is instant (no GPS fix needed) and works even without network
+        mainHandler.postDelayed(() -> injectLocation(), 300);
+    }
+
+    private void injectLocation() {
+        try {
+            // Try last known location from Android (most up-to-date, no permission dialog)
+            android.location.LocationManager lm =
+                (android.location.LocationManager) getSystemService(android.content.Context.LOCATION_SERVICE);
+            android.location.Location loc = null;
+            if (lm != null && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                // Try GPS provider first, then network
+                loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
+                if (loc == null)
+                    loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
+                if (loc == null)
+                    loc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
             }
-        }, 500);
+            if (loc != null) {
+                double lat = loc.getLatitude(), lon = loc.getLongitude();
+                // Save to SharedPreferences
+                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE)
+                    .edit().putFloat("gps_lat", (float)lat).putFloat("gps_lon", (float)lon).apply();
+                // Inject into JS
+                String js = "if(typeof applyGpsFromNative==='function')" +
+                    "applyGpsFromNative(" + lat + "," + lon + ",'');";
+                webView.evaluateJavascript(js, null);
+                return;
+            }
+        } catch (Exception e) { /* fall through to SharedPreferences */ }
+
+        // Fall back to SharedPreferences cached coords
+        android.content.SharedPreferences prefs =
+            getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
+        float lat = prefs.getFloat("gps_lat", 0f);
+        float lon = prefs.getFloat("gps_lon", 0f);
+        String name = prefs.getString("gps_name", "");
+        if (lat != 0f && lon != 0f) {
+            String js = "if(typeof applyGpsFromNative==='function')" +
+                "applyGpsFromNative(" + lat + "," + lon + ",'" +
+                name.replace("'", "\'") + "');";
+            webView.evaluateJavascript(js, null);
+        }
     }
 
     @Override
