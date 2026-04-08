@@ -576,6 +576,15 @@ let geoWatchId = null;
 // Falls back gracefully with a clear error message
 // ═══════════════════════════════════════════════════════════════
 function requestLocation() {
+  // In WebView: if OS location permission not granted, request it natively first
+  // navigator.geolocation alone cannot trigger the Android OS permission dialog
+  if (window.AppBridge && typeof AppBridge.locationPermissionGranted === 'function') {
+    if (!AppBridge.locationPermissionGranted()) {
+      setGps('req', '📍 Requesting location permission...');
+      AppBridge.requestLocationPermission(); // shows OS dialog; result calls requestLocation() again
+      return;
+    }
+  }
   if (!('geolocation' in navigator)) {
     setGps('err', '❌ Geolocation not supported.');
     return;
@@ -2412,7 +2421,9 @@ initNotifBar();                              // set notification bar state
 document.getElementById('gpsBtnEl').addEventListener('click', function() {
   requestLocation();
 });
-requestLocation();                           // ask for GPS immediately on load
+// Don't auto-request on load — wait for user to tap Allow GPS
+// This prevents immediate denial before permission prompt appears
+setTimeout(requestLocation, 1000);          // small delay lets WebView finish loading first
 setInterval(fetchWeather, 5*60*1000);        // re-fetch every 5 min
 setInterval(()=>{
   evolveSoc();
