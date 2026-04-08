@@ -182,7 +182,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
 <div id="pgDash" class="page on">
 
   <!-- GPS STATUS BAR -->
-  <div class="gps-bar gps-req" id="gpsBar">
+  <div class="gps-bar gps-req" id="gpsBar" style="display:none">
     <span id="gpsMsg">📍 Requesting your location for accurate solar data...</span>
     <button class="gps-btn" id="gpsBtnEl" onclick="onGpsBtnClick()">Allow GPS</button>
   </div>
@@ -630,12 +630,18 @@ function onLocationOk(lat, lon, name, acc) {
 function setGps(type, html) {
   const bar = document.getElementById('gpsBar');
   if (!bar) return;
-  bar.className = 'gps-bar gps-' + type;
-  const msg = document.getElementById('gpsMsg');
-  if (msg) msg.textContent = html;
-  // Static button — just hide it when GPS is acquired
-  const btn = document.getElementById('gpsBtnEl');
-  if (btn) btn.style.display = (type === 'ok') ? 'none' : '';
+  if (type === 'ok') {
+    // GPS acquired — hide the bar entirely, no need to show it
+    bar.style.display = 'none';
+  } else {
+    // GPS needed or error — show bar so user can act
+    bar.style.display = '';
+    bar.className = 'gps-bar gps-' + type;
+    const msg = document.getElementById('gpsMsg');
+    if (msg) msg.textContent = html;
+    const btn = document.getElementById('gpsBtnEl');
+    if (btn) btn.style.display = '';
+  }
 }
 
 // Reverse geocode using Open-Meteo's geocoding — no API key needed
