@@ -350,6 +350,13 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 return false;
             }
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                // Inject GPS and state AFTER page has fully loaded
+                // This guarantees JS functions exist when we call them
+                mainHandler.postDelayed(() -> injectLocation(), 200);
+            }
         });
 
         // Request location permission if not already granted
@@ -382,14 +389,19 @@ public class MainActivity extends Activity {
     }
 
     private void injectLocation() {
+        android.content.SharedPreferences prefs =
+            getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
+
+        // ── GPS ──────────────────────────────────────────────────────────────
+        double gpsLat = 0, gpsLon = 0;
+        String gpsName = "";
         try {
-            // Try last known location from Android (most up-to-date, no permission dialog)
+            // Try Android LocationManager first (most current, no dialog)
             android.location.LocationManager lm =
                 (android.location.LocationManager) getSystemService(android.content.Context.LOCATION_SERVICE);
             android.location.Location loc = null;
             if (lm != null && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
                     == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                // Try GPS provider first, then network
                 loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
                 if (loc == null)
                     loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
@@ -397,42 +409,40 @@ public class MainActivity extends Activity {
                     loc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
             }
             if (loc != null) {
-                double lat = loc.getLatitude(), lon = loc.getLongitude();
-                // Save to SharedPreferences
-                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE)
-                    .edit().putFloat("gps_lat", (float)lat).putFloat("gps_lon", (float)lon).apply();
-                // Inject into JS
-                String js = "if(typeof applyGpsFromNative==='function')" +
-                    "applyGpsFromNative(" + lat + "," + lon + ",'');";
-                webView.evaluateJavascript(js, null);
-                return;
+                gpsLat = loc.getLatitude();
+                gpsLon = loc.getLongitude();
+                // Persist for next time
+                prefs.edit().putFloat("gps_lat", (float)gpsLat)
+                            .putFloat("gps_lon", (float)gpsLon).apply();
             }
-        } catch (Exception e) { /* fall through to SharedPreferences */ }
+        } catch (Exception e) { /* fall through */ }
 
-        // Fall back to SharedPreferences cached coords
-        android.content.SharedPreferences prefs =
-            getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
-        float lat = prefs.getFloat("gps_lat", 0f);
-        float lon = prefs.getFloat("gps_lon", 0f);
-        String name = prefs.getString("gps_name", "");
-        if (lat != 0f && lon != 0f) {
-            String js = "if(typeof applyGpsFromNative==='function')" +
-                "applyGpsFromNative(" + lat + "," + lon + ",'" +
-                name.replace("'", "\'") + "');";
-            webView.evaluateJavascript(js, null);
+        // Fall back to SharedPreferences if LocationManager had no fix
+        if (gpsLat == 0 && gpsLon == 0) {
+            gpsLat  = prefs.getFloat("gps_lat", 0f);
+            gpsLon  = prefs.getFloat("gps_lon", 0f);
+            gpsName = prefs.getString("gps_name", "");
         }
 
-        // Restore SOC and config from SharedPreferences
-        float soc       = prefs.getFloat("soc",       -1f);
-        float panelKw   = prefs.getFloat("panel_kw",   0f);
+        if (gpsLat != 0 && gpsLon != 0) {
+            String safeN = gpsName.replace("'", "\'");
+            webView.evaluateJavascript(
+                "if(typeof applyGpsFromNative==='function')" +
+                "applyGpsFromNative(" + gpsLat + "," + gpsLon + ",'" + safeN + "');", null);
+        }
+
+        // ── SOC & CONFIG ─────────────────────────────────────────────────────
+        // Always inject — not conditional on GPS success
+        float soc       = prefs.getFloat("soc",        -1f);
+        float panelKw   = prefs.getFloat("panel_kw",    0f);
         float battGross = prefs.getFloat("batt_gross",  0f);
         float battRes   = prefs.getFloat("batt_res",    0f);
         float consKw    = prefs.getFloat("cons_kw",     0f);
         if (soc >= 0 && panelKw > 0 && battGross > 0) {
-            String js2 = "if(typeof applyStateFromNative==='function')" +
+            webView.evaluateJavascript(
+                "if(typeof applyStateFromNative==='function')" +
                 "applyStateFromNative(" + soc + "," + panelKw + "," +
-                battGross + "," + battRes + "," + consKw + ");";
-            webView.evaluateJavascript(js2, null);
+                battGross + "," + battRes + "," + consKw + ");", null);
         }
     }
 
