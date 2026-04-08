@@ -531,6 +531,9 @@ public class SolarWorker extends Worker {
         Context ctx = getApplicationContext();
         createChannel(ctx);
 
+        // TEST: always send notification to confirm pipeline works
+        sendNotif(ctx, "Solar Worker Active", "Background worker is running at " + new java.util.Date().toString());
+
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         float lat      = prefs.getFloat("gps_lat",    0f);
         float lon      = prefs.getFloat("gps_lon",    0f);
@@ -540,7 +543,31 @@ public class SolarWorker extends Worker {
         float battRes  = prefs.getFloat("batt_res",    0.1f);
         float consKw   = prefs.getFloat("cons_kw",     0f);
 
-        if (lat == 0f || lon == 0f) return Result.success(); // no GPS yet
+        // If GPS not saved yet, try Android LocationManager as fallback
+        if (lat == 0f || lon == 0f) {
+            try {
+                android.location.LocationManager lm = (android.location.LocationManager)
+                    ctx.getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null) {
+                    android.location.Location loc =
+                        lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
+                    if (loc == null)
+                        loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
+                    if (loc == null)
+                        loc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
+                    if (loc != null) {
+                        lat = (float) loc.getLatitude();
+                        lon = (float) loc.getLongitude();
+                    }
+                }
+            } catch (Exception e) { /* no location permission */ }
+        }
+
+        // Still no GPS - send diagnostic notification and exit
+        if (lat == 0f || lon == 0f) {
+            sendNotif(ctx, "Solar Dashboard", "Background worker running - waiting for GPS fix. Open the app once to enable.");
+            return Result.success();
+        }
 
         // Fetch weather from Open-Meteo
         String url = "https://api.open-meteo.com/v1/forecast?"
