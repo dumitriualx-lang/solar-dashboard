@@ -2535,13 +2535,30 @@ updateConsLabel();       // show profile status in label
       system settings.
     </p>
 
-    <div style="font-size:13px;font-weight:700;color:var(--am);margin-bottom:6px">⚠️ Consumption — manual input required</div>
-    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
-      <strong style="color:var(--tx)">The app cannot read your actual household consumption automatically.</strong>
-      You must enter your current consumption manually in kW on the Dashboard.
-      Check your solar panel application or smart meter for the real value.
-      Without this input, energy flow calculations (battery, grid) will not be accurate.
+    <div style="font-size:13px;font-weight:700;color:var(--am);margin-bottom:6px">⚠️ Consumption — smart auto-learning</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 8px">
+      <strong style="color:var(--tx)">The app cannot read your household consumption automatically from your meter.</strong>
+      Start by entering your current consumption manually in kW — check your solar panel app or smart meter for the real value.
     </p>
+    <div style="background:var(--gl);border-radius:var(--rs);padding:10px 12px;margin:0 0 14px">
+      <div style="font-size:13px;font-weight:700;color:#0F6E56;margin-bottom:5px">📊 How auto-learning works</div>
+      <p style="font-size:12px;line-height:1.7;color:#0F6E56;margin:0">
+        Every time you tap <strong>Log ↗</strong> on the Dashboard, the app saves your consumption value together with the time of day.
+        After logging at different times across a few days, it builds an <strong>hourly average profile</strong> of your household usage —
+        for example "weekday mornings average 1.4 kW, afternoons 0.8 kW, evenings 2.1 kW".<br><br>
+        Once enough readings are collected (at least 2 per hour), the app <strong>automatically fills in consumption</strong> based on
+        the current hour's average — no more manual entry needed. The label above the consumption field shows:
+      </p>
+      <div style="font-size:12px;color:#0F6E56;margin-top:8px;display:flex;flex-direction:column;gap:4px">
+        <span>🟢 <strong>Auto from profile</strong> — running on learned averages, shows % of hours covered and estimated daily kWh</span>
+        <span>🟡 <strong>Manual (auto resumes in X min)</strong> — you typed a value, auto pauses for 60 minutes then resumes</span>
+        <span>⬜ <strong>Need more logs</strong> — still learning, keep tapping Log ↗ at different times of day</span>
+      </div>
+      <p style="font-size:12px;line-height:1.6;color:#0F6E56;margin:8px 0 0">
+        <strong>Tip:</strong> Log your consumption in the morning, at midday, in the evening, and at night for at least 3–4 days.
+        After that the app will self-manage consumption and use your real usage pattern for battery, grid and forecast calculations.
+      </p>
+    </div>
 
     <div style="font-size:13px;font-weight:700;color:var(--bl);margin-bottom:6px">🔋 Battery</div>
     <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
