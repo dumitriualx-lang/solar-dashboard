@@ -1168,7 +1168,7 @@ function evolveSoc() {
   const hardFlr = Math.round(SYS.battRes * 50);
   const prevSoc = ST.battSoc;
   ST.battSoc = Math.max(hardFlr, Math.min(100,
-    +(ST.battSoc + (fl.battFlow / (SYS.battUse || 4.5)) * dtH * 100).toFixed(2)
+    ST.battSoc + (fl.battFlow / (SYS.battUse || 4.5)) * dtH * 100
   ));
   // Persist SOC to Android SharedPreferences (survives WebView process kill)
   if (window.AppBridge && AppBridge.saveSoc) {
@@ -1370,9 +1370,10 @@ function renderBattery() {
   document.getElementById('battTimeLabel').textContent = chr ? 'Full in ' + (f((SYS.battUse-st)/fl.battFlow,1))+'h' : dis ? 'Empty in '+bkp+'h' : 'Idle';
   document.getElementById('battMaxLabel').textContent  = f(SYS.battUse,1) + ' kWh usable';
 
-  // Progress bar width = soc%, reserve floor shown via 10% left gap
+  // Progress bar width = internal SOC (0–100% of usable range)
+  // so 0% = at reserve floor, 100% = fully charged
   const fillEl = document.getElementById('bFill');
-  fillEl.style.width = Math.max(+dispSoc, 3) + '%';
+  fillEl.style.width = Math.max(ST.battSoc, 2) + '%';
   fillEl.style.background = col;
 
   // Pill
@@ -2083,6 +2084,7 @@ function saveCfgAndApply() {
   SYS.battRes   = res;
   if (!isNaN(soc) && soc>=0 && soc<=100) {
     ST.battSoc = socToInternal(soc);  // map display → internal
+    lastFlowT  = Date.now();          // reset evolution clock from this moment
     saveCfg({ ...loadCfg(), battSoc: soc }); // save display value
   }
   // Persist to Android SharedPreferences
@@ -2561,16 +2563,26 @@ setInterval(() => {
 }, 60*1000);                                  // re-fetch every 1 min
 setInterval(()=>{
   applyAutoConsumption();  // auto-fill consumption from learned profile
-  evolveSoc();
   renderAll();
   updateConsLabel();
   // Keep SOC config field in sync with auto-evolved state (only if not being edited)
   const socEl = document.getElementById('cfgSoc');
   if (socEl && document.activeElement !== socEl) {
-    socEl.value = Math.round(ST.battSoc);
+    socEl.value = Math.round(socToDisplay(ST.battSoc));
     updateSocDisplay();
   }
-}, 30000);  // evolve SOC + auto consumption + re-render every 30s
+}, 30000);  // full re-render + auto consumption every 30s
+// Battery evolution — runs every 5s so discharge/charge is reflected continuously
+setInterval(()=>{
+  evolveSoc();
+  renderBattery();
+  renderMetrics();
+  const socEl = document.getElementById('cfgSoc');
+  if (socEl && document.activeElement !== socEl) {
+    socEl.value = Math.round(socToDisplay(ST.battSoc));
+    updateSocDisplay();
+  }
+}, 5000);
 setInterval(updateClock, 1000);              // clock every second
 applyAutoConsumption();  // apply profile on startup if available
 updateConsLabel();       // show profile status in label
