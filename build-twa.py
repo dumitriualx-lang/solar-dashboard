@@ -231,6 +231,28 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void saveGps(double lat, double lon, String name) {
+            android.content.SharedPreferences prefs =
+                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
+            prefs.edit()
+                .putFloat("gps_lat", (float) lat)
+                .putFloat("gps_lon", (float) lon)
+                .putString("gps_name", name)
+                .apply();
+        }
+
+        @JavascriptInterface
+        public String loadGps() {
+            android.content.SharedPreferences prefs =
+                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
+            float lat = prefs.getFloat("gps_lat", 0f);
+            float lon = prefs.getFloat("gps_lon", 0f);
+            String name = prefs.getString("gps_name", "");
+            if (lat == 0f && lon == 0f) return "";
+            return lat + "," + lon + "," + name;
+        }
+
+        @JavascriptInterface
         public boolean locationPermissionGranted() {
             return checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
@@ -292,7 +314,7 @@ public class MainActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin,
-                    GeolocationPermissions.Callback cb) { cb.invoke(origin, true, false); }
+                    GeolocationPermissions.Callback cb) { cb.invoke(origin, true, true); }
             @Override
             public void onPermissionRequest(android.webkit.PermissionRequest r) {
                 r.grant(r.getResources());
@@ -325,6 +347,26 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         webView.saveState(outState);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // Re-inject cached GPS from SharedPreferences when app resumes
+        // This ensures GPS is available even if WebView lost its state
+        mainHandler.postDelayed(() -> {
+            android.content.SharedPreferences prefs =
+                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
+            float lat = prefs.getFloat("gps_lat", 0f);
+            float lon = prefs.getFloat("gps_lon", 0f);
+            String name = prefs.getString("gps_name", "");
+            if (lat != 0f && lon != 0f) {
+                String js = "if(typeof applyGpsFromNative==='function')" +
+                    "applyGpsFromNative(" + lat + "," + lon + ",'" +
+                    name.replace("'", "\'") + "');";
+                webView.evaluateJavascript(js, null);
+            }
+        }, 500);
     }
 
     @Override
