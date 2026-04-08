@@ -189,8 +189,8 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
 
   <!-- API STATUS BAR -->
   <div class="api-bar api-load" id="apiBar">
-    <span id="apiMsg">⏳ Waiting for location before fetching irradiance...</span>
-    <button class="api-refresh" onclick="fetchWeather()">Refresh</button>
+    <span id="apiMsg" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⏳ Waiting for location before fetching irradiance...</span>
+    <button class="api-refresh" onclick="fetchWeather()" style="flex-shrink:0">Refresh</button>
   </div>
 
   <!-- PUSH NOTIFICATION BAR -->
@@ -378,6 +378,11 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
       <span id="battTimeLabel">--</span>
       <span id="battMaxLabel">-- kWh usable</span>
     </div>
+    <!-- Charge / discharge flow rate bar -->
+    <div style="margin-top:6px;height:4px;border-radius:2px;background:var(--sf2);overflow:hidden">
+      <div id="bFlowFill" style="height:100%;border-radius:2px;width:0%;transition:width 1s ease,background .4s ease"></div>
+    </div>
+    <div style="font-size:9px;color:var(--t3);margin-top:2px;text-align:center;height:11px" id="bFlowLabel"></div>
   </div>
 
   <div class="card">
@@ -729,9 +734,9 @@ async function fetchWeather() {
     const d = JSON.parse(raw);
     processOpenMeteo(d);
     ST.apiOk = true; ST.lastFetch = new Date(); ST._fetchInProgress = false;
-    setApi('ok', '✅ Weather loaded · ' + ST.locName + ' · '
+    setApi('ok', '✅ ' + ST.locName + ' · '
       + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
-      + ' · refreshes every min');
+      + ' · ↻ 1min');
     scheduleAllNotifications(); notifyRealtime();
   } catch(e) {
     ST.apiOk = false; ST._fetchInProgress = false;
@@ -1376,7 +1381,21 @@ function renderBattery() {
   else if (chr)       { pill.textContent='↑ +'+f(fl.battFlow,2)+' kW charging';  pill.className='pill p-ok'; }
   else if (dis)       { pill.textContent='↓ −'+f(-fl.battFlow,2)+' kW discharge'; pill.className='pill p-warn'; }
   else                { pill.textContent='Idle';                  pill.className='pill p-info'; }
-}
+
+  // Charge / discharge flow rate bar
+  const flowFill = document.getElementById('bFlowFill');
+  const flowLbl  = document.getElementById('bFlowLabel');
+  if (flowFill) {
+    const maxFlow = chr ? (SYS.battMaxC || 2.5) : (SYS.battMaxD || 2.5);
+    const flowPct = (chr || dis) ? Math.min(100, Math.abs(fl.battFlow) / Math.max(0.01, maxFlow) * 100) : 0;
+    flowFill.style.width      = flowPct + '%';
+    flowFill.style.background = chr ? '#378ADD' : dis ? '#BA7517' : 'transparent';
+    if (flowLbl) {
+      if (chr) flowLbl.textContent = '⚡ Charging ' + f(fl.battFlow,2) + ' kW · ' + Math.round(flowPct) + '% of max ' + (SYS.battMaxC||2.5) + ' kW';
+      else if (dis) flowLbl.textContent = '⚡ Discharging ' + f(-fl.battFlow,2) + ' kW · ' + Math.round(flowPct) + '% of max ' + (SYS.battMaxD||2.5) + ' kW';
+      else flowLbl.textContent = '';
+    }
+  }
 
 // ═══════════════════════════════════════════════════════════════
 // RENDER — FLOW DIAGRAM
