@@ -184,7 +184,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:-apple-sy
   <!-- GPS STATUS BAR -->
   <div class="gps-bar gps-req" id="gpsBar">
     <span id="gpsMsg">📍 Requesting your location for accurate solar data...</span>
-    <button class="gps-btn" id="gpsBtnEl" onclick="requestLocation()">Allow GPS</button>
+    <button class="gps-btn" id="gpsBtnEl">Allow GPS</button>
   </div>
 
   <!-- API STATUS BAR -->
@@ -619,9 +619,9 @@ function applyPosition(pos) {
 function onLocationErr(err) {
   console.log('GPS error:', err.code, err.message);
   let msg = '⚠️ ';
-  if (err.code === 1) msg += 'Location permission denied.';
-  else if (err.code === 2) msg += 'GPS unavailable.';
-  else msg += 'Location timeout.';
+  if (err.code === 1) msg += 'Location access denied — enable in phone Settings → Apps → Solar → Permissions.';
+  else if (err.code === 2) msg += 'Location unavailable — enable Location Services in phone Settings.';
+  else msg += 'Location timed out — tap Allow GPS to retry.';
   setGps('err', msg);
 }
 
@@ -2406,6 +2406,10 @@ document.getElementById('logPill').textContent=rlog.length+' entries';
 initCfgInputs();                             // populate config inputs from saved/default values
 restoreBrandSelects();                       // restore saved brand dropdown selections
 initNotifBar();                              // set notification bar state
+// Wire GPS button via addEventListener (more reliable than inline onclick in WebView)
+document.getElementById('gpsBtnEl').addEventListener('click', function() {
+  requestLocation();
+});
 requestLocation();                           // ask for GPS immediately on load
 setInterval(fetchWeather, 5*60*1000);        // re-fetch every 5 min
 setInterval(()=>{
