@@ -684,7 +684,7 @@ async function fetchWeather() {
     setApi('ok', '✅ Weather loaded · ' + ST.locName + ' · '
       + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
       + ' · refreshes every 5 min');
-    scheduleNotifications(); schedulePeakAlerts();
+    scheduleAllNotifications(); notifyRealtime();
   } catch(e) {
     ST.apiOk = false;
     setApi('err', '⚠️ ' + e.message
@@ -1174,11 +1174,7 @@ function evolveSoc() {
     );
   }
 
-  // Per-appliance smart alerts every 15 min
-  if (!ST._lastAppCheck || nowMin - ST._lastAppCheck > 15) {
-    ST._lastAppCheck = nowMin;
-    checkApplianceAlerts();
-  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1774,143 +1770,10 @@ function initNotifBar() {
 }
 
 // Find today's best appliance window from hourly forecast
-function getBestWindow() {
-  if (!ST.todayH || !ST.todayH.length) return null;
-  const now = new Date();
-  const nowH = now.getHours() + now.getMinutes()/60;
 
-  // Find the hour with highest production that is still in the future
-  let bestIdx = -1, bestKw = 0;
-  for (let i = 0; i < ST.todayH.length; i++) {
-    const h = ST.todayH[i];
-    if (h.hour > nowH && h.pvKw > bestKw && h.pvKw > SYS.panelKw * 0.25) {
-      bestKw = h.pvKw; bestIdx = i;
-    }
-  }
-  if (bestIdx < 0) return null;
-
-  // Find window: consecutive hours around peak where production > 40% of peak
-  const threshold = SYS.panelKw * 0.25;
-  let winStart = bestIdx, winEnd = bestIdx;
-  while (winStart > 0 && ST.todayH[winStart-1].pvKw >= threshold) winStart--;
-  while (winEnd < 23  && ST.todayH[winEnd+1].pvKw  >= threshold) winEnd++;
-
-  // Notify 15 minutes before window start (or immediately if window already started)
-  const notifHour = ST.todayH[winStart].hour;
-  const notifMs   = (notifHour * 60 - 15) * 60000 - (now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds())*1000;
-
-  return {
-    startH: ST.todayH[winStart].hour,
-    endH:   ST.todayH[winEnd].hour,
-    peakKw: +bestKw.toFixed(2),
-    notifMs: notifMs > 0 ? notifMs : 5000, // if past, fire in 5s as test
-  };
-}
-
-function scheduleNotifications() {
-  if (!isSysConfigured()) return;
-  const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
-    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
-  if (!notifOk) return;
-
-  scheduledNotifTimers.forEach(t => clearTimeout(t));
-  scheduledNotifTimers = [];
-
-  const win = getBestWindow();
-  if (win) {
-    // Notify 15 min before the best solar window
-    const t1 = setTimeout(() => {
-      const runnable = APPLIANCES.filter(a => a.kw <= win.peakKw - (ST.consKw || 0))
-        .sort((a,b) => b.kw - a.kw);
-      if (runnable.length > 0) {
-        const names = runnable.slice(0,3).map(a => a.icon + ' ' + a.name).join(', ');
-        showNotification(
-          '☀️ Solar window in 15 min — ' + f(win.peakKw,1) + ' kW',
-          'You can run: ' + names + '. Switch them on at ' + win.startH + ':00 to use free solar energy.',
-          'solar-peak-start'
-        );
-      } else {
-        showNotification(
-          '☀️ Solar window in 15 min — ' + f(win.peakKw,1) + ' kW',
-          'Peak production at ' + win.startH + ':00. Good time to reduce grid draw.',
-          'solar-peak-start'
-        );
-      }
-    }, win.notifMs);
-    scheduledNotifTimers.push(t1);
-  }
-
-  // Morning forecast at 07:30
-  schedulemorningNotif();
-}
 
 // Real-time smart appliance alerts — called every 15 min from evolveSoc
-function checkApplianceAlerts() {
-  if (!isSysConfigured()) return;
-  const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
-    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
-  if (!notifOk) return;
 
-  const fl      = calcFlow();
-  const surplus = +(ST.pvKw - (ST.consKw || 0)).toFixed(2);
-  const nowMin  = Date.now() / 60000;
-  if (!ST._appNotif) ST._appNotif = {};
-
-  // Throttle: one combined notification per 15 min
-  if (ST._appNotif._lastCheck && nowMin - ST._appNotif._lastCheck < 15) return;
-  ST._appNotif._lastCheck = nowMin;
-
-  const now  = new Date();
-  const nowH = now.getHours() + now.getMinutes()/60;
-
-  if (surplus >= 0.2) {
-    // Collect all appliances the surplus can run right now
-    const runnable = APPLIANCES.filter(a => surplus >= a.kw);
-    if (runnable.length) {
-      const names = runnable.map(a => a.icon + ' ' + a.name).join(', ');
-      const best  = runnable[runnable.length - 1]; // highest kw that fits
-      showNotification(
-        '☀️ Run appliances now — +' + f(surplus,2) + ' kW surplus',
-        'Good time to run: ' + names + '. Battery: ' + socToDisplay(ST.battSoc) + '%.',
-        'run-appliances'
-      );
-      return;
-    }
-  }
-
-  // Not enough now — find next window for the lightest appliance
-  if (surplus < APPLIANCES[0].kw && ST.todayH && ST.todayH.length) {
-    const lightest = APPLIANCES.slice().sort((a,b) => a.kw - b.kw)[0];
-    const futureH  = ST.todayH.find(h => h.hour > nowH && (h.pvKw - (ST.consKw||0)) >= lightest.kw);
-    if (futureH) {
-      showNotification(
-        '⏰ Best solar window at ' + futureH.hour + ':00',
-        'Solar will produce ' + f(futureH.pvKw,2) + ' kW at ' + futureH.hour +
-        ':00 — good time to run ' + lightest.icon + ' ' + lightest.name + ' and more.',
-        'wait-appliances'
-      );
-    }
-  }
-}
-
-function schedulemorningNotif() {
-  const now = new Date();
-  const target = new Date(now);
-  target.setHours(7, 30, 0, 0);
-  if (target <= now) target.setDate(target.getDate() + 1); // tomorrow
-  const msUntil = target - now;
-  const t = setTimeout(() => {
-    if (!FORECAST.length) return;
-    const today = FORECAST[0];
-    const need  = ST.consKw * 24;
-    const msg   = today.yieldKwh >= need
-      ? 'Good solar day ahead (' + f(today.yieldKwh,1) + ' kWh est.). Run heavy loads during peak hours today.'
-      : 'Limited solar today (' + f(today.yieldKwh,1) + ' kWh est.). Consider deferring heavy loads to a sunnier day.';
-    showNotification('☀️ Solar forecast for today', msg, 'solar-morning');
-    schedulemorningNotif(); // reschedule for next day
-  }, msUntil);
-  scheduledNotifTimers.push(t);
-}
 
 function showNotification(title, body, tag) {
   // Use native Android notification bridge if available
@@ -1935,6 +1798,120 @@ function showNotification(title, body, tag) {
   } else {
     new Notification(title, { body, tag, icon: 'icons/icon-192.png' });
   }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// NOTIFICATIONS — 3 rules only
+// 1. Evening forecast: if tomorrow is a high-production day,
+//    send one notification the evening before at 20:00
+// 2. Real-time high production: if current surplus covers large
+//    appliances, send one notification every 30 min (after weather refresh)
+// 3. Real-time low production: if production is insufficient,
+//    send one notification every 30 min with next good window
+// ═══════════════════════════════════════════════════════════════
+
+// High consumption threshold: appliances ≥ 2 kW
+const HIGH_KW = 2.0;
+
+function notifAllowed() {
+  if (!isSysConfigured()) return false;
+  return (window.AppBridge && window.AppBridge.showNotif) ||
+    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+}
+
+// Called after every weather fetch (every 5 min)
+// Sends real-time production notification at most every 30 min
+function notifyRealtime() {
+  if (!notifAllowed()) return;
+  const nowMin = Date.now() / 60000;
+  if (ST._lastRealtimeNotif && nowMin - ST._lastRealtimeNotif < 30) return;
+
+  const surplus = +(ST.pvKw - (ST.consKw || 0)).toFixed(2);
+  const large = APPLIANCES.filter(a => a.kw >= HIGH_KW);
+  const runnable = large.filter(a => surplus >= a.kw);
+
+  if (runnable.length > 0) {
+    // High production — can run large appliances
+    ST._lastRealtimeNotif = nowMin;
+    const names = runnable.map(a => a.icon + ' ' + a.name).join(', ');
+    showNotification(
+      '☀️ Solar surplus — run large appliances',
+      '+' + f(surplus,2) + ' kW surplus. Good time to run: ' + names +
+      '. Battery: ' + socToDisplay(ST.battSoc) + '%.',
+      'realtime-high'
+    );
+  } else {
+    // Low/no surplus — find next good window today
+    const now = new Date();
+    const nowH = now.getHours() + now.getMinutes()/60;
+    const nextWindow = ST.todayH && ST.todayH.find(
+      h => h.hour > nowH && (h.pvKw - (ST.consKw||0)) >= HIGH_KW
+    );
+    if (nextWindow) {
+      ST._lastRealtimeNotif = nowMin;
+      showNotification(
+        '⏰ Next solar window at ' + nextWindow.hour + ':00',
+        'Production too low now (' + f(ST.pvKw,2) + ' kW). ' +
+        'Solar will reach ' + f(nextWindow.pvKw,2) + ' kW at ' + nextWindow.hour +
+        ':00 — schedule large appliances then.',
+        'realtime-low'
+      );
+    }
+  }
+}
+
+// Schedule the evening forecast notification for tomorrow
+// Fires at 20:00 if tomorrow has good solar production
+function scheduleEveningForecast() {
+  if (notifTimers['evening_forecast']) {
+    clearTimeout(notifTimers['evening_forecast']);
+    delete notifTimers['evening_forecast'];
+  }
+
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(20, 0, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1);
+  const msUntil = target - now;
+
+  notifTimers['evening_forecast'] = setTimeout(() => {
+    delete notifTimers['evening_forecast'];
+    if (!notifAllowed()) return;
+    if (FORECAST.length < 2) return;
+
+    // Tomorrow is FORECAST[1]
+    const tomorrow = FORECAST[1];
+    const peakKw = (SYS.panelKw || 5);
+    const highProductionDay = tomorrow.yieldKwh >= peakKw * 3; // ≥3h at full power
+
+    if (highProductionDay) {
+      const large = APPLIANCES.filter(a => a.kw >= HIGH_KW);
+      const names = large.slice(0,3).map(a => a.icon + ' ' + a.name).join(', ');
+      showNotification(
+        '☀️ Good solar day tomorrow — plan ahead',
+        tomorrow.icon + ' ' + tomorrow.d + ': ' + f(tomorrow.yieldKwh,1) +
+        ' kWh forecast. Schedule large appliances: ' + names + '.',
+        'evening-forecast'
+      );
+    } else {
+      showNotification(
+        '☁️ Limited solar tomorrow',
+        tomorrow.icon + ' ' + tomorrow.d + ': only ' + f(tomorrow.yieldKwh,1) +
+        ' kWh forecast. Defer large appliances to a sunnier day.',
+        'evening-forecast'
+      );
+    }
+
+    // Reschedule for next evening
+    scheduleEveningForecast();
+  }, msUntil);
+}
+
+function scheduleAllNotifications() {
+  if (!notifAllowed()) return;
+  scheduleEveningForecast();
+  // Real-time notifications are triggered by fetchWeather via notifyRealtime()
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2276,37 +2253,6 @@ function renderSmartSched() {
   document.getElementById('smartSched').innerHTML =
     '<div class="sched">' + rows + '</div>';
 
-  // One combined notification for all runnable appliances (debounced)
-  const nowRunnable = APPLIANCES.filter(a => applianceState[a.id]);
-  if (nowRunnable.length > 0) {
-    const key = 'sched_run';
-    if (!notifTimers[key]) {
-      notifTimers[key] = setTimeout(() => {
-        delete notifTimers[key];
-        if (!isSysConfigured()) return;
-        const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
-          (typeof Notification !== 'undefined' && Notification.permission === 'granted');
-        if (!notifOk) return;
-        const surplus = +(ST.pvKw - (ST.consKw||0)).toFixed(2);
-        // Large appliances (≥2kW) vs small (<2kW)
-        const large = nowRunnable.filter(a => a.kw >= 2);
-        const small = nowRunnable.filter(a => a.kw < 2);
-        const group = large.length ? large : small;
-        const names = group.map(a => a.icon + ' ' + a.name).join(', ');
-        showNotification(
-          '☀️ Free solar now — +' + f(surplus,2) + ' kW',
-          'Good time to run: ' + names + '. Battery: ' + socToDisplay(ST.battSoc) + '%.',
-          'sched-run'
-        );
-      }, 60000); // wait 60s before firing to avoid rapid re-triggers
-    }
-  } else {
-    // No appliances runnable — cancel pending notification
-    if (notifTimers['sched_run']) {
-      clearTimeout(notifTimers['sched_run']);
-      delete notifTimers['sched_run'];
-    }
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2316,44 +2262,6 @@ function renderSmartSched() {
 // still quick enough to test and act on.
 const NOTIF_DEBOUNCE_MS = 30 * 1000;
 // Schedule "peak coming" alert for top appliances
-function schedulePeakAlerts() {
-  if (!isSysConfigured()) return;
-  const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
-    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
-  if (!notifOk) return;
-  if (!ST.todayH || !ST.todayH.length) return;
-  const now   = new Date();
-  const nowMs = now.getTime();
-  const nowH  = now.getHours() + now.getMinutes()/60;
-
-  // Find today's peak hour
-  let peakH = -1, peakKw = 0;
-  ST.todayH.forEach(h => {
-    if (h.hour > nowH && h.pvKw > peakKw) { peakKw = h.pvKw; peakH = h.hour; }
-  });
-  if (peakH < 0 || peakKw < 0.5) return;
-
-  // Schedule notification 15 min before peak
-  const peakMs     = peakH * 3600000;
-  const nowDayMs   = (now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds()) * 1000;
-  const msUntilPeak= peakMs - nowDayMs - 15*60*1000;
-  if (msUntilPeak < 0) return; // peak already past or < 15 min away
-
-  // Notify for the highest-priority runnable appliance at peak
-  const topApp = APPLIANCES.find(a => a.kw <= peakKw * 0.8) || APPLIANCES[0];
-  const alertKey = 'peak_alert_' + peakH;
-  if (notifTimers[alertKey]) clearTimeout(notifTimers[alertKey]);
-  notifTimers[alertKey] = setTimeout(() => {
-    showNotification(
-      '⏰ Solar peak in 15 min — ' + f(peakKw,2) + ' kW',
-      'Best production window at ' + peakH + ':00 (' + f(peakKw,2) + ' kW). ' +
-      'Start ' + topApp.name + ' (' + topApp.kw + ' kW) now to use free solar energy.',
-      'peak-alert'
-    );
-    delete notifTimers[alertKey];
-  }, msUntilPeak);
-  console.log('Peak alert scheduled for', peakH + ':00 in', Math.round(msUntilPeak/60000), 'min');
-}
 
 
 // ═══════════════════════════════════════════════════════════════
