@@ -776,27 +776,30 @@ function processOpenMeteo(d) {
   const pos = solarPosition(ST.lat, ST.lon);
   const cosZen = Math.max(0.001, Math.cos((90 - pos.altitude) * Math.PI / 180));
 
+  // Clear-sky model (physical upper bound)
+  const cs = clearSkyIrradiance(ST.lat, ST.lon);
+
+  // Beam transmittance: ratio of actual direct_radiation to clear-sky expectation
+  // When clouds block the sun, direct_radiation drops immediately
+  // csDirectHoriz = what direct_radiation would be on a perfectly clear day
+  const csDirectHoriz = cs.dni * cosZen;
+  const beamRatio = csDirectHoriz > 10 ? directRad / csDirectHoriz : 1.0;
+
   let ghi, dni, dhi;
-  if (pos.altitude > 2 && (directRad > 0 || diffuseRad > 0)) {
-    // Sun is up and radiation data available
-    // direct_radiation drops immediately when clouds block beam — most responsive field
+  if (pos.altitude > 2 && beamRatio < 0.4 && (directRad > 0 || diffuseRad > 0)) {
+    // Beam significantly blocked → clouds present → use direct+diffuse directly
+    // direct_radiation is most responsive to sudden cloud changes
     ghi = directRad + diffuseRad;
     dhi = diffuseRad;
     dni = Math.min(directRad / Math.max(0.001, cosZen), 950);
-  } else if (swr > 0 && pos.altitude > 2) {
-    // Fall back to SWR with cloud correction
-    const cs = clearSkyIrradiance(ST.lat, ST.lon);
-    const cf = Math.max(0, 1 - 0.75 * Math.pow(ST.cloudCover / 100, 3.4));
-    ghi = Math.min(swr, cs.ghi) * cf;
-    dhi = ghi * 0.15;
-    dni = Math.min((ghi - dhi) / Math.max(0.001, cosZen), 950);
+  } else if (pos.altitude > 2) {
+    // Clear or mostly clear sky → use clear-sky model (more accurate on clear days)
+    ghi = cs.ghi;
+    dni = cs.dni;
+    dhi = cs.dhi;
   } else {
-    // Night or no data — use cloud-corrected clear-sky
-    const cs = clearSkyIrradiance(ST.lat, ST.lon);
-    const cf = Math.max(0, 1 - 0.75 * Math.pow(ST.cloudCover / 100, 3.4));
-    ghi = +(cs.ghi * cf).toFixed(1);
-    dni = +(cs.dni * cf).toFixed(1);
-    dhi = +(cs.dhi * Math.max(0.2, 1 - cf * 0.5)).toFixed(1);
+    // Night — zero output
+    ghi = 0; dni = 0; dhi = 0;
   }
 
   ST.irrWm2  = ghi;
