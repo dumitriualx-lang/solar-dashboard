@@ -2427,15 +2427,15 @@ setInterval(updateClock, 1000);              // clock every second
 
     <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:6px">🔔 Notifications</div>
     <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
-      Smart alerts check every 15 minutes whether solar surplus is enough to run
-      each appliance in your schedule. You get a specific alert per appliance:
-      "Run washing machine now" when surplus covers it, or "Wait until 13:00"
-      when production will be sufficient later. Battery and grid alerts fire
-      when the system switches between states.
+      Smart alerts check every 15 minutes and send one combined notification.
+      When solar surplus covers appliances you get: "Run appliances now — +1.8 kW surplus"
+      listing all devices that can run. When production is not yet sufficient you get:
+      "Best solar window at 13:00" with the next good hour. Battery and grid alerts
+      fire separately when the system switches between states.
     </p>
 
     <div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:6px">📡 Data sources</div>
-    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0">
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 80px">
       Weather &amp; irradiance: <strong style="color:var(--tx)">Open-Meteo</strong> (free, no API key, updates every 5 min).<br>
       Location: device GPS.<br>
       All calculations run locally on your device — no data is sent anywhere.
