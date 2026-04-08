@@ -572,6 +572,18 @@ let geoWatchId = null;
 
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
+// Called by native onResume to restore GPS from SharedPreferences
+// This fires before JS may have read localStorage, ensuring coords are set
+function applyGpsFromNative(lat, lon, name) {
+  if (ST.gpsOk && ST.lat && ST.lon) return; // already have GPS, skip
+  ST.lat = lat; ST.lon = lon;
+  ST.locName = name || (lat.toFixed(4) + '°N ' + lon.toFixed(4) + '°E');
+  ST.gpsOk = true;
+  setGps('ok', '📍 ' + ST.locName);
+  try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: ST.locName })); } catch(e) {}
+  fetchWeather();
+}
+
 function onGpsBtnClick() {
   // In native app with new AppBridge: trigger OS permission dialog
   if (window.AppBridge && typeof AppBridge.requestLocationPermission === 'function') {
@@ -605,8 +617,12 @@ function applyPosition(pos) {
   ST.lat = lat; ST.lon = lon; ST.gpsAccuracy = acc; ST.gpsOk = true;
   ST.locName = f(lat,4) + '°N ' + f(lon,4) + '°E';
   setGps('ok', '📍 ' + ST.locName + (acc ? ' · ±' + acc + 'm' : ''));
-  // Persist location so it survives app restarts
+  // Persist to localStorage (browser/PWA)
   try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: ST.locName })); } catch(e) {}
+  // Persist to Android SharedPreferences (survives WebView process kill)
+  if (window.AppBridge && AppBridge.saveGps) {
+    try { AppBridge.saveGps(lat, lon, ST.locName); } catch(e) {}
+  }
   if (moved) fetchWeather();
 }
 
@@ -2285,30 +2301,47 @@ initNotifBar();                              // set notification bar state
 // Restore last known GPS position from localStorage
 // If we have cached coords: use them immediately, refresh silently in background
 // If no cache: request GPS after short delay (page needs to settle first)
-try {
-  const saved = JSON.parse(localStorage.getItem('solarGps') || 'null');
-  if (saved && saved.lat && saved.lon) {
-    ST.lat = saved.lat; ST.lon = saved.lon;
-    ST.locName = saved.name || (f(saved.lat,4) + '°N ' + f(saved.lon,4) + '°E');
+(function() {
+  // Try AppBridge SharedPreferences first (most reliable on Android — survives process kill)
+  let lat = 0, lon = 0, name = '';
+  if (window.AppBridge && AppBridge.loadGps) {
+    try {
+      const gpsStr = AppBridge.loadGps();
+      if (gpsStr) {
+        const parts = gpsStr.split(',');
+        lat = parseFloat(parts[0]); lon = parseFloat(parts[1]);
+        name = parts.slice(2).join(',');
+      }
+    } catch(e) {}
+  }
+  // Fall back to localStorage (browser/PWA)
+  if (!lat || !lon) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('solarGps') || 'null');
+      if (saved && saved.lat && saved.lon) {
+        lat = saved.lat; lon = saved.lon; name = saved.name || '';
+      }
+    } catch(e) {}
+  }
+  if (lat && lon) {
+    ST.lat = lat; ST.lon = lon;
+    ST.locName = name || (lat.toFixed(4) + '°N ' + lon.toFixed(4) + '°E');
     ST.gpsOk = true;
     setGps('ok', '📍 ' + ST.locName);
-    fetchWeather(); // fetch weather immediately with cached coords
-    // Silently refresh GPS in background after 5s — no UI changes unless position moved
+    fetchWeather();
+    // Silent background GPS refresh after 3s
     setTimeout(() => {
       if (!('geolocation' in navigator)) return;
       navigator.geolocation.getCurrentPosition(
-        pos => applyPosition(pos), // will save updated coords if moved
-        () => {}, // silently ignore errors — we already have cached coords
+        pos => applyPosition(pos),
+        () => {},
         { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
       );
-    }, 5000);
+    }, 3000);
   } else {
-    // No cached GPS — request via button or auto-request after delay
     setTimeout(requestLocation, 1000);
   }
-} catch(e) {
-  setTimeout(requestLocation, 1000);
-}
+})();
 setInterval(fetchWeather, 60*1000);           // re-fetch every 1 min
 setInterval(()=>{
   evolveSoc();
