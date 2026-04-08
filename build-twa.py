@@ -662,31 +662,48 @@ public class SolarWorker extends Worker {
     }
 
     private void sendNotif(Context ctx, String title, String body) {
-        Intent intent = new Intent(ctx, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent pi = PendingIntent.getActivity(ctx, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        NotificationCompat.Builder nb = new NotificationCompat.Builder(ctx, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setColor(Color.parseColor("#1D9E75"))
-            .setContentIntent(pi);
         try {
-            NotificationManagerCompat.from(ctx).notify(notifId++, nb.build());
-        } catch (Exception ignored) {}
+            Intent intent = new Intent(ctx, MainActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent pi = PendingIntent.getActivity(ctx, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            NotificationCompat.Builder nb = new NotificationCompat.Builder(ctx, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setColor(Color.parseColor("#1D9E75"))
+                .setContentIntent(pi);
+            // Use system NotificationManager directly — more reliable in background
+            NotificationManager nm = (NotificationManager)
+                ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.notify(notifId++, nb.build());
+            }
+        } catch (Exception e) {
+            android.util.Log.e("SolarWorker", "sendNotif failed: " + e.getMessage());
+        }
     }
 
     private void createChannel(Context ctx) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel ch = new NotificationChannel(
-                CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
-            ch.setLightColor(Color.parseColor("#1D9E75"));
-            ((NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE))
-                .createNotificationChannel(ch);
+            try {
+                NotificationManager nm = (NotificationManager)
+                    ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+                if (nm != null && nm.getNotificationChannel(CHANNEL_ID) == null) {
+                    NotificationChannel ch = new NotificationChannel(
+                        CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
+                    ch.setDescription("Solar production and battery alerts");
+                    ch.setLightColor(Color.parseColor("#1D9E75"));
+                    ch.enableLights(true);
+                    ch.enableVibration(true);
+                    nm.createNotificationChannel(ch);
+                }
+            } catch (Exception e) {
+                android.util.Log.e("SolarWorker", "createChannel failed: " + e.getMessage());
+            }
         }
     }
 
