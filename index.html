@@ -616,11 +616,10 @@ function applyPosition(pos) {
 
 function onLocationErr(err) {
   if (err.code === 1) {
-    setGps('err', '⚠️ Location permission denied — grant in phone Settings.');
+    // Permission denied by user in browser/system prompt
+    setGps('err', '⚠️ Location denied — tap Allow GPS and accept the permission prompt.');
   } else if (err.code === 2) {
-    setGps('err', '⚠️ Location unavailable — enable Location Services in Settings.');
-    if (window.AppBridge && AppBridge.openLocationSettings)
-      setTimeout(() => AppBridge.openLocationSettings(), 1000);
+    setGps('err', '⚠️ Location unavailable — ensure GPS/Location is enabled on this device.');
   } else {
     setGps('err', '⚠️ Location timed out — tap Allow GPS to retry.');
   }
