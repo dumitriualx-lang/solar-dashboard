@@ -576,13 +576,13 @@ let geoWatchId = null;
 // Falls back gracefully with a clear error message
 // ═══════════════════════════════════════════════════════════════
 function onGpsBtnClick() {
-  // In native app: trigger OS permission dialog (same as notification button)
+  // In native app with new AppBridge: trigger OS permission dialog
   if (window.AppBridge && typeof AppBridge.requestLocationPermission === 'function') {
     AppBridge.requestLocationPermission();
     setGps('req', '📍 Allow location access in the system prompt...');
     return;
   }
-  // In browser: call geolocation directly
+  // Fallback: call geolocation directly (browser or older APK)
   requestLocation();
 }
 
