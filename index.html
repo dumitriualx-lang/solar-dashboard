@@ -574,6 +574,25 @@ let geoWatchId = null;
 // ═══════════════════════════════════════════════════════════════
 // Called by native onResume to restore GPS from SharedPreferences
 // This fires before JS may have read localStorage, ensuring coords are set
+function applyStateFromNative(soc, panelKw, battGross, battRes, consKw) {
+  // Restore persisted state from Android SharedPreferences on every resume
+  if (panelKw > 0)  { SYS.panelKw   = panelKw; }
+  if (battGross > 0){ SYS.battGross  = battGross; SYS.battRes = battRes || 0.10; }
+  if (soc >= 0)     { ST.battSoc     = soc; }
+  if (consKw > 0)   { ST.consKw      = consKw; }
+  // Sync UI inputs
+  const socEl   = document.getElementById('cfgSoc');
+  const consEl  = document.getElementById('iCons');
+  const panelEl = document.getElementById('cfgPanel');
+  const battEl  = document.getElementById('cfgBatt');
+  if (socEl   && document.activeElement !== socEl)   socEl.value   = Math.round(socToDisplay(soc));
+  if (consEl  && document.activeElement !== consEl)  consEl.value  = consKw;
+  if (panelEl && document.activeElement !== panelEl) panelEl.value = panelKw;
+  if (battEl  && document.activeElement !== battEl)  battEl.value  = battGross;
+  updateSocDisplay();
+  renderAll();
+}
+
 function applyGpsFromNative(lat, lon, name) {
   // Called by native Android on every resume with last known location
   // Always apply — native location is more authoritative than cached JS state
@@ -1143,6 +1162,10 @@ function evolveSoc() {
   ST.battSoc = Math.max(hardFlr, Math.min(100,
     +(ST.battSoc + (fl.battFlow / (SYS.battUse || 4.5)) * dtH * 100).toFixed(2)
   ));
+  // Persist SOC to Android SharedPreferences (survives WebView process kill)
+  if (window.AppBridge && AppBridge.saveSoc) {
+    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0); } catch(e) {}
+  }
   // Accumulate grid kWh for today
   ST.gridExportKwh = +(ST.gridExportKwh + fl.gridExport * dtH).toFixed(4);
   ST.gridImportKwh = +(ST.gridImportKwh + fl.gridImport * dtH).toFixed(4);
@@ -1218,7 +1241,7 @@ function updateClock() {
 // ═══════════════════════════════════════════════════════════════
 function onConsInput() {
   ST.consKw = Math.max(0, parseFloat(document.getElementById('iCons').value)||0);
-  saveCfg({ ...loadCfg(), consKw: ST.consKw });
+  saveCfg({ ...loadCfg(), consKw: ST.consKw, battSoc: socToDisplay(ST.battSoc) });
   renderMetrics(); renderBattery(); renderFlow(); renderAlerts();
 }
 
@@ -1958,9 +1981,9 @@ function onSocInput() {
   const raw     = parseFloat(document.getElementById('cfgSoc').value);
   if (isNaN(raw)) return;
   const userPct = Math.min(100, Math.max(0, raw));
-  // Map user-entered SOC to internal (10%→0%, 90%→100%)
   ST.battSoc = socToInternal(userPct);
   lastFlowT  = Date.now();
+  saveCfg({ ...loadCfg(), battSoc: userPct }); // persist immediately on input
   updateSocDisplay();
   renderAll();
 }
@@ -2013,6 +2036,10 @@ function saveCfgAndApply() {
     ST.battSoc = socToInternal(soc);  // map display → internal
     saveCfg({ ...loadCfg(), battSoc: soc }); // save display value
   }
+  // Persist to Android SharedPreferences
+  if (window.AppBridge && AppBridge.saveSoc) {
+    try { AppBridge.saveSoc(ST.battSoc, panel, gross, res, ST.consKw||0); } catch(e) {}
+  }
   // Apply brand-specific max charge/discharge rates if set
   const maxCEl = document.getElementById('cfgBattBrand');
   const maxC = parseFloat(maxCEl.dataset.maxC) || SYS._battMaxC;
@@ -2020,10 +2047,12 @@ function saveCfgAndApply() {
   SYS._battMaxC = maxC;
   SYS._battMaxD = maxD;
 
-  // Persist
+  // Persist — include battSoc and consKw so they survive restart
   saveCfg({
     panelKw: panel, battGross: gross, battRes: res,
     battMaxC: maxC, battMaxD: maxD,
+    battSoc: !isNaN(soc) && soc >= 0 && soc <= 100 ? soc : loadCfg().battSoc,
+    consKw: ST.consKw || loadCfg().consKw || 0,
     panelBrand: document.getElementById('cfgPanelBrand').value,
     battBrand:  document.getElementById('cfgBattBrand').value,
     notifEnabled: loadCfg().notifEnabled,
@@ -2306,6 +2335,28 @@ initNotifBar();                              // set notification bar state
 // If we have cached coords: use them immediately, refresh silently in background
 // If no cache: request GPS after short delay (page needs to settle first)
 (function() {
+  // Restore SOC and config from AppBridge SharedPreferences
+  if (window.AppBridge && AppBridge.loadSoc) {
+    try {
+      const s = AppBridge.loadSoc();
+      if (s) {
+        const p = s.split(',');
+        const soc = parseFloat(p[0]), panelKw = parseFloat(p[1]);
+        const battGross = parseFloat(p[2]), battRes = parseFloat(p[3]), consKw = parseFloat(p[4]);
+        if (soc >= 0 && panelKw > 0) {
+          ST.battSoc = soc;
+          SYS.panelKw = panelKw; SYS.battGross = battGross; SYS.battRes = battRes;
+          ST.consKw = consKw;
+          const socEl = document.getElementById('cfgSoc');
+          if (socEl) socEl.value = Math.round(socToDisplay(soc));
+          const consEl = document.getElementById('iCons');
+          if (consEl) consEl.value = consKw;
+          updateSocDisplay();
+        }
+      }
+    } catch(e) {}
+  }
+
   // Try AppBridge SharedPreferences first (most reliable on Android — survives process kill)
   let lat = 0, lon = 0, name = '';
   if (window.AppBridge && AppBridge.loadGps) {
