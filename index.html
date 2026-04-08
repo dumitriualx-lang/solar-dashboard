@@ -2237,17 +2237,10 @@ function renderSmartSched() {
     else if (battCovers)  { statusCls='sb-o'; statusTxt='Batt only'; statusDot='#378ADD'; }
     else                  { statusCls='sb-a'; statusTxt='Wait';      statusDot='#D85A30'; }
 
-    // Check for state change → trigger notification
-    const wasRunnable = applianceState[app.id];
-    if (canRun && !wasRunnable) {
-      // Transitioned to runnable → START alert
-      applianceState[app.id] = true;
-      triggerApplianceNotif('start', app);
-    } else if (!canRun && wasRunnable) {
-      // Transitioned away from runnable → STOP alert
-      applianceState[app.id] = false;
-      triggerApplianceNotif('stop', app);
-    } else if (applianceState[app.id] === undefined) {
+    // Track state change — notifications sent once combined after loop
+    if (applianceState[app.id] === undefined) {
+      applianceState[app.id] = canRun; // init silently
+    } else {
       applianceState[app.id] = canRun;
     }
 
@@ -2272,6 +2265,38 @@ function renderSmartSched() {
 
   document.getElementById('smartSched').innerHTML =
     '<div class="sched">' + rows + '</div>';
+
+  // One combined notification for all runnable appliances (debounced)
+  const nowRunnable = APPLIANCES.filter(a => applianceState[a.id]);
+  if (nowRunnable.length > 0) {
+    const key = 'sched_run';
+    if (!notifTimers[key]) {
+      notifTimers[key] = setTimeout(() => {
+        delete notifTimers[key];
+        if (!isSysConfigured()) return;
+        const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
+          (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+        if (!notifOk) return;
+        const surplus = +(ST.pvKw - (ST.consKw||0)).toFixed(2);
+        // Large appliances (≥2kW) vs small (<2kW)
+        const large = nowRunnable.filter(a => a.kw >= 2);
+        const small = nowRunnable.filter(a => a.kw < 2);
+        const group = large.length ? large : small;
+        const names = group.map(a => a.icon + ' ' + a.name).join(', ');
+        showNotification(
+          '☀️ Free solar now — +' + f(surplus,2) + ' kW',
+          'Good time to run: ' + names + '. Battery: ' + socToDisplay(ST.battSoc) + '%.',
+          'sched-run'
+        );
+      }, 60000); // wait 60s before firing to avoid rapid re-triggers
+    }
+  } else {
+    // No appliances runnable — cancel pending notification
+    if (notifTimers['sched_run']) {
+      clearTimeout(notifTimers['sched_run']);
+      delete notifTimers['sched_run'];
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2280,41 +2305,6 @@ function renderSmartSched() {
 // Debounce: 30s — avoids false alarms from brief cloud shadows,
 // still quick enough to test and act on.
 const NOTIF_DEBOUNCE_MS = 30 * 1000;
-
-function triggerApplianceNotif(type, app) {
-  const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
-    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
-  if (!notifOk) return;
-  const key = app.id + '_' + type;
-  if (notifTimers[key]) clearTimeout(notifTimers[key]);
-  notifTimers[key] = setTimeout(() => {
-    if (type === 'start') {
-      const surplus = +(ST.pvKw - ST.consKw).toFixed(2);
-      showNotification(
-        '☀️ Run ' + app.name + ' now — free solar!',
-        'Surplus +' + surplus + ' kW covers ' + app.kw + ' kW. ' +
-        app.name + ' can run entirely on solar right now. Tap to open.',
-        'appliance-start-' + app.id
-      );
-    } else if (type === 'stop') {
-      showNotification(
-        '⚠️ Stop ' + app.name + ' — solar dropped',
-        'Solar surplus no longer covers ' + app.kw + ' kW. ' +
-        app.name + ' is now drawing from battery or grid. Consider stopping it.',
-        'appliance-stop-' + app.id
-      );
-    } else if (type === 'peak-soon') {
-      showNotification(
-        '⏰ Peak solar in 15 min — get ready',
-        'Production reaching ' + app.kw + ' kW soon. ' +
-        'Start ' + app.name + ' in 15 minutes for maximum free solar use.',
-        'appliance-peak-' + app.id
-      );
-    }
-    delete notifTimers[key];
-  }, NOTIF_DEBOUNCE_MS);
-}
-
 // Schedule "peak coming" alert for top appliances
 function schedulePeakAlerts() {
   if (!isSysConfigured()) return;
