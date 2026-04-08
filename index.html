@@ -576,15 +576,6 @@ let geoWatchId = null;
 // Falls back gracefully with a clear error message
 // ═══════════════════════════════════════════════════════════════
 function requestLocation() {
-  // In WebView: if OS location permission not granted, request it natively first
-  // navigator.geolocation alone cannot trigger the Android OS permission dialog
-  if (window.AppBridge && typeof AppBridge.locationPermissionGranted === 'function') {
-    if (!AppBridge.locationPermissionGranted()) {
-      setGps('req', '📍 Requesting location permission...');
-      AppBridge.requestLocationPermission(); // shows OS dialog; result calls requestLocation() again
-      return;
-    }
-  }
   if (!('geolocation' in navigator)) {
     setGps('err', '❌ Geolocation not supported.');
     return;
