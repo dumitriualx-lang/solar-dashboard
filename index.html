@@ -576,37 +576,31 @@ let geoWatchId = null;
 // Falls back gracefully with a clear error message
 // ═══════════════════════════════════════════════════════════════
 function requestLocation() {
-  setGps('req', '📍 Requesting location...');
+  console.log("GPS Button Pressed in APK");
+  setGps('req', '⏳ Requesting System GPS...');
 
-  // 1. Check if the browser supports it
   if (!navigator.geolocation) {
-    setGps('err', '❌ Geolocation not supported.');
+    setGps('err', '❌ GPS not supported.');
     return;
   }
 
-  // 2. Request the position
-  // Using enableHighAccuracy: true is key to triggering the system popup
+  // In an APK, we must use high accuracy to trigger the Android Permission Dialog
   navigator.geolocation.getCurrentPosition(
     pos => {
       applyPosition(pos);
-      
-      // Setup a watch to keep location updated, but with lower power usage
       if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
-      geoWatchId = navigator.geolocation.watchPosition(
-        applyPosition, 
-        () => {}, 
-        { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 }
-      );
+      geoWatchId = navigator.geolocation.watchPosition(applyPosition, (e)=>{}, 
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     },
     err => {
-      // If user denied or GPS is off, this function handles the message
-      onLocationErr(err);
+      // If code is 1, it means the Android OS denied the request
+      if (err.code === 1) {
+        setGps('err', '⚠️ Permission Denied. Check Android App Settings.');
+      } else {
+        setGps('err', '⚠️ Location unavailable. Is GPS toggled ON in your phone?');
+      }
     },
-    { 
-      enableHighAccuracy: true, // This makes the "Allow" prompt more likely to appear
-      timeout: 15000, 
-      maximumAge: 0 
-    }
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
   );
 }
 
