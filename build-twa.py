@@ -590,7 +590,7 @@ public class SolarWorker extends Worker {
                 String body = String.format(
                     "+%.1f kW solar surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.",
                     surplus, soc);
-                sendNotif(ctx, "\u2600\uFE0F Solar surplus - run large appliances", body);
+                sendNotif(ctx, "Solar surplus - run large appliances", body);
                 prefs.edit().putLong("bg_last_high", now).apply();
             }
             // 2. Low/no production - show next good window or battery status
@@ -599,7 +599,7 @@ public class SolarWorker extends Worker {
                 String body = String.format(
                     "Solar production stopped (%.1f kW). Battery at %.0f%% - approx. %.1fh backup remaining.",
                     pvKw, soc, backupH);
-                sendNotif(ctx, "\uD83C\uDF19 Running on battery", body);
+                sendNotif(ctx, "Running on battery", body);
                 prefs.edit().putLong("bg_last_low", now).apply();
             }
             // 3. Evening forecast at 20:00 (within the 30-min work window)
@@ -607,10 +607,10 @@ public class SolarWorker extends Worker {
                 // Simple forecast: if it's evening and battery is charging, tomorrow likely good
                 String title, body;
                 if (surplus > 0.5) {
-                    title = "\u2600\uFE0F Good solar conditions today";
+                    title = "Good solar conditions today";
                     body  = String.format("Solar still producing %.1f kW at %d:00. Tomorrow should be good too - plan large appliances for mid-day.", pvKw, hour);
                 } else {
-                    title = "\uD83C\uDF19 Solar forecast for tomorrow";
+                    title = "Solar forecast for tomorrow";
                     body  = String.format("Production ended for today. Battery at %.0f%%. Check forecast in the app for tomorrow.", soc);
                 }
                 sendNotif(ctx, title, body);
@@ -624,7 +624,7 @@ public class SolarWorker extends Worker {
                 String body = String.format(
                     "Battery at %.0f%% - reserve floor approaching. Grid will activate soon. Solar: %.1f kW.",
                     dispSoc, pvKw);
-                sendNotif(ctx, "\uD83D\uDD0B Battery low - grid starting", body);
+                sendNotif(ctx, "Battery low - grid starting", body);
                 prefs.edit().putLong("bg_last_batt_low", now).apply();
             }
 
