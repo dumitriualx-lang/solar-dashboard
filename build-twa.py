@@ -229,6 +229,25 @@ public class MainActivity extends Activity {
                 requestPermissions(
                     new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
         }
+
+        @JavascriptInterface
+        public boolean locationPermissionGranted() {
+            return checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        }
+
+        @JavascriptInterface
+        public void openLocationSettings() {
+            startActivity(new android.content.Intent(
+                android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+        }
+
+        @JavascriptInterface
+        public void requestLocationPermission() {
+            requestPermissions(new String[]{
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION}, 2);
+        }
     }
 
     private void createNotificationChannel() {
@@ -287,6 +306,17 @@ public class MainActivity extends Activity {
             }
         });
 
+        // Request location permission if not already granted
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                }, 2);
+            }
+        }
+
         if (savedInstanceState != null) webView.restoreState(savedInstanceState);
         else webView.loadUrl(APP_URL);
     }
@@ -295,6 +325,17 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         webView.saveState(outState);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 2) {
+            // Location permission result — trigger JS to retry GPS
+            mainHandler.postDelayed(() ->
+                webView.evaluateJavascript("if(typeof requestLocation==='function')requestLocation();", null),
+            500);
+        }
     }
 
     @Override
