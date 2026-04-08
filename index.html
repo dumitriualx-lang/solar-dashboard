@@ -774,18 +774,26 @@ function processOpenMeteo(d) {
   const pos = solarPosition(ST.lat, ST.lon);
   const cosZen = Math.max(0.001, Math.cos((90 - pos.altitude) * Math.PI / 180));
 
+  // Clear-sky irradiance (physical upper bound)
+  const cs = clearSkyIrradiance(ST.lat, ST.lon);
+  // Cloud cover correction (Boland model)
+  const cf = Math.max(0, 1 - 0.75 * Math.pow(ST.cloudCover / 100, 3.4));
+  const ghiCC = cs.ghi * cf;  // cloud-cover-corrected clear-sky
+
   let ghi, dni, dhi;
   if (swr > 0 && pos.altitude > 2) {
-    // Sun is up and SWR available — use directly
-    ghi = swr;
-    dni = dniRaw > 0 ? dniRaw : Math.max(0, (swr * 0.85) / cosZen);
-    dni = Math.min(dni, 950); // physical cap
+    // Use MIN of SWR and cloud-corrected clear-sky:
+    // - SWR is a backward hourly average — too high when clouds just appeared
+    // - cloud_cover updates more frequently — catches new clouds faster
+    // Taking the minimum gives the most accurate real-time estimate
+    ghi = Math.min(swr, ghiCC);
+    // Derive DNI: prefer Open-Meteo DNI, scale it by the GHI adjustment
+    const scale = swr > 0 ? ghi / swr : 1;
+    dni = Math.min(dniRaw > 0 ? dniRaw * scale : (ghi * 0.85) / cosZen, 950);
     dhi = Math.max(0, ghi - dni * cosZen);
   } else {
-    // Night or no data — use clear-sky with cloud correction
-    const cs  = clearSkyIrradiance(ST.lat, ST.lon);
-    const cf  = Math.max(0, 1 - 0.75 * Math.pow(ST.cloudCover / 100, 3.4));
-    ghi = +(cs.ghi * cf).toFixed(1);
+    // Night or no SWR data — use cloud-corrected clear-sky
+    ghi = +ghiCC.toFixed(1);
     dni = +(cs.dni * cf).toFixed(1);
     dhi = +(cs.dhi * Math.max(0.2, 1 - cf * 0.5)).toFixed(1);
   }
