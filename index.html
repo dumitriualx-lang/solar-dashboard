@@ -1561,7 +1561,11 @@ function renderAlerts() {
   else                    A.push({t:'s',m:'✅ Balanced — solar covering home exactly. Battery holding at '+Math.round(ST.battSoc)+'%.'});
   if(fl.gridExport>0.01)  A.push({t:'s',m:'⚡ Exporting '+f(fl.gridExport,2)+' kW to grid. Consider running an appliance to self-consume.'});
   if(fl.gridImport>0.01)  A.push({t:'w',m:'🔌 Importing '+f(fl.gridImport,2)+' kW from grid. Solar + battery insufficient for current load.'});
-  A.push({t:'i',m:'🔋 Luna 2000: '+Math.round(ST.battSoc)+'% SOC · '+f(st,2)+' kWh stored · '+f(st/Math.max(0.01,ST.consKw),1)+'h backup · '+(fl.battFlow>0.01?f((SYS.battUse-st)/fl.battFlow,1)+'h to full':'not charging')+'.'});
+  const battName = (() => {
+    const key = document.getElementById('cfgBattBrand') ? document.getElementById('cfgBattBrand').value : '';
+    return (key && BATT_BRANDS[key]) ? BATT_BRANDS[key].name : 'Battery';
+  })();
+  A.push({t:'i',m:'🔋 '+battName+': '+Math.round(ST.battSoc)+'% SOC · '+f(st,2)+' kWh stored · '+f(st/Math.max(0.01,ST.consKw),1)+'h backup · '+(fl.battFlow>0.01?f((SYS.battUse-st)/fl.battFlow,1)+'h to full':'not charging')+'.'});
   A.push({t:'i',m:'☀️ '+Math.round(ST.irrWm2)+' W/m² ('+Math.round(ST.irrDir)+' direct + '+Math.round(ST.irrDif)+' diffuse) → '+f(ST.pvKw,2)+' kW AC · '+ST.wxIcon+' '+ST.wxCond+' '+f(ST.wxTempC,0)+'°C'+(ST.locName?' · '+ST.locName:'')+'.'});
   if(FORECAST.length>1){
     const thu=FORECAST.find(d=>d.d==='Thu')||FORECAST[1];
