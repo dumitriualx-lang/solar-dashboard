@@ -1243,6 +1243,10 @@ function onConsInput() {
   ST.consKw = Math.max(0, parseFloat(document.getElementById('iCons').value)||0);
   ST._lastManualCons = Date.now(); // mark manual override — auto paused for 60 min
   saveCfg({ ...loadCfg(), consKw: ST.consKw, battSoc: socToDisplay(ST.battSoc) });
+  // Persist to Android SharedPreferences immediately (survives process kill)
+  if (window.AppBridge && AppBridge.saveSoc) {
+    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw); } catch(e) {}
+  }
   updateConsLabel();
   renderMetrics(); renderBattery(); renderFlow(); renderAlerts();
 }
