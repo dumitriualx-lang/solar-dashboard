@@ -575,8 +575,10 @@ let geoWatchId = null;
 // Falls back gracefully with a clear error message
 // ═══════════════════════════════════════════════════════════════
 function requestLocation() {
+  console.log('requestLocation called, geolocation:', 'geolocation' in navigator);
+  document.getElementById('gpsMsg').textContent = '⏳ GPS requested...';
   if (!('geolocation' in navigator)) {
-    setGps('err', '❌ Geolocation not supported.');
+    setGps('err', '❌ Geolocation not supported in this browser.');
     return;
   }
   setGps('req', '📍 Requesting GPS...');
@@ -593,6 +595,7 @@ function requestLocation() {
 }
 
 function applyPosition(pos) {
+  console.log('GPS position received:', pos.coords.latitude, pos.coords.longitude);
   const lat = pos.coords.latitude;
   const lon = pos.coords.longitude;
   const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
@@ -614,6 +617,7 @@ function applyPosition(pos) {
 }
 
 function onLocationErr(err) {
+  console.log('GPS error:', err.code, err.message);
   let msg = '⚠️ ';
   if (err.code === 1) msg += 'Location permission denied.';
   else if (err.code === 2) msg += 'GPS unavailable.';
