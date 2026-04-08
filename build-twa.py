@@ -361,7 +361,7 @@ write(os.path.join(RES, "xml", "network_security_config.xml"), """<?xml version=
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">api.forecast.solar</domain>
         <domain includeSubdomains="true">api.open-meteo.com</domain>
-        <domain includeSubdomains="true">dumitriualx-lang.github.io</domain>
+        <domain includeSubdomains="true">dumitriualx-lang.github.io</domain>\n        <domain includeSubdomains=\"true\">nominatim.openstreetmap.org</domain>
     </domain-config>
 </network-security-config>
 """)
