@@ -2276,19 +2276,33 @@ initCfgInputs();                             // populate config inputs from save
 restoreBrandSelects();                       // restore saved brand dropdown selections
 initNotifBar();                              // set notification bar state
 
-// Restore last known GPS position instantly — no waiting for GPS fix
+// Restore last known GPS position from localStorage
+// If we have cached coords: use them immediately, refresh silently in background
+// If no cache: request GPS after short delay (page needs to settle first)
 try {
   const saved = JSON.parse(localStorage.getItem('solarGps') || 'null');
   if (saved && saved.lat && saved.lon) {
     ST.lat = saved.lat; ST.lon = saved.lon;
     ST.locName = saved.name || (f(saved.lat,4) + '°N ' + f(saved.lon,4) + '°E');
     ST.gpsOk = true;
-    setGps('ok', '📍 ' + ST.locName + ' (cached)');
-    fetchWeather(); // fetch immediately with cached coords
+    setGps('ok', '📍 ' + ST.locName);
+    fetchWeather(); // fetch weather immediately with cached coords
+    // Silently refresh GPS in background after 5s — no UI changes unless position moved
+    setTimeout(() => {
+      if (!('geolocation' in navigator)) return;
+      navigator.geolocation.getCurrentPosition(
+        pos => applyPosition(pos), // will save updated coords if moved
+        () => {}, // silently ignore errors — we already have cached coords
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
+      );
+    }, 5000);
+  } else {
+    // No cached GPS — request via button or auto-request after delay
+    setTimeout(requestLocation, 1000);
   }
-} catch(e) {}
-
-setTimeout(requestLocation, 1000);          // refresh GPS in background
+} catch(e) {
+  setTimeout(requestLocation, 1000);
+}
 setInterval(fetchWeather, 60*1000);           // re-fetch every 1 min
 setInterval(()=>{
   evolveSoc();
