@@ -762,15 +762,29 @@ function processOpenMeteo(d) {
   if (!ST.lat || !ST.lon) return;
 
   ST.wxTempC   = +(cur.temperature_2m || 15);
-  ST.cloudCover= +(cur.cloud_cover    || 0);
   ST.wxCond    = wxLabel(cur.weathercode || 0);
   ST.wxIcon    = wxIcon(cur.weathercode  || 0);
 
-  // Use Open-Meteo shortwave_radiation as GHI and direct_normal_irradiance as DNI
-  // This is more accurate than the clear-sky model which overestimates due to
-  // atmospheric turbidity and real-world conditions
-  const swr = +(cur.shortwave_radiation || 0);
-  const dniRaw = +(cur.direct_normal_irradiance || 0);
+  // Find current hour's index in hourly data
+  // Hourly values are point forecasts — more responsive to cloud changes
+  // than cur.* which are backward hourly averages
+  const now2     = new Date();
+  const pad2     = n => String(n).padStart(2,'0');
+  const todayStr2 = now2.getFullYear()+'-'+pad2(now2.getMonth()+1)+'-'+pad2(now2.getDate());
+  const curH2    = now2.getHours();
+  let curIdx = -1;
+  (hr.time || []).forEach((t, i) => {
+    if (t.startsWith(todayStr2) && parseInt(t.slice(11,13)) === curH2) curIdx = i;
+  });
+
+  // Use hourly values for current hour; fall back to cur.*
+  const swr    = curIdx >= 0 ? +(hr.shortwave_radiation?.[curIdx]    || cur.shortwave_radiation    || 0)
+                              : +(cur.shortwave_radiation || 0);
+  const dniRaw = curIdx >= 0 ? +(hr.direct_normal_irradiance?.[curIdx] || cur.direct_normal_irradiance || 0)
+                              : +(cur.direct_normal_irradiance || 0);
+  const ccHour = curIdx >= 0 ? +(hr.cloud_cover?.[curIdx] || cur.cloud_cover || 0)
+                              : +(cur.cloud_cover || 0);
+  ST.cloudCover = ccHour;
   const pos = solarPosition(ST.lat, ST.lon);
   const cosZen = Math.max(0.001, Math.cos((90 - pos.altitude) * Math.PI / 180));
 
