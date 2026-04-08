@@ -18,7 +18,7 @@ KEYSTORE  = os.path.join(HOME, "solar.keystore")
 
 def write(path, content):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(content)
     print("  wrote " + os.path.relpath(path, ROOT))
 
@@ -558,13 +558,13 @@ public class SolarWorker extends Worker {
             double diffuseRad = cur.optDouble("diffuse_radiation", 0);
             double swr        = cur.optDouble("shortwave_radiation", directRad + diffuseRad);
 
-            // Simple solar position — altitude from hour angle
+            // Simple solar position - altitude from hour angle
             Calendar cal = Calendar.getInstance();
             int hour = cal.get(Calendar.HOUR_OF_DAY);
 
             // Estimate GHI from SWR (same as JS model)
             double ghi = swr;
-            // Rough AC estimate: poa ≈ ghi * 1.1 for 30deg south-facing
+            // Rough AC estimate: poa ~ ghi * 1.1 for 30deg south-facing
             double poa = ghi * 1.1;
             double pvKw = Math.min(panelKw * (poa / 1000.0) * 0.95 * 0.984, panelKw * 0.984);
 
@@ -573,7 +573,7 @@ public class SolarWorker extends Worker {
             double storedKwh = battUse > 0 ? (soc / 100.0) * battUse : 0;
             double surplus = pvKw - consKw;
 
-            // ── Decide which notification to send ────────────────────────
+            // -- Decide which notification to send ------------------------
             boolean notifEnabled = NotificationManagerCompat.from(ctx).areNotificationsEnabled();
             if (!notifEnabled) return Result.success();
 
@@ -585,19 +585,19 @@ public class SolarWorker extends Worker {
             long thirtyMin = 30 * 60 * 1000L;
             long twoHours  = 2  * 60 * 60 * 1000L;
 
-            // 1. Good solar production — surplus covers large appliances (>=2kW)
+            // 1. Good solar production - surplus covers large appliances (>=2kW)
             if (surplus >= 2.0 && (now - lastHighNotif) > thirtyMin) {
                 String body = String.format(
                     "+%.1f kW solar surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.",
                     surplus, soc);
-                sendNotif(ctx, "\u2600\uFE0F Solar surplus — run large appliances", body);
+                sendNotif(ctx, "\u2600\uFE0F Solar surplus - run large appliances", body);
                 prefs.edit().putLong("bg_last_high", now).apply();
             }
-            // 2. Low/no production — show next good window or battery status
+            // 2. Low/no production - show next good window or battery status
             else if (pvKw < 0.2 && consKw > 0.1 && battUse > 0 && (now - lastLowNotif) > twoHours) {
                 double backupH = storedKwh / Math.max(0.01, consKw);
                 String body = String.format(
-                    "Solar production stopped (%.1f kW). Battery at %.0f%% — approx. %.1fh backup remaining.",
+                    "Solar production stopped (%.1f kW). Battery at %.0f%% - approx. %.1fh backup remaining.",
                     pvKw, soc, backupH);
                 sendNotif(ctx, "\uD83C\uDF19 Running on battery", body);
                 prefs.edit().putLong("bg_last_low", now).apply();
@@ -608,7 +608,7 @@ public class SolarWorker extends Worker {
                 String title, body;
                 if (surplus > 0.5) {
                     title = "\u2600\uFE0F Good solar conditions today";
-                    body  = String.format("Solar still producing %.1f kW at %d:00. Tomorrow should be good too — plan large appliances for mid-day.", pvKw, hour);
+                    body  = String.format("Solar still producing %.1f kW at %d:00. Tomorrow should be good too - plan large appliances for mid-day.", pvKw, hour);
                 } else {
                     title = "\uD83C\uDF19 Solar forecast for tomorrow";
                     body  = String.format("Production ended for today. Battery at %.0f%%. Check forecast in the app for tomorrow.", soc);
@@ -616,15 +616,15 @@ public class SolarWorker extends Worker {
                 sendNotif(ctx, title, body);
                 prefs.edit().putLong("bg_last_eve", now).apply();
             }
-            // 4. Battery at reserve — always notify regardless of throttle
+            // 4. Battery at reserve - always notify regardless of throttle
             float hardFlr = Math.round(battRes * 50);
             float dispSoc = (float)(10.0 + (soc / 100.0) * 80.0);
             long lastBattLow = prefs.getLong("bg_last_batt_low", 0);
             if (dispSoc <= 15 && storedKwh < battUse * 0.15 && (now - lastBattLow) > twoHours) {
                 String body = String.format(
-                    "Battery at %.0f%% — reserve floor approaching. Grid will activate soon. Solar: %.1f kW.",
+                    "Battery at %.0f%% - reserve floor approaching. Grid will activate soon. Solar: %.1f kW.",
                     dispSoc, pvKw);
-                sendNotif(ctx, "\uD83D\uDD0B Battery low — grid starting", body);
+                sendNotif(ctx, "\uD83D\uDD0B Battery low - grid starting", body);
                 prefs.edit().putLong("bg_last_batt_low", now).apply();
             }
 
