@@ -576,20 +576,37 @@ let geoWatchId = null;
 // Falls back gracefully with a clear error message
 // ═══════════════════════════════════════════════════════════════
 function requestLocation() {
-  if (!('geolocation' in navigator)) {
+  setGps('req', '📍 Requesting location...');
+
+  // 1. Check if the browser supports it
+  if (!navigator.geolocation) {
     setGps('err', '❌ Geolocation not supported.');
     return;
   }
-  setGps('req', '📍 Requesting GPS...');
+
+  // 2. Request the position
+  // Using enableHighAccuracy: true is key to triggering the system popup
   navigator.geolocation.getCurrentPosition(
     pos => {
       applyPosition(pos);
+      
+      // Setup a watch to keep location updated, but with lower power usage
       if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
-      geoWatchId = navigator.geolocation.watchPosition(applyPosition, ()=>{},
-        { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 });
+      geoWatchId = navigator.geolocation.watchPosition(
+        applyPosition, 
+        () => {}, 
+        { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 }
+      );
     },
-    err => onLocationErr(err),
-    { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
+    err => {
+      // If user denied or GPS is off, this function handles the message
+      onLocationErr(err);
+    },
+    { 
+      enableHighAccuracy: true, // This makes the "Allow" prompt more likely to appear
+      timeout: 15000, 
+      maximumAge: 0 
+    }
   );
 }
 
