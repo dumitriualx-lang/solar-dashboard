@@ -82,16 +82,20 @@ dependencies {
     implementation "androidx.webkit:webkit:1.8.0"
     implementation "androidx.core:core:1.10.1"
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
+    implementation "androidx.work:work-runtime:2.9.0"
 }
 """ % (PKG, PKG, KEYSTORE))
 
 write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <application
         android:label="Solar Dashboard"
         android:icon="@mipmap/ic_launcher"
@@ -111,6 +115,11 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <provider
+            android:name="androidx.work.impl.WorkManagerInitializer"
+            android:authorities="${applicationId}.workmanager-init"
+            android:exported="false"
+            tools:node="remove"/>
     </application>
 </manifest>
 """)
@@ -144,6 +153,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends Activity {
     private WebView webView;
@@ -296,6 +309,18 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void scheduleBackgroundWork() {
+        // Schedule SolarWorker to run every 30 minutes in background
+        // ExistingPeriodicWorkPolicy.KEEP means it won't reschedule if already running
+        PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(
+            SolarWorker.class, 30, TimeUnit.MINUTES)
+            .build();
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "solar_background",
+            ExistingPeriodicWorkPolicy.KEEP,
+            work);
+    }
+
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(
@@ -311,6 +336,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         mainHandler = new Handler(Looper.getMainLooper());
         createNotificationChannel();
+        scheduleBackgroundWork();
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -468,6 +494,199 @@ public class MainActivity extends Activity {
 
 
 
+
+write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarWorker.java"), """package com.dumitriualxlang.solardashboard;
+
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.graphics.Color;
+import android.os.Build;
+import androidx.annotation.NonNull;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
+import androidx.work.Worker;
+import androidx.work.WorkerParameters;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Calendar;
+
+public class SolarWorker extends Worker {
+    private static final String CHANNEL_ID = "solar_alerts";
+    private static final String PREFS      = "SolarDashboard";
+    private static int notifId = 1000;
+
+    public SolarWorker(@NonNull Context ctx, @NonNull WorkerParameters p) {
+        super(ctx, p);
+    }
+
+    @NonNull @Override
+    public Result doWork() {
+        Context ctx = getApplicationContext();
+        createChannel(ctx);
+
+        SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        float lat      = prefs.getFloat("gps_lat",    0f);
+        float lon      = prefs.getFloat("gps_lon",    0f);
+        float soc      = prefs.getFloat("soc",        50f);
+        float panelKw  = prefs.getFloat("panel_kw",   5f);
+        float battGross= prefs.getFloat("batt_gross",  0f);
+        float battRes  = prefs.getFloat("batt_res",    0.1f);
+        float consKw   = prefs.getFloat("cons_kw",     0f);
+
+        if (lat == 0f || lon == 0f) return Result.success(); // no GPS yet
+
+        // Fetch weather from Open-Meteo
+        String url = "https://api.open-meteo.com/v1/forecast?"
+            + "latitude=" + lat + "&longitude=" + lon
+            + "&current=temperature_2m,cloud_cover,shortwave_radiation,"
+            + "direct_radiation,diffuse_radiation,direct_normal_irradiance"
+            + "&timezone=auto";
+        String raw = httpGet(url);
+        if (raw == null || raw.startsWith("ERR")) return Result.retry();
+
+        try {
+            JSONObject d   = new JSONObject(raw);
+            JSONObject cur = d.getJSONObject("current");
+            double directRad  = cur.optDouble("direct_radiation",  0);
+            double diffuseRad = cur.optDouble("diffuse_radiation", 0);
+            double swr        = cur.optDouble("shortwave_radiation", directRad + diffuseRad);
+
+            // Simple solar position — altitude from hour angle
+            Calendar cal = Calendar.getInstance();
+            int hour = cal.get(Calendar.HOUR_OF_DAY);
+
+            // Estimate GHI from SWR (same as JS model)
+            double ghi = swr;
+            // Rough AC estimate: poa ≈ ghi * 1.1 for 30deg south-facing
+            double poa = ghi * 1.1;
+            double pvKw = Math.min(panelKw * (poa / 1000.0) * 0.95 * 0.984, panelKw * 0.984);
+
+            // Usable battery capacity
+            double battUse = battGross > 0 ? battGross * (1.0 - battRes) : 0;
+            double storedKwh = battUse > 0 ? (soc / 100.0) * battUse : 0;
+            double surplus = pvKw - consKw;
+
+            // ── Decide which notification to send ────────────────────────
+            boolean notifEnabled = NotificationManagerCompat.from(ctx).areNotificationsEnabled();
+            if (!notifEnabled) return Result.success();
+
+            // Read last notification times
+            long lastHighNotif  = prefs.getLong("bg_last_high",  0);
+            long lastLowNotif   = prefs.getLong("bg_last_low",   0);
+            long lastEveNotif   = prefs.getLong("bg_last_eve",   0);
+            long now = System.currentTimeMillis();
+            long thirtyMin = 30 * 60 * 1000L;
+            long twoHours  = 2  * 60 * 60 * 1000L;
+
+            // 1. Good solar production — surplus covers large appliances (>=2kW)
+            if (surplus >= 2.0 && (now - lastHighNotif) > thirtyMin) {
+                String body = String.format(
+                    "+%.1f kW solar surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.",
+                    surplus, soc);
+                sendNotif(ctx, "\u2600\uFE0F Solar surplus — run large appliances", body);
+                prefs.edit().putLong("bg_last_high", now).apply();
+            }
+            // 2. Low/no production — show next good window or battery status
+            else if (pvKw < 0.2 && consKw > 0.1 && battUse > 0 && (now - lastLowNotif) > twoHours) {
+                double backupH = storedKwh / Math.max(0.01, consKw);
+                String body = String.format(
+                    "Solar production stopped (%.1f kW). Battery at %.0f%% — approx. %.1fh backup remaining.",
+                    pvKw, soc, backupH);
+                sendNotif(ctx, "\uD83C\uDF19 Running on battery", body);
+                prefs.edit().putLong("bg_last_low", now).apply();
+            }
+            // 3. Evening forecast at 20:00 (within the 30-min work window)
+            else if (hour == 20 && (now - lastEveNotif) > twoHours) {
+                // Simple forecast: if it's evening and battery is charging, tomorrow likely good
+                String title, body;
+                if (surplus > 0.5) {
+                    title = "\u2600\uFE0F Good solar conditions today";
+                    body  = String.format("Solar still producing %.1f kW at %d:00. Tomorrow should be good too — plan large appliances for mid-day.", pvKw, hour);
+                } else {
+                    title = "\uD83C\uDF19 Solar forecast for tomorrow";
+                    body  = String.format("Production ended for today. Battery at %.0f%%. Check forecast in the app for tomorrow.", soc);
+                }
+                sendNotif(ctx, title, body);
+                prefs.edit().putLong("bg_last_eve", now).apply();
+            }
+            // 4. Battery at reserve — always notify regardless of throttle
+            float hardFlr = Math.round(battRes * 50);
+            float dispSoc = (float)(10.0 + (soc / 100.0) * 80.0);
+            long lastBattLow = prefs.getLong("bg_last_batt_low", 0);
+            if (dispSoc <= 15 && storedKwh < battUse * 0.15 && (now - lastBattLow) > twoHours) {
+                String body = String.format(
+                    "Battery at %.0f%% — reserve floor approaching. Grid will activate soon. Solar: %.1f kW.",
+                    dispSoc, pvKw);
+                sendNotif(ctx, "\uD83D\uDD0B Battery low — grid starting", body);
+                prefs.edit().putLong("bg_last_batt_low", now).apply();
+            }
+
+        } catch (Exception e) {
+            return Result.retry();
+        }
+        return Result.success();
+    }
+
+    private void sendNotif(Context ctx, String title, String body) {
+        Intent intent = new Intent(ctx, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pi = PendingIntent.getActivity(ctx, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        NotificationCompat.Builder nb = new NotificationCompat.Builder(ctx, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setColor(Color.parseColor("#1D9E75"))
+            .setContentIntent(pi);
+        try {
+            NotificationManagerCompat.from(ctx).notify(notifId++, nb.build());
+        } catch (Exception ignored) {}
+    }
+
+    private void createChannel(Context ctx) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel ch = new NotificationChannel(
+                CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
+            ch.setLightColor(Color.parseColor("#1D9E75"));
+            ((NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE))
+                .createNotificationChannel(ch);
+        }
+    }
+
+    private String httpGet(String urlStr) {
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            conn.setRequestProperty("User-Agent", "SolarDashboard/1.0");
+            if (conn.getResponseCode() == 200) {
+                BufferedReader br = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                conn.disconnect();
+                return sb.toString();
+            }
+            conn.disconnect();
+            return "ERR_HTTP_" + conn.getResponseCode();
+        } catch (Exception e) {
+            return "ERR_" + e.getMessage();
+        }
+    }
+}
+""")
 
 write(os.path.join(RES, "xml", "network_security_config.xml"), """<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
