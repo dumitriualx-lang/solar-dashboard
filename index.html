@@ -1179,8 +1179,11 @@ function evolveSoc() {
   ST.battSoc = Math.max(hardFlr, Math.min(100,
     ST.battSoc + (fl.battFlow / (SYS.battUse || 4.5)) * dtH * 100
   ));
-  // Persist SOC to Android SharedPreferences (survives WebView process kill)
-  if (window.AppBridge && AppBridge.saveSoc) {
+  // Persist SOC to Android SharedPreferences (survives WebView process kill).
+  // Only persist when system is properly configured — prevents the default
+  // ST.battSoc=50 from being written as if it were a real user-entered SOC,
+  // which would otherwise pre-fill the SOC field with 50% on every launch.
+  if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
     try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0); } catch(e) {}
   }
   // Accumulate grid kWh for today
@@ -2574,9 +2577,11 @@ setInterval(()=>{
   applyAutoConsumption();  // auto-fill consumption from learned profile
   renderAll();
   updateConsLabel();
-  // Keep SOC config field in sync with auto-evolved state (only if not being edited)
+  // Keep SOC config field in sync with evolved state — but ONLY when the
+  // system is configured. Without this guard, the default ST.battSoc=50
+  // overwrites the field every 5-30s, making it appear pre-filled with 50%.
   const socEl = document.getElementById('cfgSoc');
-  if (socEl && document.activeElement !== socEl) {
+  if (socEl && document.activeElement !== socEl && isSysConfigured()) {
     socEl.value = Math.round(socToDisplay(ST.battSoc));
     updateSocDisplay();
   }
@@ -2587,7 +2592,7 @@ setInterval(()=>{
   renderBattery();
   renderMetrics();
   const socEl = document.getElementById('cfgSoc');
-  if (socEl && document.activeElement !== socEl) {
+  if (socEl && document.activeElement !== socEl && isSysConfigured()) {
     socEl.value = Math.round(socToDisplay(ST.battSoc));
     updateSocDisplay();
   }
