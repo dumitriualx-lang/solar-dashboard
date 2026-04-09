@@ -1135,8 +1135,12 @@ function calcFlow() {
   const pv      = ST.pvKw  || 0;
   const cons    = ST.consKw || 0;
   const soc     = ST.battSoc || 50;
-  const resPct  = Math.round((SYS.battRes || 0.1) * 100);
-  const hardFlr = Math.max(1, Math.round(resPct / 2));
+  // ST.battSoc is on the INTERNAL scale: 0% = display floor (10%), 100% = display ceiling (90%)
+  // hardFlr = 0 internal = display 10% — the true reserve floor where discharge stops
+  // Soft ramp zone: internal 0–2% (display 10–11.6%) — reduce discharge near floor
+  // to prevent a hard cliff and match Huawei inverter behaviour at reserve boundary
+  const hardFlr = 0;   // internal SOC: discharge blocked only at/below this
+  const rampTop = 2;   // internal SOC: full discharge rate above this
 
   const s2h = Math.min(pv, cons);   // solar directly to home
   const pvS = pv - s2h;             // solar surplus after home
@@ -1145,16 +1149,16 @@ function calcFlow() {
   // Battery charge — from surplus only, never from grid
   const bC = (soc < 100) ? Math.min(pvS, SYS.battMaxC) : 0;
 
-  // Battery discharge — Huawei model:
-  // Normal (>reserve): full discharge rate
-  // Reserve zone: battery + grid share deficit proportionally
-  // Hard floor (≤hardFlr): battery fully protected, zero discharge
+  // Battery discharge:
+  // soc <= hardFlr (internal 0% = display 10%): hard floor, no discharge, grid covers all
+  // soc <= rampTop (internal 0-2% = display 10-11.6%): soft ramp, partial discharge
+  // soc > rampTop: full discharge up to battMaxD
   let bD;
   if (soc <= hardFlr) {
     bD = 0;
-  } else if (soc <= resPct) {
-    const frac = (soc - hardFlr) / Math.max(1, (resPct - hardFlr) * 2);
-    bD = Math.min(hD * frac, SYS.battMaxD * 0.10);
+  } else if (soc <= rampTop) {
+    const frac = (soc - hardFlr) / rampTop;   // 0→1 as soc goes from floor to rampTop
+    bD = Math.min(hD * frac, SYS.battMaxD);
   } else {
     bD = Math.min(hD, SYS.battMaxD);
   }
@@ -1184,7 +1188,7 @@ function evolveSoc() {
   // ST.battSoc=50 from being written as if it were a real user-entered SOC,
   // which would otherwise pre-fill the SOC field with 50% on every launch.
   if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
-    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0); } catch(e) {}
+    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5); } catch(e) {}
   }
   // Accumulate grid kWh for today
   ST.gridExportKwh = +(ST.gridExportKwh + fl.gridExport * dtH).toFixed(4);
@@ -1281,7 +1285,7 @@ function onConsInput() {
   saveCfg({ ...loadCfg(), consKw: ST.consKw, battSoc: socToDisplay(ST.battSoc) });
   // Persist to Android SharedPreferences immediately (survives process kill)
   if (window.AppBridge && AppBridge.saveSoc) {
-    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw); } catch(e) {}
+    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw, SYS.battMaxC||2.5, SYS.battMaxD||2.5); } catch(e) {}
   }
   updateConsLabel();
   renderMetrics(); renderBattery(); renderFlow(); renderAlerts();
@@ -2106,7 +2110,7 @@ function saveCfgAndApply() {
   }
   // Persist to Android SharedPreferences
   if (window.AppBridge && AppBridge.saveSoc) {
-    try { AppBridge.saveSoc(ST.battSoc, panel, gross, res, ST.consKw||0); } catch(e) {}
+    try { AppBridge.saveSoc(ST.battSoc, panel, gross, res, ST.consKw||0, maxC||2.5, maxD||2.5); } catch(e) {}
   }
   // Apply brand-specific max charge/discharge rates if set
   const maxCEl = document.getElementById('cfgBattBrand');
