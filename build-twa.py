@@ -263,12 +263,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        // 5-arg overload — legacy, passes default maxC/maxD of 2.5
-        public void saveSoc(float soc, float panelKw, float battGross, float battRes, float consKw) {
-            saveSoc(soc, panelKw, battGross, battRes, consKw, 2.5f, 2.5f);
-        }
-        // 7-arg version — includes max charge/discharge rates so background services
-        // use the correct battery spec instead of always defaulting to 2.5 kW
+        // saveSoc — persists all system state to SharedPreferences.
+        // Called from JS every 5s (evolveSoc) and on any config change.
+        // soc_saved_at_ms is used by injectLocation() to catch-up SOC evolution
+        // when the app reopens and the background service hasn't fired yet.
+        @JavascriptInterface
         public void saveSoc(float soc, float panelKw, float battGross, float battRes, float consKw, float battMaxC, float battMaxD) {
             getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE)
                 .edit()
