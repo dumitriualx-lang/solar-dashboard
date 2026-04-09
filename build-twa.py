@@ -262,7 +262,6 @@ public class MainActivity extends Activity {
                     new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
         }
 
-        @JavascriptInterface
         // saveSoc — persists all system state to SharedPreferences.
         // Called from JS every 5s (evolveSoc) and on any config change.
         // soc_saved_at_ms is used by injectLocation() to catch-up SOC evolution
