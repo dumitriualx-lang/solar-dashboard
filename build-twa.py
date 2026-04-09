@@ -99,6 +99,7 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <application
         android:label="Solar Dashboard"
         android:icon="@mipmap/ic_launcher"
@@ -128,6 +129,10 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
         </receiver>
         <receiver
             android:name=".SolarAlarmReceiver"
+            android:exported="false"/>
+        <service
+            android:name=".SolarForegroundService"
+            android:foregroundServiceType="dataSync"
             android:exported="false"/>
     </application>
 </manifest>
@@ -380,8 +385,9 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         mainHandler = new Handler(Looper.getMainLooper());
         createNotificationChannel();
-        scheduleBackgroundWork();       // WorkManager — backup / standard
-        SolarAlarmReceiver.schedule(this); // AlarmManager — primary, fires on Samsung
+        scheduleBackgroundWork();              // WorkManager — tertiary backup
+        SolarAlarmReceiver.schedule(this);    // AlarmManager — secondary backup
+        SolarForegroundService.start(this);   // Foreground Service — PRIMARY (Samsung-safe)
         requestBatteryOptimizationExemption();
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -530,8 +536,8 @@ public class MainActivity extends Activity {
 
                     double battUse = battGross * (1.0 - battRes);
                     if (battUse <= 0) battUse = 4.5;
-                    double resPct  = Math.round(battRes * 100.0);
-                    double hardFlr = Math.max(1.0, Math.round(resPct / 2.0));
+                    double hardFlr = 0.0;
+                    double rampTop = 2.0;
 
                     double s2h = Math.min(pvKwLast, consKw);
                     double pvS = pvKwLast - s2h;
@@ -539,10 +545,8 @@ public class MainActivity extends Activity {
                     double bC  = soc < 100 ? Math.min(pvS, battMaxC) : 0;
                     double bD;
                     if      (soc <= hardFlr) bD = 0;
-                    else if (soc <= resPct)  {
-                        double frac = (soc - hardFlr) / Math.max(1.0, (resPct - hardFlr) * 2.0);
-                        bD = Math.min(hD * frac, battMaxD * 0.10);
-                    } else bD = Math.min(hD, battMaxD);
+                    else if (soc <= rampTop) { double frac=(soc-hardFlr)/rampTop; bD=Math.min(hD*frac,(double)battMaxD); }
+                    else                     bD = Math.min(hD, (double) battMaxD);
 
                     double battFlow = bC - bD;
                     double newSoc   = soc + (battFlow / battUse) * elapsedH * 100.0;
@@ -590,6 +594,399 @@ public class MainActivity extends Activity {
 
 
 
+
+
+write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarForegroundService.java"), """package com.dumitriualxlang.solardashboard;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.graphics.Color;
+import android.os.Build;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import androidx.core.app.NotificationCompat;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
+
+/**
+ * SolarForegroundService — the PRIMARY background engine.
+ *
+ * A Foreground Service is the ONLY mechanism that cannot be killed by Samsung's
+ * Device Care, even with battery optimization enabled. It runs permanently until
+ * the user explicitly stops it or the app is uninstalled.
+ *
+ * Every 30 minutes it:
+ *   1. Fetches weather from Open-Meteo
+ *   2. Calculates solar production using the same physics model as the JS app
+ *   3. Runs the energy flow model (Solar → Home → Battery → Grid)
+ *   4. Evolves battery SOC over elapsed time
+ *   5. Persists soc + pv_kw + soc_saved_at_ms to SharedPreferences
+ *   6. Fires a notification if any alert rule matches
+ *
+ * The persistent "Solar monitoring active" notification is required by Android
+ * for foreground services — it cannot be dismissed but can be minimised.
+ */
+public class SolarForegroundService extends Service {
+
+    private static final String CHANNEL_ID    = "solar_alerts";
+    private static final String CHANNEL_FG_ID = "solar_fg";
+    private static final String PREFS         = "SolarDashboard";
+    private static final int    FG_NOTIF_ID   = 999;
+    private static final long   INTERVAL_MS   = 30 * 60 * 1000L;  // 30 minutes
+    private static int          alertNotifId  = 3000;
+
+    private Handler  handler;
+    private Runnable checker;
+
+    // ── Public API ────────────────────────────────────────────────────────────
+    public static void start(Context ctx) {
+        Intent intent = new Intent(ctx, SolarForegroundService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ctx.startForegroundService(intent);
+        } else {
+            ctx.startService(intent);
+        }
+    }
+
+    public static void stop(Context ctx) {
+        ctx.stopService(new Intent(ctx, SolarForegroundService.class));
+    }
+
+    // ── Service lifecycle ─────────────────────────────────────────────────────
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        handler = new Handler(Looper.getMainLooper());
+        createChannels();
+        startForeground(FG_NOTIF_ID, buildFgNotification("☀️ Solar monitoring active"));
+        android.util.Log.d("SolarFGS", "Service created — starting 30-min check loop");
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        // Schedule first check immediately, then every 30 min
+        // If already scheduled, the handler dedup prevents double-running
+        if (checker == null) {
+            checker = new Runnable() {
+                @Override public void run() {
+                    try {
+                        doSolarCheck();
+                    } catch (Exception e) {
+                        android.util.Log.e("SolarFGS", "Check error: " + e.getMessage());
+                    }
+                    // Re-schedule next run in 30 minutes — this is the self-chaining loop
+                    handler.postDelayed(this, INTERVAL_MS);
+                }
+            };
+            // First run after 5 seconds (let the service settle), then every 30 min
+            handler.postDelayed(checker, 5000);
+        }
+        // START_STICKY: if the service is killed (rare), restart it automatically
+        return START_STICKY;
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if (handler != null && checker != null) {
+            handler.removeCallbacks(checker);
+        }
+        android.util.Log.d("SolarFGS", "Service destroyed");
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) { return null; }
+
+    // ── Core physics check ────────────────────────────────────────────────────
+    private void doSolarCheck() {
+        SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        long nowMs = System.currentTimeMillis();
+
+        // Elapsed time since last run
+        long lastMs = prefs.getLong("fgs_last_run_ms", nowMs);
+        double dtH  = (nowMs - lastMs) / 3600000.0;
+        if (dtH <= 0 || dtH > 1.5) dtH = 0.5;  // cap: service restarts can cause gaps
+        prefs.edit().putLong("fgs_last_run_ms", nowMs).apply();
+
+        // Read config
+        float soc      = prefs.getFloat("soc",       50f);
+        float panelKw  = prefs.getFloat("panel_kw",   5f);
+        float battGross= prefs.getFloat("batt_gross", 0f);
+        float battRes  = prefs.getFloat("batt_res",   0.1f);
+        float consKw   = prefs.getFloat("cons_kw",    0f);
+        float battMaxC = prefs.getFloat("batt_max_c", 2.5f);
+        float battMaxD = prefs.getFloat("batt_max_d", 2.5f);
+        float lat      = prefs.getFloat("gps_lat",    0f);
+        float lon      = prefs.getFloat("gps_lon",    0f);
+
+        // GPS fallback via LocationManager
+        if (lat == 0f || lon == 0f) {
+            try {
+                android.location.LocationManager lm =
+                    (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
+                if (lm != null) {
+                    android.location.Location loc =
+                        lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
+                    if (loc == null)
+                        loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
+                    if (loc == null)
+                        loc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
+                    if (loc != null) {
+                        lat = (float) loc.getLatitude();
+                        lon = (float) loc.getLongitude();
+                        prefs.edit().putFloat("gps_lat", lat).putFloat("gps_lon", lon).apply();
+                    }
+                }
+            } catch (Exception e) { android.util.Log.w("SolarFGS", "GPS fallback: " + e.getMessage()); }
+        }
+        if (lat == 0f || lon == 0f) {
+            android.util.Log.w("SolarFGS", "No GPS available — skipping");
+            return;
+        }
+
+        // Fetch weather
+        String url = "https://api.open-meteo.com/v1/forecast?"
+            + "latitude=" + lat + "&longitude=" + lon
+            + "&current=temperature_2m,cloud_cover,shortwave_radiation,"
+            + "direct_radiation,diffuse_radiation,direct_normal_irradiance"
+            + "&timezone=auto";
+        String raw = httpGet(url);
+        if (raw == null || raw.startsWith("ERR")) {
+            android.util.Log.w("SolarFGS", "Weather fetch failed: " + raw);
+            return;
+        }
+
+        double pvKw = 0;
+        double gridImport = 0, battFlow = 0;
+        double newSoc = soc;
+        double battUse = battGross > 0 ? battGross * (1.0 - battRes) : 4.5;
+
+        try {
+            JSONObject cur = new JSONObject(raw).getJSONObject("current");
+            double directRad  = cur.optDouble("direct_radiation",  0);
+            double diffuseRad = cur.optDouble("diffuse_radiation", 0);
+            double swr        = cur.optDouble("shortwave_radiation", directRad + diffuseRad);
+            double tempC      = cur.optDouble("temperature_2m", 25);
+            double cloud      = cur.optDouble("cloud_cover", 0);
+
+            // ── Solar position (same algorithm as JS solarPosition()) ──────────
+            Calendar cal = Calendar.getInstance();
+            long dayOfYear = (nowMs - new GregorianCalendar(
+                cal.get(Calendar.YEAR), 0, 1).getTimeInMillis()) / 86400000L;
+            double utcH  = cal.get(Calendar.HOUR_OF_DAY)
+                         + cal.get(Calendar.MINUTE) / 60.0
+                         + cal.get(Calendar.SECOND) / 3600.0
+                         - cal.getTimeZone().getOffset(nowMs) / 3600000.0;
+            double decl  = 23.45 * Math.sin((360.0/365.0*(dayOfYear-81)) * Math.PI/180.0);
+            double ha    = (utcH - 12) * 15 + lon;
+            double latR  = lat * Math.PI/180.0, decR = decl * Math.PI/180.0;
+            double sinAlt= Math.sin(latR)*Math.sin(decR)
+                         + Math.cos(latR)*Math.cos(decR)*Math.cos(ha*Math.PI/180.0);
+            double alt   = Math.asin(Math.max(-1,Math.min(1,sinAlt)))*180.0/Math.PI;
+
+            if (alt > 2.0) {
+                double cosZen = Math.max(0.001,Math.cos((90.0-alt)*Math.PI/180.0));
+                double I0    = 1367.0*(1+0.033*Math.cos(2*Math.PI*dayOfYear/365.0));
+                double AM    = 1.0/(cosZen+0.50572*Math.pow(96.07995-alt,-1.6364));
+                double csGHI = I0*Math.sin(alt*Math.PI/180.0)*0.98*Math.exp(-0.103*AM);
+                double ghi   = swr>0 ? Math.min(swr,csGHI)
+                                     : csGHI*Math.max(0,1-0.75*Math.pow(cloud/100.0,3.4));
+                double tiltR = 30.0*Math.PI/180.0;
+                double solAzR= Math.acos(Math.max(-1,Math.min(1,
+                    (Math.sin(decR)-Math.sin(latR)*sinAlt)
+                    /(Math.cos(latR)*Math.cos(Math.asin(Math.max(-1,Math.min(1,sinAlt))))+1e-9))));
+                if (ha > 0) solAzR = 2*Math.PI-solAzR;
+                double altR  = alt*Math.PI/180.0;
+                double cosAOI= Math.sin(altR)*Math.cos(tiltR)
+                             + Math.cos(altR)*Math.sin(tiltR)*Math.cos(solAzR-Math.PI);
+                double dhi   = diffuseRad>0 ? diffuseRad : ghi*0.15;
+                double dni   = Math.min(directRad>0 ? directRad/Math.max(0.001,cosZen)
+                                                    : Math.max(0,(ghi-dhi)/Math.max(0.001,cosZen)), 950);
+                double poa   = Math.max(0,cosAOI)*dni + dhi*(1+Math.cos(tiltR))/2.0
+                             + ghi*0.20*(1-Math.cos(tiltR))/2.0;
+                double cellT = tempC+(45.0-20.0)*(Math.max(50,poa)/800.0);
+                double tFac  = Math.max(0.80,1.0-Math.max(0,cellT-25.0)*0.0037);
+                pvKw = Math.max(0,Math.min(panelKw*0.984,(poa/1000.0)*panelKw*tFac*0.984));
+            }
+
+            // ── Energy flow (same model as JS calcFlow()) ─────────────────────
+            double hardFlr = 0.0;
+            double rampTop = 2.0;
+            double s2h = Math.min(pvKw, consKw);
+            double pvS = pvKw - s2h, hD = consKw - s2h;
+            double bC  = soc < 100 ? Math.min(pvS, battMaxC) : 0;
+            double bD;
+            if      (soc <= hardFlr) bD = 0;
+            else if (soc <= rampTop) { double frac=(soc-hardFlr)/rampTop; bD=Math.min(hD*frac,battMaxD); }
+            else                     bD = Math.min(hD, battMaxD);
+            battFlow   = bC - bD;
+            gridImport = Math.max(0, hD - bD);
+
+            // ── Evolve SOC ────────────────────────────────────────────────────
+            newSoc = soc + (battFlow / battUse) * dtH * 100.0;
+            newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
+
+            // ── Persist all state for catch-up on next app open ───────────────
+            prefs.edit()
+                 .putFloat("soc",            (float) newSoc)
+                 .putFloat("pv_kw",          (float) pvKw)
+                 .putLong ("soc_saved_at_ms", nowMs)
+                 .apply();
+
+            // Update the foreground notification with live values
+            String status = String.format("☀️ %.2fkW · 🏠 %.2fkW · 🔋 %.0f%%",
+                pvKw, (double) consKw, newSoc);
+            updateFgNotification(status);
+
+            android.util.Log.d("SolarFGS", String.format(
+                "dtH=%.2fh pv=%.2f cons=%.2f flow=%.3f soc %.1f→%.1f grid=%.2f",
+                dtH, pvKw, (double)consKw, battFlow, (double)soc, newSoc, gridImport));
+
+            // ── Notification rules ────────────────────────────────────────────
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            boolean notifOk = nm != null && nm.areNotificationsEnabled();
+            if (!notifOk) return;
+
+            long now2H  = 2L*60*60*1000, now30M = 30L*60*1000;
+            double surplus   = pvKw - consKw;
+            double storedKwh = battUse * (newSoc/100.0);
+            long lHigh  = prefs.getLong("fgs_last_high",     0);
+            long lLow   = prefs.getLong("fgs_last_low",      0);
+            long lEve   = prefs.getLong("fgs_last_eve",      0);
+            long lBattLo= prefs.getLong("fgs_last_batt_low", 0);
+            long lHighC = prefs.getLong("fgs_last_high_cons",0);
+
+            if (surplus >= 2.0 && (nowMs-lHigh) > now30M) {
+                sendAlert("Solar surplus \u2014 run large appliances",
+                    String.format("+%.1f kW surplus. Run washing machine, dishwasher or water heater. Battery: %.0f%%.", surplus, newSoc));
+                prefs.edit().putLong("fgs_last_high", nowMs).apply();
+            } else if (pvKw < 0.2 && consKw > 0.1 && (nowMs-lLow) > now2H) {
+                double bkp = storedKwh / Math.max(0.01, consKw);
+                sendAlert("Running on battery",
+                    String.format("Solar stopped (%.1f kW). Battery %.0f%% \u2014 ~%.1fh backup.", pvKw, newSoc, bkp));
+                prefs.edit().putLong("fgs_last_low", nowMs).apply();
+            } else if (cal.get(Calendar.HOUR_OF_DAY) == 20 && (nowMs-lEve) > now2H) {
+                if (surplus > 0.5)
+                    sendAlert("Good solar today", String.format("Still %.1f kW. Battery %.0f%%. Plan appliances tomorrow mid-day.", pvKw, newSoc));
+                else
+                    sendAlert("Solar ended for today", String.format("Battery at %.0f%%. Check forecast in the app.", newSoc));
+                prefs.edit().putLong("fgs_last_eve", nowMs).apply();
+            }
+            if (storedKwh < battUse*0.15 && newSoc < 20.0 && (nowMs-lBattLo) > now2H) {
+                sendAlert("Battery low \u2014 grid starting",
+                    String.format("Battery %.0f%% \u2014 reserve approaching. Grid activating. Solar: %.1f kW.", newSoc, pvKw));
+                prefs.edit().putLong("fgs_last_batt_low", nowMs).apply();
+            }
+            if (gridImport > 1.0 && battFlow < -0.2 && (nowMs-lHighC) > now2H) {
+                sendAlert("High consumption \u2014 grid + battery active",
+                    String.format("Grid %.1f kW + battery %.1f kW. Solar %.1f kW of %.1f kW load. Battery %.0f%%.",
+                        gridImport, Math.abs(battFlow), pvKw, (double)consKw, newSoc));
+                prefs.edit().putLong("fgs_last_high_cons", nowMs).apply();
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("SolarFGS", "doSolarCheck exception: " + e.getMessage());
+        }
+    }
+
+    // ── Notifications ─────────────────────────────────────────────────────────
+    private Notification buildFgNotification(String text) {
+        Intent open = new Intent(this, MainActivity.class)
+            .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pi = PendingIntent.getActivity(this, 0, open,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        return new NotificationCompat.Builder(this, CHANNEL_FG_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Solar Dashboard")
+            .setContentText(text)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setColor(Color.parseColor("#1D9E75"))
+            .setContentIntent(pi)
+            .build();
+    }
+
+    private void updateFgNotification(String text) {
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (nm != null) nm.notify(FG_NOTIF_ID, buildFgNotification(text));
+    }
+
+    private void sendAlert(String title, String body) {
+        try {
+            Intent open = new Intent(this, MainActivity.class)
+                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent pi = PendingIntent.getActivity(this, 0, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            NotificationCompat.Builder nb = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title).setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setColor(Color.parseColor("#1D9E75"))
+                .setContentIntent(pi);
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(alertNotifId++, nb.build());
+            android.util.Log.d("SolarFGS", "Alert sent: " + title);
+        } catch (Exception e) {
+            android.util.Log.e("SolarFGS", "sendAlert: " + e.getMessage());
+        }
+    }
+
+    private void createChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            // Foreground service channel — low priority, no sound
+            if (nm.getNotificationChannel(CHANNEL_FG_ID) == null) {
+                NotificationChannel fg = new NotificationChannel(
+                    CHANNEL_FG_ID, "Solar background monitor", NotificationManager.IMPORTANCE_LOW);
+                fg.setDescription("Keeps solar physics running in background");
+                fg.setShowBadge(false);
+                nm.createNotificationChannel(fg);
+            }
+            // Alert channel — high priority, for solar/battery alerts
+            if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+                NotificationChannel al = new NotificationChannel(
+                    CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
+                al.setDescription("Solar production and battery alerts");
+                al.setLightColor(Color.parseColor("#1D9E75"));
+                al.enableLights(true);
+                al.enableVibration(true);
+                nm.createNotificationChannel(al);
+            }
+        }
+    }
+
+    private String httpGet(String urlStr) {
+        try {
+            HttpURLConnection c = (HttpURLConnection) new URL(urlStr).openConnection();
+            c.setConnectTimeout(15000); c.setReadTimeout(15000);
+            c.setRequestProperty("User-Agent","SolarDashboard/1.0");
+            if (c.getResponseCode() == 200) {
+                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"));
+                StringBuilder sb = new StringBuilder(); String ln;
+                while ((ln=br.readLine())!=null) sb.append(ln);
+                br.close(); c.disconnect(); return sb.toString();
+            }
+            c.disconnect(); return "ERR_HTTP_"+c.getResponseCode();
+        } catch (Exception e) { return "ERR_"+e.getMessage(); }
+    }
+}
+""")
 
 
 write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarAlarmReceiver.java"), """package com.dumitriualxlang.solardashboard;
@@ -791,14 +1188,14 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
 
             // Energy flow
             double battUse = battGross>0 ? battGross*(1.0-battRes) : 4.5;
-            double resPct  = Math.round((double)battRes*100.0);
-            double hardFlr = Math.max(1.0,Math.round(resPct/2.0));
+            double hardFlr = 0.0;
+            double rampTop = 2.0;
             double s2h = Math.min(pvKw,consKw), pvS=pvKw-s2h, hD=consKw-s2h;
             double bC  = soc<100 ? Math.min(pvS,battMaxC) : 0;
             double bD;
-            if      (soc<=hardFlr) bD=0;
-            else if (soc<=resPct)  { double f=(soc-hardFlr)/Math.max(1.0,(resPct-hardFlr)*2.0); bD=Math.min(hD*f,battMaxD*0.10); }
-            else                   bD=Math.min(hD,battMaxD);
+            if      (soc<=hardFlr)  bD=0;
+            else if (soc<=rampTop)  { double f=(soc-hardFlr)/rampTop; bD=Math.min(hD*f,battMaxD); }
+            else                    bD=Math.min(hD,battMaxD);
             battFlow  = bC-bD;
             gridExport= Math.max(0,pvS-bC);
             gridImport= Math.max(0,hD-bD);
@@ -956,7 +1353,9 @@ public class BootReceiver extends BroadcastReceiver {
         if (!action.equals(Intent.ACTION_BOOT_COMPLETED)
             && !action.equals(Intent.ACTION_MY_PACKAGE_REPLACED)) return;
 
-        android.util.Log.d("BootReceiver", "Received: " + action + " — rescheduling SolarWorker");
+        android.util.Log.d("BootReceiver", "Received: " + action + " — restarting solar background");
+        // Start the foreground service first — most reliable on Samsung
+        SolarForegroundService.start(context);
         try {
             Constraints constraints = new Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -1152,8 +1551,11 @@ public class SolarWorker extends Worker {
 
         // ── Energy flow model (mirrors JS calcFlow) ──────────────────────────
         // Priority: Solar → Home → Battery → Grid
-        double resPct  = Math.round((double) battRes * 100.0);
-        double hardFlr = Math.max(1.0, Math.round(resPct / 2.0));
+        // Internal SOC scale: 0% = display floor (10%), 100% = display ceiling (90%)
+        // hardFlr=0 internal = display 10% reserve — discharge stops here
+        // rampTop=2 internal = display ~11.6% — full discharge rate above this
+        double hardFlr = 0.0;
+        double rampTop = 2.0;
         double battUse = battGross > 0 ? battGross * (1.0 - battRes) : 4.5;
 
         double s2h  = Math.min(pvKw, consKw);
@@ -1163,13 +1565,11 @@ public class SolarWorker extends Worker {
         // Battery charge — from solar surplus only, never from grid
         double bC = soc < 100 ? Math.min(pvS, battMaxC) : 0;
 
-        // Battery discharge — Huawei reserve zone model (same as JS)
+        // Battery discharge — mirrors JS calcFlow()
         double bD;
         if      (soc <= hardFlr) bD = 0;
-        else if (soc <= resPct) {
-            double frac = (soc - hardFlr) / Math.max(1.0, (resPct - hardFlr) * 2.0);
-            bD = Math.min(hD * frac, battMaxD * 0.10);
-        } else bD = Math.min(hD, battMaxD);
+        else if (soc <= rampTop) { double frac=(soc-hardFlr)/rampTop; bD=Math.min(hD*frac,battMaxD); }
+        else                     bD = Math.min(hD, battMaxD);
 
         double battFlow  = bC - bD;
         double gridExport = Math.max(0, pvS - bC);
