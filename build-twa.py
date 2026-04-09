@@ -96,6 +96,7 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <application
         android:label="Solar Dashboard"
         android:icon="@mipmap/ic_launcher"
@@ -115,11 +116,14 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <provider
-            android:name="androidx.work.impl.WorkManagerInitializer"
-            android:authorities="${applicationId}.workmanager-init"
-            android:exported="false"
-            tools:node="remove"/>
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
 """)
@@ -153,10 +157,15 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import androidx.work.Constraints;
 import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.NetworkType;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 import java.util.concurrent.TimeUnit;
+import android.net.Uri;
+import android.os.PowerManager;
+import android.provider.Settings;
 
 public class MainActivity extends Activity {
     private WebView webView;
@@ -309,15 +318,39 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void requestBatteryOptimizationExemption() {
+        // Samsung (and other OEMs) aggressively kill background tasks.
+        // This prompts the user once to whitelist the app from battery optimization.
+        // Without this, WorkManager periodic tasks may never fire on Samsung S24.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+                if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                    Intent intent = new Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                }
+            } catch (Exception e) {
+                android.util.Log.w("MainActivity", "Battery opt exemption request failed: " + e.getMessage());
+            }
+        }
+    }
+
     private void scheduleBackgroundWork() {
-        // Schedule SolarWorker to run every 30 minutes in background
-        // ExistingPeriodicWorkPolicy.KEEP means it won't reschedule if already running
+        // Require network so the worker doesn't run and fail silently offline.
+        // UPDATE policy: keeps the existing schedule/run-count but ensures the
+        // latest SolarWorker code is used. Safe to call on every app open.
+        Constraints constraints = new Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build();
         PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(
             SolarWorker.class, 30, TimeUnit.MINUTES)
+            .setConstraints(constraints)
             .build();
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "solar_background",
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             work);
     }
 
@@ -337,6 +370,7 @@ public class MainActivity extends Activity {
         mainHandler = new Handler(Looper.getMainLooper());
         createNotificationChannel();
         scheduleBackgroundWork();
+        requestBatteryOptimizationExemption();
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -496,6 +530,50 @@ public class MainActivity extends Activity {
 
 
 
+
+
+write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "BootReceiver.java"), """package com.dumitriualxlang.solardashboard;
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import androidx.work.Constraints;
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
+import java.util.concurrent.TimeUnit;
+
+// Reschedules SolarWorker after device reboot or app update.
+// Samsung and other OEMs may kill WorkManager state on reboot —
+// this ensures the background solar monitoring always restarts.
+public class BootReceiver extends BroadcastReceiver {
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        String action = intent.getAction();
+        if (action == null) return;
+        if (!action.equals(Intent.ACTION_BOOT_COMPLETED)
+            && !action.equals(Intent.ACTION_MY_PACKAGE_REPLACED)) return;
+
+        android.util.Log.d("BootReceiver", "Received: " + action + " — rescheduling SolarWorker");
+        try {
+            Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+            PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(
+                SolarWorker.class, 30, TimeUnit.MINUTES)
+                .setConstraints(constraints)
+                .build();
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                "solar_background",
+                ExistingPeriodicWorkPolicy.UPDATE,
+                work);
+        } catch (Exception e) {
+            android.util.Log.e("BootReceiver", "Failed to schedule worker: " + e.getMessage());
+        }
+    }
+}
+""")
 
 
 write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarWorker.java"), """package com.dumitriualxlang.solardashboard;
@@ -766,6 +844,19 @@ public class SolarWorker extends Worker {
                 newSoc, pvKw);
             sendNotif(ctx, "Battery low \u2014 grid starting", body);
             prefs.edit().putLong("bg_last_batt_low", nowMs).apply();
+        }
+
+        // 5. High consumption: grid importing significantly while battery drains
+        // Covers the scenario where pvKw is non-zero but far below consKw
+        // (none of rules 1-3 fire in this case)
+        long lastHighCons = prefs.getLong("bg_last_high_cons", 0);
+        if (gridImport > 1.0 && battFlow < -0.2 && (nowMs - lastHighCons) > twoHours) {
+            String body = String.format(
+                "High consumption: drawing %.1f kW from grid + %.1f kW battery discharge. "
+                + "Solar covering %.1f kW of %.1f kW load. Battery at %.0f%%.",
+                gridImport, Math.abs(battFlow), pvKw, (double) consKw, newSoc);
+            sendNotif(ctx, "High consumption \u2014 grid + battery active", body);
+            prefs.edit().putLong("bg_last_high_cons", nowMs).apply();
         }
 
         return Result.success();
