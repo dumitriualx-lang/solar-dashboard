@@ -1437,10 +1437,15 @@ function renderFlow() {
     '<div class="right-col"><div class="mid-nodes">'+
     '<div class="fnode" style="border-color:#D85A3055"><div class="fic">🏠</div><div class="flb">Home load</div>'+
     '<div class="fvl" style="color:#D85A30">'+f(ST.consKw,2)+' kW</div>'+
-    '<div class="fsub">'+f(fl.solar2home,2)+' solar'+(fl.batt2home>0.005?' +'+f(fl.batt2home,2)+' batt':'')+'</div></div>'+
+    '<div class="fsub">'+
+      f(fl.solar2home,2)+' solar'+
+      (fl.batt2home>0.005?' + '+f(fl.batt2home,2)+' batt\u2193':'')+ /* batt↓ = FROM battery */
+      (fl.gridImport>0.01?' + '+f(fl.gridImport,2)+' grid':'')+
+    '</div></div>'+
     '<div class="fnode" style="border-color:'+bc+'55"><div class="fic">🔋</div><div class="flb">'+(document.getElementById('cfgBattBrand')&&BATT_BRANDS[document.getElementById('cfgBattBrand').value]?BATT_BRANDS[document.getElementById('cfgBattBrand').value].name:'Battery')+'</div>'+
-    '<div class="fvl" style="color:'+bc+'">'+(fl.battFlow>=0?'+':'')+f(fl.battFlow,2)+' kW</div>'+
-    '<div class="fsub">'+socToDisplay(ST.battSoc)+'% · '+f(stored(),2)+' kWh'+(fl.solar2batt>0.01?' · ⚡charging':fl.batt2home>0.01?' · ↓discharging':' · idle')+'</div></div>'+
+    /* ↑ charging = power going INTO battery; ↓ discharging = power coming OUT */
+    '<div class="fvl" style="color:'+bc+'">'+(fl.battFlow>0.01?'\u2191 +'+f(fl.battFlow,2):fl.battFlow<-0.01?'\u2193 '+f(-fl.battFlow,2):'0.00')+' kW</div>'+
+    '<div class="fsub">'+socToDisplay(ST.battSoc)+'% · '+f(stored(),2)+' kWh'+(fl.solar2batt>0.01?' · ⚡charging from solar':fl.batt2home>0.01?' · discharging to home':' · idle')+'</div></div>'+
     '</div><div style="display:flex;gap:6px;align-items:center">'+arr(gk,gc,gr)+
     '<div class="fnode" style="flex:1;border-color:'+gc+'55"><div class="fic">⚡</div><div class="flb">Grid</div>'+
     '<div class="fvl" style="color:'+gc+'">'+(fl.gridExport>0.01?'+'+f(fl.gridExport,2):fl.gridImport>0.01?'−'+f(fl.gridImport,2):'0.00')+' kW</div>'+
@@ -2586,11 +2591,15 @@ setInterval(()=>{
     updateSocDisplay();
   }
 }, 30000);  // full re-render + auto consumption every 30s
-// Battery evolution — runs every 5s so discharge/charge is reflected continuously
+// Battery evolution + flow sync — runs every 5s
+// renderFlow/renderGridPanel added here so the flow diagram stays in sync
+// with the battery panel (was only updated in the 30s renderAll causing stale display)
 setInterval(()=>{
   evolveSoc();
   renderBattery();
   renderMetrics();
+  renderFlow();
+  renderGridPanel();
   const socEl = document.getElementById('cfgSoc');
   if (socEl && document.activeElement !== socEl && isSysConfigured()) {
     socEl.value = Math.round(socToDisplay(ST.battSoc));
