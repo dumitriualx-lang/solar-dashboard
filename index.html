@@ -1374,7 +1374,7 @@ function renderBattery() {
   // Compact strip elements
   document.getElementById('bPct').textContent = dispSoc + '%';
   document.getElementById('bPct').style.color = col;
-  document.getElementById('battKwhLbl').textContent = f(st,2) + ' / ' + f(SYS.battUse,1) + ' kWh';
+  document.getElementById('battKwhLbl').textContent = f(st,3) + ' / ' + f(SYS.battUse,1) + ' kWh';
   document.getElementById('battBackupLbl').textContent = bkp + 'h backup';
   document.getElementById('battTimeLabel').textContent = chr ? 'Full in ' + (f((SYS.battUse-st)/fl.battFlow,1))+'h' : dis ? 'Empty in '+bkp+'h' : 'Idle';
   document.getElementById('battMaxLabel').textContent  = f(SYS.battUse,1) + ' kWh usable';
