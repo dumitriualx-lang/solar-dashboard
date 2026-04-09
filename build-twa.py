@@ -259,6 +259,10 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void saveSoc(float soc, float panelKw, float battGross, float battRes, float consKw) {
+            // soc_saved_at_ms: timestamp used by injectLocation() to catch-up SOC
+            // when the app reopens and the alarm hasn't fired yet (e.g. only 5 min closed).
+            // soc_user_configured: true once user explicitly saves config — prevents
+            // the default ST.battSoc=50 from being treated as a real SOC reading.
             getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE)
                 .edit()
                 .putFloat("soc", soc)
@@ -266,6 +270,7 @@ public class MainActivity extends Activity {
                 .putFloat("batt_gross", battGross)
                 .putFloat("batt_res", battRes)
                 .putFloat("cons_kw", consKw)
+                .putLong("soc_saved_at_ms", System.currentTimeMillis())
                 .apply();
         }
 
@@ -505,9 +510,57 @@ public class MainActivity extends Activity {
         float battGross = prefs.getFloat("batt_gross",  0f);
         float battRes   = prefs.getFloat("batt_res",    0f);
         float consKw    = prefs.getFloat("cons_kw",     0f);
-        // pv_kw is written by SolarWorker each run — lets JS display correct
-        // production immediately on resume without waiting for a weather fetch
-        float bgPvKw    = prefs.getFloat("pv_kw",       -1f);
+        float bgPvKw    = prefs.getFloat("pv_kw",      -1f);
+
+        // ── SOC CATCH-UP ─────────────────────────────────────────────────────
+        // The alarm fires every 30 min. If the app was closed for only 5 minutes,
+        // the alarm hasn't fired and SharedPreferences SOC is stale.
+        // We catch-up here using elapsed time + last known pvKw/consKw,
+        // so the battery panel shows the correct value immediately on reopen.
+        if (soc >= 0 && battGross > 0 && panelKw > 0) {
+            long socSavedAt = prefs.getLong("soc_saved_at_ms", -1L);
+            if (socSavedAt > 0) {
+                double elapsedH = (System.currentTimeMillis() - socSavedAt) / 3600000.0;
+                // Only apply catch-up if gap is meaningful (>2 min) and not absurd (>12h)
+                // A >12h gap means the alarm should have fired; trust its value instead.
+                if (elapsedH > (2.0 / 60.0) && elapsedH <= 12.0) {
+                    float battMaxC = prefs.getFloat("batt_max_c", 2.5f);
+                    float battMaxD = prefs.getFloat("batt_max_d", 2.5f);
+                    float pvKwLast = bgPvKw >= 0 ? bgPvKw : 0f;  // 0 if alarm never ran
+
+                    double battUse = battGross * (1.0 - battRes);
+                    if (battUse <= 0) battUse = 4.5;
+                    double resPct  = Math.round(battRes * 100.0);
+                    double hardFlr = Math.max(1.0, Math.round(resPct / 2.0));
+
+                    double s2h = Math.min(pvKwLast, consKw);
+                    double pvS = pvKwLast - s2h;
+                    double hD  = consKw - s2h;
+                    double bC  = soc < 100 ? Math.min(pvS, battMaxC) : 0;
+                    double bD;
+                    if      (soc <= hardFlr) bD = 0;
+                    else if (soc <= resPct)  {
+                        double frac = (soc - hardFlr) / Math.max(1.0, (resPct - hardFlr) * 2.0);
+                        bD = Math.min(hD * frac, battMaxD * 0.10);
+                    } else bD = Math.min(hD, battMaxD);
+
+                    double battFlow = bC - bD;
+                    double newSoc   = soc + (battFlow / battUse) * elapsedH * 100.0;
+                    newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
+
+                    android.util.Log.d("MainActivity", String.format(
+                        "SOC catch-up: %.1f min elapsed, pv=%.2fkW cons=%.2fkW flow=%.2fkW soc %.1f->%.1f",
+                        elapsedH * 60, pvKwLast, (double) consKw, battFlow, (double) soc, newSoc));
+
+                    prefs.edit()
+                         .putFloat("soc", (float) newSoc)
+                         .putLong("soc_saved_at_ms", System.currentTimeMillis())
+                         .apply();
+                    soc = (float) newSoc;
+                }
+            }
+        }
+
         if (soc >= 0 && panelKw > 0 && battGross > 0) {
             webView.evaluateJavascript(
                 "if(typeof applyStateFromNative==='function')" +
@@ -754,8 +807,12 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
             newSoc = soc + (battFlow/battUse)*dtH*100.0;
             newSoc = Math.max(hardFlr,Math.min(100.0,newSoc));
 
-            // Persist
-            prefs.edit().putFloat("soc",(float)newSoc).putFloat("pv_kw",(float)pvKw).apply();
+            // Persist evolved SOC + production + timestamp (used by catch-up in injectLocation)
+            prefs.edit()
+                 .putFloat("soc",    (float) newSoc)
+                 .putFloat("pv_kw",  (float) pvKw)
+                 .putLong("soc_saved_at_ms", nowMs)
+                 .apply();
 
             android.util.Log.d("SolarAlarm",
                 String.format("dtH=%.2fh pv=%.2fkW soc %.1f->%.1f grid_in=%.2f batt=%.2f",
@@ -1127,6 +1184,7 @@ public class SolarWorker extends Worker {
         prefs.edit()
             .putFloat("soc",    (float) newSoc)
             .putFloat("pv_kw",  (float) pvKw)
+            .putLong("soc_saved_at_ms", nowMs)
             .apply();
 
         android.util.Log.d("SolarWorker",
