@@ -579,12 +579,21 @@ let geoWatchId = null;
 // ═══════════════════════════════════════════════════════════════
 // Called by native onResume to restore GPS from SharedPreferences
 // This fires before JS may have read localStorage, ensuring coords are set
-function applyStateFromNative(soc, panelKw, battGross, battRes, consKw) {
-  // Restore persisted state from Android SharedPreferences on every resume
+function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) {
+  // Restore persisted state from Android SharedPreferences on every resume.
+  // bgPvKw is the last solar production calculated by SolarWorker in background.
   if (panelKw > 0)  { SYS.panelKw   = panelKw; }
   if (battGross > 0){ SYS.battGross  = battGross; SYS.battRes = battRes || 0.10; }
   if (soc >= 0)     { ST.battSoc     = soc; }
   if (consKw > 0)   { ST.consKw      = consKw; }
+  // Apply background-evolved solar production if provided and positive.
+  // This shows correct pvKw immediately on resume without waiting for weather fetch.
+  if (typeof bgPvKw === 'number' && bgPvKw >= 0) { ST.pvKw = bgPvKw; }
+  // CRITICAL: reset the SOC evolution clock to NOW.
+  // Without this, the 5s evolveSoc loop would see a huge dtH gap (hours since
+  // last JS run) and apply a massive SOC change on top of what the worker
+  // already evolved — resulting in double-evolution.
+  lastFlowT = Date.now();
   // Sync UI inputs
   const socEl   = document.getElementById('cfgSoc');
   const consEl  = document.getElementById('iCons');
