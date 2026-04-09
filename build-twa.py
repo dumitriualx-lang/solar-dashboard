@@ -97,6 +97,8 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <application
         android:label="Solar Dashboard"
         android:icon="@mipmap/ic_launcher"
@@ -124,6 +126,9 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
             </intent-filter>
         </receiver>
+        <receiver
+            android:name=".SolarAlarmReceiver"
+            android:exported="false"/>
     </application>
 </manifest>
 """)
@@ -163,6 +168,7 @@ import androidx.work.NetworkType;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 import java.util.concurrent.TimeUnit;
+import android.app.AlarmManager;
 import android.net.Uri;
 import android.os.PowerManager;
 import android.provider.Settings;
@@ -369,7 +375,8 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         mainHandler = new Handler(Looper.getMainLooper());
         createNotificationChannel();
-        scheduleBackgroundWork();
+        scheduleBackgroundWork();       // WorkManager — backup / standard
+        SolarAlarmReceiver.schedule(this); // AlarmManager — primary, fires on Samsung
         requestBatteryOptimizationExemption();
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -532,6 +539,343 @@ public class MainActivity extends Activity {
 
 
 
+write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarAlarmReceiver.java"), """package com.dumitriualxlang.solardashboard;
+
+import android.app.AlarmManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.graphics.Color;
+import android.os.Build;
+import androidx.core.app.NotificationCompat;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
+
+/**
+ * AlarmManager-based solar background processor.
+ *
+ * Unlike WorkManager (which Samsung aggressively throttles), AlarmManager with
+ * setExactAndAllowWhileIdle() fires even in Doze mode — the same mechanism
+ * used by alarm clock apps that Samsung cannot block. This is how weather apps
+ * and monitoring apps achieve reliable background notifications on Samsung.
+ *
+ * Each time it fires, it:
+ *   1. Fetches current weather from Open-Meteo
+ *   2. Calculates solar production + energy flow
+ *   3. Evolves battery SOC over elapsed time
+ *   4. Fires a notification if any rule matches
+ *   5. Schedules the next alarm 30 minutes out
+ */
+public class SolarAlarmReceiver extends BroadcastReceiver {
+
+    static final String ACTION      = "com.dumitriualxlang.solardashboard.SOLAR_CHECK";
+    static final String CHANNEL_ID  = "solar_alerts";
+    static final String PREFS       = "SolarDashboard";
+    static final int    INTERVAL_MS = 30 * 60 * 1000;   // 30 minutes
+    private static int  notifId     = 2000;
+
+    // ── Schedule next alarm — called from MainActivity, BootReceiver, and self ─
+    public static void schedule(Context ctx) {
+        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+        PendingIntent pi = getPendingIntent(ctx);
+
+        long triggerAt = System.currentTimeMillis() + INTERVAL_MS;
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Android 12+ — check if we can schedule exact alarms
+                if (am.canScheduleExactAlarms()) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                } else {
+                    // Fall back to inexact — still fires in Doze, just not to-the-second
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                }
+            } else {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+            }
+            android.util.Log.d("SolarAlarm", "Next check in 30 min at " + new java.util.Date(triggerAt));
+        } catch (Exception e) {
+            android.util.Log.e("SolarAlarm", "Failed to schedule: " + e.getMessage());
+        }
+    }
+
+    private static PendingIntent getPendingIntent(Context ctx) {
+        Intent intent = new Intent(ctx, SolarAlarmReceiver.class).setAction(ACTION);
+        return PendingIntent.getBroadcast(ctx, 1001, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    // ── Alarm fires — do the work, then re-schedule ───────────────────────────
+    @Override
+    public void onReceive(Context ctx, Intent intent) {
+        android.util.Log.d("SolarAlarm", "Alarm fired — running solar check");
+        createChannel(ctx);
+        doSolarCheck(ctx);
+        schedule(ctx);   // chain: schedule next alarm immediately after this one fires
+    }
+
+    // ── Core logic — identical model to SolarWorker ───────────────────────────
+    private void doSolarCheck(Context ctx) {
+        SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+
+        // Elapsed time since last run
+        long nowMs     = System.currentTimeMillis();
+        long lastRunMs = prefs.getLong("last_alarm_run_ms", nowMs);
+        double dtH     = (nowMs - lastRunMs) / 3600000.0;
+        if (dtH <= 0 || dtH > 1.0) dtH = 0.5;
+        prefs.edit().putLong("last_alarm_run_ms", nowMs).apply();
+
+        // Read config
+        float soc       = prefs.getFloat("soc",        50f);
+        float panelKw   = prefs.getFloat("panel_kw",    5f);
+        float battGross = prefs.getFloat("batt_gross",  0f);
+        float battRes   = prefs.getFloat("batt_res",    0.1f);
+        float consKw    = prefs.getFloat("cons_kw",     0f);
+        float battMaxC  = prefs.getFloat("batt_max_c",  2.5f);
+        float battMaxD  = prefs.getFloat("batt_max_d",  2.5f);
+        float lat       = prefs.getFloat("gps_lat",     0f);
+        float lon       = prefs.getFloat("gps_lon",     0f);
+
+        // GPS fallback
+        if (lat == 0f || lon == 0f) {
+            try {
+                android.location.LocationManager lm = (android.location.LocationManager)
+                    ctx.getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null) {
+                    android.location.Location loc =
+                        lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
+                    if (loc == null)
+                        loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
+                    if (loc == null)
+                        loc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
+                    if (loc != null) {
+                        lat = (float) loc.getLatitude();
+                        lon = (float) loc.getLongitude();
+                        prefs.edit().putFloat("gps_lat", lat).putFloat("gps_lon", lon).apply();
+                    }
+                }
+            } catch (Exception e) { /* no permission */ }
+        }
+        if (lat == 0f || lon == 0f) {
+            android.util.Log.w("SolarAlarm", "No GPS — skipping");
+            return;
+        }
+
+        // Fetch weather
+        String url = "https://api.open-meteo.com/v1/forecast?"
+            + "latitude=" + lat + "&longitude=" + lon
+            + "&current=temperature_2m,cloud_cover,shortwave_radiation,"
+            + "direct_radiation,diffuse_radiation,direct_normal_irradiance"
+            + "&timezone=auto";
+        String raw = httpGet(url);
+        if (raw == null || raw.startsWith("ERR")) {
+            android.util.Log.w("SolarAlarm", "Weather fetch failed: " + raw);
+            return;
+        }
+
+        double pvKw = 0;
+        double gridImport = 0, gridExport = 0, battFlow = 0;
+        double newSoc = soc;
+
+        try {
+            JSONObject cur = new JSONObject(raw).getJSONObject("current");
+            double directRad  = cur.optDouble("direct_radiation",  0);
+            double diffuseRad = cur.optDouble("diffuse_radiation", 0);
+            double swr        = cur.optDouble("shortwave_radiation", directRad + diffuseRad);
+            double tempC      = cur.optDouble("temperature_2m", 25);
+            double cloud      = cur.optDouble("cloud_cover", 0);
+
+            // Solar position
+            Calendar cal = Calendar.getInstance();
+            long dayOfYear = (nowMs - new GregorianCalendar(cal.get(Calendar.YEAR), 0, 1)
+                .getTimeInMillis()) / 86400000L;
+            double utcH  = cal.get(Calendar.HOUR_OF_DAY)
+                         + cal.get(Calendar.MINUTE) / 60.0
+                         + cal.get(Calendar.SECOND) / 3600.0
+                         - cal.getTimeZone().getOffset(nowMs) / 3600000.0;
+            double decl  = 23.45 * Math.sin((360.0/365.0*(dayOfYear-81)) * Math.PI/180.0);
+            double ha    = (utcH - 12) * 15 + lon;
+            double latR  = lat  * Math.PI/180.0;
+            double decR  = decl * Math.PI/180.0;
+            double sinAlt= Math.sin(latR)*Math.sin(decR)
+                         + Math.cos(latR)*Math.cos(decR)*Math.cos(ha*Math.PI/180.0);
+            double alt   = Math.asin(Math.max(-1,Math.min(1,sinAlt)))*180.0/Math.PI;
+
+            if (alt > 2.0) {
+                double cosZen = Math.max(0.001, Math.cos((90.0-alt)*Math.PI/180.0));
+                double I0   = 1367.0*(1+0.033*Math.cos(2*Math.PI*dayOfYear/365.0));
+                double AM   = 1.0/(cosZen+0.50572*Math.pow(96.07995-alt,-1.6364));
+                double csGHI= I0*Math.sin(alt*Math.PI/180.0)*0.98*Math.exp(-0.103*AM);
+                double ghi  = swr>0 ? Math.min(swr,csGHI)
+                                    : csGHI*Math.max(0,1-0.75*Math.pow(cloud/100.0,3.4));
+                double tiltR= 30.0*Math.PI/180.0;
+                double solAzR = Math.acos(Math.max(-1,Math.min(1,
+                    (Math.sin(decR)-Math.sin(latR)*sinAlt)
+                    /(Math.cos(latR)*Math.cos(Math.asin(Math.max(-1,Math.min(1,sinAlt))))+1e-9))));
+                if (ha > 0) solAzR = 2*Math.PI - solAzR;
+                double altR = alt*Math.PI/180.0;
+                double cosAOI = Math.sin(altR)*Math.cos(tiltR)
+                              + Math.cos(altR)*Math.sin(tiltR)*Math.cos(solAzR-Math.PI);
+                double dhi  = diffuseRad>0 ? diffuseRad : ghi*0.15;
+                double dni  = Math.min(directRad>0 ? directRad/Math.max(0.001,cosZen)
+                                                   : Math.max(0,(ghi-dhi)/Math.max(0.001,cosZen)), 950);
+                double poa  = Math.max(0,cosAOI)*dni + dhi*(1+Math.cos(tiltR))/2.0
+                            + ghi*0.20*(1-Math.cos(tiltR))/2.0;
+                double cellT= tempC+(45.0-20.0)*(Math.max(50,poa)/800.0);
+                double tFac = Math.max(0.80,1.0-Math.max(0,cellT-25.0)*0.0037);
+                pvKw = Math.max(0,Math.min(panelKw*0.984,(poa/1000.0)*panelKw*tFac*0.984));
+            }
+
+            // Energy flow
+            double battUse = battGross>0 ? battGross*(1.0-battRes) : 4.5;
+            double resPct  = Math.round((double)battRes*100.0);
+            double hardFlr = Math.max(1.0,Math.round(resPct/2.0));
+            double s2h = Math.min(pvKw,consKw), pvS=pvKw-s2h, hD=consKw-s2h;
+            double bC  = soc<100 ? Math.min(pvS,battMaxC) : 0;
+            double bD;
+            if      (soc<=hardFlr) bD=0;
+            else if (soc<=resPct)  { double f=(soc-hardFlr)/Math.max(1.0,(resPct-hardFlr)*2.0); bD=Math.min(hD*f,battMaxD*0.10); }
+            else                   bD=Math.min(hD,battMaxD);
+            battFlow  = bC-bD;
+            gridExport= Math.max(0,pvS-bC);
+            gridImport= Math.max(0,hD-bD);
+
+            // Evolve SOC
+            newSoc = soc + (battFlow/battUse)*dtH*100.0;
+            newSoc = Math.max(hardFlr,Math.min(100.0,newSoc));
+
+            // Persist
+            prefs.edit().putFloat("soc",(float)newSoc).putFloat("pv_kw",(float)pvKw).apply();
+
+            android.util.Log.d("SolarAlarm",
+                String.format("dtH=%.2fh pv=%.2fkW soc %.1f->%.1f grid_in=%.2f batt=%.2f",
+                    dtH,pvKw,(double)soc,newSoc,gridImport,battFlow));
+
+            // Notification rules
+            boolean notifEnabled;
+            try { notifEnabled = ((NotificationManager)ctx.getSystemService(
+                Context.NOTIFICATION_SERVICE)).areNotificationsEnabled(); }
+            catch (Exception e) { notifEnabled = true; }
+            if (!notifEnabled) return;
+
+            long now2H  = 2L*60*60*1000, now30M = 30L*60*1000;
+            double surplus    = pvKw-consKw;
+            double storedKwh  = battUse*(newSoc/100.0);
+
+            long lHigh   = prefs.getLong("al_last_high",     0);
+            long lLow    = prefs.getLong("al_last_low",      0);
+            long lEve    = prefs.getLong("al_last_eve",      0);
+            long lBattLo = prefs.getLong("al_last_batt_low", 0);
+            long lHighC  = prefs.getLong("al_last_high_cons",0);
+
+            // Rule 1: Solar surplus >= 2 kW
+            if (surplus>=2.0 && (nowMs-lHigh)>now30M) {
+                sendNotif(ctx,"Solar surplus \u2014 run large appliances",
+                    String.format("+%.1f kW surplus. Good time for washing machine, dishwasher or water heater. Battery: %.0f%%.",surplus,newSoc));
+                prefs.edit().putLong("al_last_high",nowMs).apply();
+            }
+            // Rule 2: Low/no solar — on battery
+            else if (pvKw<0.2 && consKw>0.1 && battUse>0 && (nowMs-lLow)>now2H) {
+                double bkp=storedKwh/Math.max(0.01,consKw);
+                sendNotif(ctx,"Running on battery",
+                    String.format("Solar stopped (%.1f kW). Battery at %.0f%% \u2014 ~%.1fh backup.",pvKw,newSoc,bkp));
+                prefs.edit().putLong("al_last_low",nowMs).apply();
+            }
+            // Rule 3: Evening summary at 20:00
+            else if (cal.get(Calendar.HOUR_OF_DAY)==20 && (nowMs-lEve)>now2H) {
+                if (surplus>0.5)
+                    sendNotif(ctx,"Good solar today",
+                        String.format("Still producing %.1f kW. Battery %.0f%%. Plan large appliances for tomorrow mid-day.",pvKw,newSoc));
+                else
+                    sendNotif(ctx,"Solar ended for today",
+                        String.format("Production stopped. Battery at %.0f%%. Check tomorrow's forecast in the app.",newSoc));
+                prefs.edit().putLong("al_last_eve",nowMs).apply();
+            }
+            // Rule 4: Battery approaching reserve
+            if (storedKwh<battUse*0.15 && newSoc<20.0 && (nowMs-lBattLo)>now2H) {
+                sendNotif(ctx,"Battery low \u2014 grid starting",
+                    String.format("Battery at %.0f%% \u2014 reserve approaching. Grid activating. Solar: %.1f kW.",newSoc,pvKw));
+                prefs.edit().putLong("al_last_batt_low",nowMs).apply();
+            }
+            // Rule 5: High consumption — grid + battery active
+            if (gridImport>1.0 && battFlow<-0.2 && (nowMs-lHighC)>now2H) {
+                sendNotif(ctx,"High consumption \u2014 grid + battery active",
+                    String.format("Drawing %.1f kW from grid + %.1f kW battery. Solar covering %.1f kW of %.1f kW load. Battery %.0f%%.",
+                        gridImport,Math.abs(battFlow),pvKw,(double)consKw,newSoc));
+                prefs.edit().putLong("al_last_high_cons",nowMs).apply();
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e("SolarAlarm", "doSolarCheck error: " + e.getMessage());
+        }
+    }
+
+    private void sendNotif(Context ctx, String title, String body) {
+        try {
+            Intent open = new Intent(ctx, MainActivity.class)
+                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent pi = PendingIntent.getActivity(ctx, 0, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            NotificationCompat.Builder nb = new NotificationCompat.Builder(ctx, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title).setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setColor(Color.parseColor("#1D9E75"))
+                .setContentIntent(pi);
+            NotificationManager nm = (NotificationManager)
+                ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(notifId++, nb.build());
+            android.util.Log.d("SolarAlarm", "Notification sent: " + title);
+        } catch (Exception e) {
+            android.util.Log.e("SolarAlarm", "sendNotif: " + e.getMessage());
+        }
+    }
+
+    private void createChannel(Context ctx) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager nm = (NotificationManager)
+                ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null && nm.getNotificationChannel(CHANNEL_ID) == null) {
+                NotificationChannel ch = new NotificationChannel(
+                    CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
+                ch.setDescription("Solar production and battery alerts");
+                ch.setLightColor(Color.parseColor("#1D9E75"));
+                ch.enableLights(true); ch.enableVibration(true);
+                nm.createNotificationChannel(ch);
+            }
+        }
+    }
+
+    private String httpGet(String urlStr) {
+        try {
+            HttpURLConnection c = (HttpURLConnection) new URL(urlStr).openConnection();
+            c.setConnectTimeout(15000); c.setReadTimeout(15000);
+            c.setRequestProperty("User-Agent","SolarDashboard/1.0");
+            if (c.getResponseCode()==200) {
+                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line=br.readLine())!=null) sb.append(line);
+                br.close(); c.disconnect(); return sb.toString();
+            }
+            c.disconnect(); return "ERR_HTTP_"+c.getResponseCode();
+        } catch (Exception e) { return "ERR_"+e.getMessage(); }
+    }
+}
+""")
+
+
 write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "BootReceiver.java"), """package com.dumitriualxlang.solardashboard;
 
 import android.content.BroadcastReceiver;
@@ -568,6 +912,8 @@ public class BootReceiver extends BroadcastReceiver {
                 "solar_background",
                 ExistingPeriodicWorkPolicy.UPDATE,
                 work);
+            // Also reschedule AlarmManager chain — most reliable on Samsung
+            SolarAlarmReceiver.schedule(context);
         } catch (Exception e) {
             android.util.Log.e("BootReceiver", "Failed to schedule worker: " + e.getMessage());
         }
