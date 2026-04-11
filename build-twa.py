@@ -865,30 +865,30 @@ public class SolarForegroundService extends Service {
                 double dispSoc   = 10.0 + (newSoc / 100.0) * 80.0;
 
                 if (surplus >= 2.0 && (nowMs - lHigh) > now30M) {
-                        sendAlert, "Solar surplus — run large appliances",
+                        sendAlert("Solar surplus — run large appliances",
                             String.format("+%.1f kW surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.", surplus, dispSoc));
                         prefs.edit().putLong("notif_last_high", nowMs).apply();
                 } else if (pvKw < 0.2 && consKw > 0.1 && (nowMs - lLow) > now2H) {
                         double bkp = storedKwh / Math.max(0.01, consKw);
-                        sendAlert, "Running on battery",
+                        sendAlert("Running on battery",
                             String.format("Solar stopped (%.1f kW). Battery %.0f%% — ~%.1fh backup remaining.", pvKw, dispSoc, bkp));
                         prefs.edit().putLong("notif_last_low", nowMs).apply();
                 } else if (hourNow == 20 && (nowMs - lEve) > now2H) {
                         if (surplus > 0.5)
-                            sendAlert, "Good solar conditions today",
+                            sendAlert("Good solar conditions today",
                                     String.format("Still producing %.1f kW. Battery %.0f%%. Plan large appliances for tomorrow mid-day.", pvKw, dispSoc));
                         else
-                            sendAlert, "Solar ended for today",
+                            sendAlert("Solar ended for today",
                                     String.format("Production ended. Battery at %.0f%%. Check tomorrow's forecast in the app.", dispSoc));
                         prefs.edit().putLong("notif_last_eve", nowMs).apply();
                 }
                 if (storedKwh < battUse * 0.15 && dispSoc < 20.0 && (nowMs - lBattLo) > now2H) {
-                        sendAlert, "Battery low — grid starting",
+                        sendAlert("Battery low — grid starting",
                             String.format("Battery %.0f%% — reserve floor approaching. Grid activating. Solar: %.1f kW.", dispSoc, pvKw));
                         prefs.edit().putLong("notif_last_batt_low", nowMs).apply();
                 }
                 if (gridImport > 1.0 && battFlow < -0.2 && (nowMs - lHighC) > now2H) {
-                        sendAlert, "High consumption — grid + battery active",
+                        sendAlert("High consumption — grid + battery active",
                             String.format("Drawing %.1f kW from grid + %.1f kW battery. Solar %.1f kW of %.1f kW load. Battery %.0f%%.",
                                     gridImport, Math.abs(battFlow), pvKw, (double) consKw, dispSoc));
                         prefs.edit().putLong("notif_last_high_cons", nowMs).apply();
