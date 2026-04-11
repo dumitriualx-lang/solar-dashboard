@@ -29,15 +29,32 @@
   --glass:rgba(255,255,255,.72);
   --glass-border:rgba(255,255,255,.9);
 }
-@media(prefers-color-scheme:dark){:root{
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0A0D12;--sf:#141820;--sf2:#1A1F28;
   --br:rgba(255,255,255,.08);--br2:rgba(255,255,255,.04);
   --tx:#E8ECF1;--t2:#8B95A1;--t3:#4A5260;
   --shadow:0 1px 3px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
   --shadow-sm:0 1px 2px rgba(0,0,0,.2),0 2px 8px rgba(0,0,0,.15);
-  --glass:rgba(20,24,32,.82);
-  --glass-border:rgba(255,255,255,.1);
+  --glass:rgba(20,24,32,.82);--glass-border:rgba(255,255,255,.1);
 }}
+/* Explicit dark — overrides system light */
+[data-theme="dark"]{
+  --bg:#0A0D12;--sf:#141820;--sf2:#1A1F28;
+  --br:rgba(255,255,255,.08);--br2:rgba(255,255,255,.04);
+  --tx:#E8ECF1;--t2:#8B95A1;--t3:#4A5260;
+  --shadow:0 1px 3px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.2),0 2px 8px rgba(0,0,0,.15);
+  --glass:rgba(20,24,32,.82);--glass-border:rgba(255,255,255,.1);
+}
+/* Explicit light — overrides system dark */
+[data-theme="light"]{
+  --bg:#F0F2F5;--sf:#fff;--sf2:#F7F8FA;
+  --br:rgba(0,0,0,.07);--br2:rgba(0,0,0,.04);
+  --tx:#0D1117;--t2:#5A6370;--t3:#9BA3AE;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.04);
+  --glass:rgba(255,255,255,.72);--glass-border:rgba(255,255,255,.9);
+}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
 .hdr{background:linear-gradient(135deg,var(--g) 0%,var(--g2) 100%);color:#fff;padding:48px 18px 16px;position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 2px 20px rgba(29,158,117,.25)}
@@ -191,6 +208,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
       <div class="hdr-sub" id="hdrSub"><span id="hdrSysName"></span><span id="clk">--:--:--</span></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
+      <button id="themeBtn" onclick="toggleTheme()" style="background:rgba(255,255,255,.18);border:.5px solid rgba(255,255,255,.3);color:#fff;border-radius:20px;padding:4px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;backdrop-filter:blur(8px)" title="Toggle theme">🌙</button>
       <div class="live-pill"><div class="live-dot"></div><span id="liveTag">Live</span></div>
     </div>
   </div>
@@ -1332,6 +1350,31 @@ function evolveSoc() {
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
+// ── Theme management ────────────────────────────────────────────────────────
+function applyTheme(theme) {
+  // theme: 'dark' | 'light' | 'system'
+  const html = document.documentElement;
+  if (theme === 'system') {
+    html.removeAttribute('data-theme');
+  } else {
+    html.setAttribute('data-theme', theme);
+  }
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = theme === 'dark' ? '☀️' : theme === 'light' ? '🌙' : '🌓';
+  try { localStorage.setItem('solarTheme', theme); } catch(e) {}
+}
+function toggleTheme() {
+  const current = localStorage.getItem('solarTheme') || 'system';
+  // Cycle: system → dark → light → system
+  const next = current === 'system' ? 'dark' : current === 'dark' ? 'light' : 'system';
+  applyTheme(next);
+}
+// Apply saved theme immediately (before render)
+(function() {
+  const saved = localStorage.getItem('solarTheme');
+  if (saved && saved !== 'system') applyTheme(saved);
+})();
+
 const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
 const stored = () => SYS.battUse ? +((ST.battSoc/100) * SYS.battUse).toFixed(3) : 0;
 
@@ -2656,9 +2699,22 @@ initNotifBar();                              // set notification bar state
   }
   if (lat && lon) {
     ST.lat = lat; ST.lon = lon;
-    ST.locName = name || (lat.toFixed(4) + '°N ' + lon.toFixed(4) + '°E');
+    ST.locName = (name && !name.includes('°')) ? name : 'Locating...';
     ST.gpsOk = true;
     setGps('ok', '📍 ' + ST.locName);
+    // Reverse geocode on startup if name is missing or is raw coordinates
+    if (!name || name.includes('°')) {
+      reverseGeocode(lat, lon).then(city => {
+        if (city) {
+          ST.locName = city;
+          setGps('ok', '📍 ' + city);
+          try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
+        } else {
+          ST.locName = lat.toFixed(4) + '°N ' + lon.toFixed(4) + '°E';
+          setGps('ok', '📍 ' + ST.locName);
+        }
+      });
+    }
     fetchWeather();
     // Silent background GPS refresh after 3s
     setTimeout(() => {
