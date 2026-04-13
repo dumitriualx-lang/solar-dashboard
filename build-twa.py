@@ -1569,7 +1569,7 @@ public class SolarWorker extends Worker {
         // Battery round-trip efficiency 95%: charging stores less, discharging provides less
         double battEff = 0.95;
         double effFlow = battFlow > 0 ? battFlow * battEff : battFlow / battEff;
-        newSoc = soc + (effFlow / battUse) * dtH * 100.0;
+        double newSoc  = soc + (effFlow / battUse) * dtH * 100.0;
         newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
 
         // ── Persist evolved state back to SharedPreferences ──────────────────
