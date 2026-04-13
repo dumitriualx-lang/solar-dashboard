@@ -138,6 +138,12 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
 </manifest>
 """)
 
+# ── Ownership verification file for Google Play package registration ──────────
+assets_dir = os.path.join(APP, "src", "main", "assets")
+os.makedirs(assets_dir, exist_ok=True)
+with open(os.path.join(assets_dir, "adi-registration.properties"), "w") as f:
+    f.write("DXQBJOK6FSERIAAAAAAAAAAAAA\n")
+
 write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "MainActivity.java"), """package com.dumitriualxlang.solardashboard;
 
 import android.app.Activity;
@@ -506,6 +512,16 @@ public class MainActivity extends Activity {
             gpsLat  = prefs.getFloat("gps_lat", 0f);
             gpsLon  = prefs.getFloat("gps_lon", 0f);
             gpsName = prefs.getString("gps_name", "");
+        } else {
+            // GPS fix from LocationManager — reuse stored city name if coords match
+            float storedLat = prefs.getFloat("gps_lat", 0f);
+            float storedLon = prefs.getFloat("gps_lon", 0f);
+            String storedName = prefs.getString("gps_name", "");
+            if (!storedName.isEmpty()
+                    && Math.abs(gpsLat - storedLat) < 0.01
+                    && Math.abs(gpsLon - storedLon) < 0.01) {
+                gpsName = storedName;  // same location — reuse cached city name
+            }
         }
 
         if (gpsLat != 0 && gpsLon != 0) {
@@ -522,7 +538,11 @@ public class MainActivity extends Activity {
         float battGross = prefs.getFloat("batt_gross",  0f);
         float battRes   = prefs.getFloat("batt_res",    0f);
         float consKw    = prefs.getFloat("cons_kw",     0f);
-        float bgPvKw    = prefs.getFloat("pv_kw",      -1f);
+        // Only use bgPvKw if the last background run was within 90 minutes.
+        // If older, pass -1 so JS won't apply a stale (possibly night-time zero) value.
+        float bgPvKwRaw = prefs.getFloat("pv_kw", -1f);
+        long  bgAge     = System.currentTimeMillis() - prefs.getLong("soc_saved_at_ms", 0L);
+        float bgPvKw    = (bgAge > 0 && bgAge < 90L * 60 * 1000) ? bgPvKwRaw : -1f;
 
         // ── SOC CATCH-UP ─────────────────────────────────────────────────────
         // The alarm fires every 30 min. If the app was closed for only 5 minutes,
