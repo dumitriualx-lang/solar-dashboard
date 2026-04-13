@@ -785,6 +785,61 @@ function setGps(type, html) {
 // ═══════════════════════════════════════════════════════════════
 // OPEN-METEO — fetch irradiance for current GPS position
 // ═══════════════════════════════════════════════════════════════
+// ── Satellite radiation fetch (EUMETSAT measured data, more accurate than NWP) ──
+// Uses Open-Meteo Satellite Radiation API — actual satellite measurements,
+// not weather model estimates. Covers Europe via EUMETSAT MTG/MSG satellite.
+// Called after processOpenMeteo(); updates ST.pvKw if satellite data is available.
+// Falls back silently — existing forecast path remains the safety net.
+async function fetchSatelliteRadiation(lat, lon) {
+  try {
+    const url = 'https://satellite-api.open-meteo.com/v1/archive?'
+      + 'latitude=' + lat + '&longitude=' + lon
+      + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation'
+      + '&models=satellite_radiation_seamless'
+      + '&temporal_resolution=native'
+      + '&timezone=auto&forecast_days=1';
+    const r = await fetch(url, { headers: { 'User-Agent': 'SolarDashboard/1.0' } });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const hr = d.hourly;
+    if (!hr || !hr.time) return null;
+    const times  = hr.time;
+    const swr    = hr.shortwave_radiation   || [];
+    const dir    = hr.direct_radiation      || [];
+    const dif    = hr.diffuse_radiation     || [];
+    const nowMs  = Date.now();
+    // Find the most recent reading at or before current time
+    let lastIdx = -1;
+    for (let i = times.length - 1; i >= 0; i--) {
+      if (new Date(times[i]).getTime() <= nowMs && swr[i] !== null && swr[i] !== undefined) {
+        lastIdx = i; break;
+      }
+    }
+    if (lastIdx < 0) return null;
+    return { swr: swr[lastIdx] || 0, direct: dir[lastIdx] || 0, diffuse: dif[lastIdx] || 0 };
+  } catch(e) { return null; }
+}
+
+// Apply satellite radiation data to ST — called after forecast fetch succeeds
+function applySatelliteRadiation(sat) {
+  if (!sat) return;
+  const directRad  = sat.direct;
+  const diffuseRad = sat.diffuse;
+  if (directRad + diffuseRad <= 0) return;  // night or no data
+  // Satellite measures actual surface irradiance — no ×0.85 calibration needed.
+  // Only apply: tilt factor on beam (0.9), inverter efficiency (0.984), temp derating.
+  const poa_in  = directRad * 0.9 + diffuseRad;
+  const panelKw = SYS.panelKw || 5;
+  const tempC   = ST.wxTempC || 20;
+  const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(50, poa_in);
+  const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
+  const acMax   = SYS.acMax || panelKw * 0.984;
+  const pvKw    = +Math.max(0, Math.min(acMax, (poa_in / 1000) * panelKw * 0.984 * tFac)).toFixed(3);
+  ST.pvKw   = pvKw;
+  ST.irrWm2 = sat.swr;
+  ST.poaWm2 = +poa_in.toFixed(1);
+}
+
 async function fetchWeather() {
   if (!ST.lat || !ST.lon) {
     setApi('load', '⏳ Waiting for GPS location...'); return;
@@ -827,6 +882,13 @@ async function fetchWeather() {
     const d = JSON.parse(raw);
     processOpenMeteo(d);
     ST.apiOk = true; ST.lastFetch = new Date(); ST._fetchInProgress = false;
+    // Launch satellite fetch in parallel — updates pvKw if measured data available
+    // Does not block the UI; falls back silently if satellite API is unreachable
+    if (ST.lat && ST.lon) {
+      fetchSatelliteRadiation(ST.lat, ST.lon).then(sat => {
+        if (sat) { applySatelliteRadiation(sat); renderBattery(); renderFlow(); renderMetrics(); renderGridPanel(); }
+      }).catch(() => {});
+    }
     setApi('ok', '✅ ' + ST.locName + ' · '
       + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
       + ' · ↻ 1min');
