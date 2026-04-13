@@ -620,6 +620,18 @@ let ST = {
   gridImportKwh: 0,
   gridLastT: Date.now(),  // timestamp of last accumulation tick
 };
+// Restore today's grid kWh from localStorage (survives app reopen within same day)
+(function() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('solarGridKwh') || 'null');
+    const today = new Date().toDateString();
+    if (saved && saved.date === today) {
+      ST.gridExportKwh = saved.exp || 0;
+      ST.gridImportKwh = saved.imp || 0;
+      ST._lastDate = today;
+    }
+  } catch(e) {}
+})();
 
 let FORECAST = [];
 const rlog = JSON.parse(localStorage.getItem('solarLog4') || '[]');
@@ -944,7 +956,7 @@ function processOpenMeteo(d) {
   const cellT_v = tempC_v + (SYS.noct - 20) / 800 * Math.max(50, poa_in);
   const tFac_v  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_v - 25));
   const acMax_v = SYS.acMax || (SYS.panelKw || 5) * 0.984;
-  ST.pvKw   = +Math.max(0, Math.min(acMax_v, (poa_in / 1000) * (SYS.panelKw || 5) * 0.984 * tFac_v)).toFixed(3);
+  ST.pvKw   = +Math.max(0, Math.min(acMax_v, (poa_in / 1000) * (SYS.panelKw || 5) * 0.984 * tFac_v * 0.85)).toFixed(3);
   ST.poaWm2 = +poa_in.toFixed(1);
   ST.cfGHI  = swr > 0 ? swr / Math.max(1, ghi) : 1;
 
@@ -962,7 +974,7 @@ function processOpenMeteo(d) {
     const dhi_h  = Math.max(0, swr_h - Math.min(dni_h, 950) * cosZen);
     const poa_h  = (hr.direct_radiation?.[i] || 0) * 0.9 + dhi_h;
     const tFac_h = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, (ST.wxTempC||25) + (SYS.noct-20)/800*Math.max(50,poa_h) - 25));
-    const pvKw   = +Math.max(0, Math.min(SYS.acMax||(SYS.panelKw||5)*0.984, (poa_h/1000)*(SYS.panelKw||5)*0.984*tFac_h)).toFixed(3);
+    const pvKw   = +Math.max(0, Math.min(SYS.acMax||(SYS.panelKw||5)*0.984, (poa_h/1000)*(SYS.panelKw||5)*0.984*tFac_h*0.85)).toFixed(3);
     ST.todayH.push({ hour: h, pvKw, ghi: swr_h, dni: dni_h, dhi: dhi_h });
   });
 
@@ -1139,7 +1151,7 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
   ST.cfGHI       = +cfGHI.toFixed(3);
 
   const acMax    = SYS.acMax;
-  const raw      = (poa / 1000) * acMax * tempF;
+  const raw      = (poa / 1000) * acMax * tempF * 0.85;  // calibration factor
   return +Math.max(0, Math.min(acMax, raw)).toFixed(3);
 }
 
@@ -1262,8 +1274,11 @@ function evolveSoc() {
   lastFlowT = now;
   const hardFlr = Math.round(SYS.battRes * 50);
   const prevSoc = ST.battSoc;
+  // Battery round-trip efficiency ~95%: charging puts less in, discharging takes more out
+  const battEff = 0.95;
+  const effFlow = fl.battFlow > 0 ? fl.battFlow * battEff : fl.battFlow / battEff;
   ST.battSoc = Math.max(hardFlr, Math.min(100,
-    ST.battSoc + (fl.battFlow / (SYS.battUse || 4.5)) * dtH * 100
+    ST.battSoc + (effFlow / (SYS.battUse || 4.5)) * dtH * 100
   ));
   // Persist SOC to Android SharedPreferences (survives WebView process kill).
   // Only persist when system is properly configured — prevents the default
@@ -1281,6 +1296,12 @@ function evolveSoc() {
   if (today !== ST._lastDate) {
     ST.gridExportKwh = 0; ST.gridImportKwh = 0; ST._lastDate = today;
   }
+  // Persist grid kWh to localStorage so totals survive app reopen
+  try {
+    localStorage.setItem('solarGridKwh', JSON.stringify({
+      exp: ST.gridExportKwh, imp: ST.gridImportKwh, date: today
+    }));
+  } catch(e) {}
 
   // ── Real-time alerts ──────────────────────────────────────────────────────
   if (!isSysConfigured()) return;
@@ -2671,6 +2692,27 @@ initNotifBar();                              // set notification bar state
           const consEl = document.getElementById('iCons');
           if (consEl) consEl.value = consKw;
           updateSocDisplay();
+        }
+        // Restore grid kWh from SharedPreferences (background service accumulations)
+        // These are more accurate than localStorage as they include closed-app time
+        if (p.length >= 7) {
+          const gridExp  = parseFloat(p[5]) || 0;
+          const gridImp  = parseFloat(p[6]) || 0;
+          const gridDate = p[7] || '';
+          const today    = new Date().toDateString();
+          // Only restore if same calendar day; if new day — start fresh
+          if (gridDate) {
+            const [yr, doy] = gridDate.split('-').map(Number);
+            const cal = new Date(); cal.setFullYear(yr, 0, 1);
+            cal.setDate(cal.getDate() + doy - 1);
+            const sameDay = cal.toDateString() === today;
+            if (sameDay) {
+              // Use max of SharedPreferences and localStorage (background may have more)
+              ST.gridExportKwh = Math.max(ST.gridExportKwh, gridExp);
+              ST.gridImportKwh = Math.max(ST.gridImportKwh, gridImp);
+              ST._lastDate = today;
+            }
+          }
         }
       }
     } catch(e) {}
