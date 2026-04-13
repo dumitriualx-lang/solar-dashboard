@@ -831,6 +831,7 @@ public class SolarForegroundService extends Service {
             else                     bD = Math.min(hD, battMaxD);
             battFlow   = bC - bD;
             gridImport = Math.max(0, hD - bD);
+            double gridExport = Math.max(0, pvS - bC);
 
             // ── Evolve SOC ────────────────────────────────────────────────────
             // Battery round-trip efficiency 95%: charging stores less, discharging provides less
@@ -848,7 +849,7 @@ public class SolarForegroundService extends Service {
             String lastGridDate = prefs.getString("grid_date", "");
             float prevExp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
             float prevImp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
-            float newExp  = prevExp + (float)(pvKw > consKw ? Math.min(pvKw - consKw, pvKw) : 0) * (float) dtH;
+            float newExp  = prevExp + (float) gridExport * (float) dtH;
             float newImp  = prevImp + (float) gridImport * (float) dtH;
             prefs.edit()
                  .putFloat("soc",            (float) newSoc)
@@ -1224,7 +1225,7 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
             String lastGridDate = prefs.getString("grid_date", "");
             float prevExp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
             float prevImp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
-            float newExp  = prevExp + (float)(gridImport > 0 ? 0 : Math.abs(battFlow - bC)) * (float) dtH;
+            float newExp  = prevExp + (float) gridExport * (float) dtH;
             float newImp  = prevImp + (float) gridImport * (float) dtH;
             prefs.edit()
                  .putFloat("soc",    (float) newSoc)
@@ -1582,7 +1583,7 @@ public class SolarWorker extends Worker {
             String lastGridDate = prefs.getString("grid_date", "");
             float prevExp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
             float prevImp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
-            float newExp  = prevExp + (float)(gridImport > 0 ? 0 : Math.abs(battFlow - bC)) * (float) dtH;
+            float newExp  = prevExp + (float) gridExport * (float) dtH;
             float newImp  = prevImp + (float) gridImport * (float) dtH;
         prefs.edit()
             .putFloat("soc",    (float) newSoc)
@@ -1733,6 +1734,7 @@ write(os.path.join(RES, "xml", "network_security_config.xml"), """<?xml version=
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">api.forecast.solar</domain>
         <domain includeSubdomains="true">api.open-meteo.com</domain>
+        <domain includeSubdomains="true">satellite-api.open-meteo.com</domain>
         <domain includeSubdomains="true">dumitriualx-lang.github.io</domain>\n        <domain includeSubdomains=\"true\">nominatim.openstreetmap.org</domain>
     </domain-config>
 </network-security-config>
