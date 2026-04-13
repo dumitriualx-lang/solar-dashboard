@@ -1566,10 +1566,10 @@ public class SolarWorker extends Worker {
         double gridImport = Math.max(0, hD - bD);
 
         // ── Evolve SOC over elapsed time ─────────────────────────────────────
-        double // Battery round-trip efficiency 95%: charging stores less, discharging provides less
-            double battEff = 0.95;
-            double effFlow = battFlow > 0 ? battFlow * battEff : battFlow / battEff;
-            newSoc = soc + (effFlow / battUse) * dtH * 100.0;
+        // Battery round-trip efficiency 95%: charging stores less, discharging provides less
+        double battEff = 0.95;
+        double effFlow = battFlow > 0 ? battFlow * battEff : battFlow / battEff;
+        newSoc = soc + (effFlow / battUse) * dtH * 100.0;
         newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
 
         // ── Persist evolved state back to SharedPreferences ──────────────────
