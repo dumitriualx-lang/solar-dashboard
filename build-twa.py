@@ -9,7 +9,7 @@ MAIN = os.path.join(APP, "src", "main")
 RES  = os.path.join(MAIN, "res")
 WRAP = os.path.join(ROOT, "gradle", "wrapper")
 
-PKG       = "com.dumitriualxlang.solardashboard"
+PKG       = "com.dumitriualxlang.solardasboard"
 HOST      = "dumitriualx-lang.github.io"
 START_URL = "https://dumitriualx-lang.github.io/solar-dashboard/"
 APP_NAME  = "Solar Dashboard"
@@ -138,13 +138,7 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
 </manifest>
 """)
 
-# ── Ownership verification file for Google Play package registration ──────────
-assets_dir = os.path.join(APP, "src", "main", "assets")
-os.makedirs(assets_dir, exist_ok=True)
-with open(os.path.join(assets_dir, "adi-registration.properties"), "w") as f:
-    f.write("DXQBJOK6FSERIAAAAAAAAAAAAA\n")
-
-write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "MainActivity.java"), """package com.dumitriualxlang.solardashboard;
+write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "MainActivity.java"), """package com.dumitriualxlang.solardasboard;
 
 import android.app.Activity;
 import android.app.NotificationChannel;
@@ -295,13 +289,9 @@ public class MainActivity extends Activity {
             float panelKw  = p.getFloat("panel_kw",    0f);
             float battGross= p.getFloat("batt_gross",  0f);
             float battRes  = p.getFloat("batt_res",    0f);
-            float consKw     = p.getFloat("cons_kw",        0f);
-            float gridExp    = p.getFloat("grid_export_kwh", 0f);
-            float gridImp    = p.getFloat("grid_import_kwh", 0f);
-            String gridDate  = p.getString("grid_date",       "");
+            float consKw   = p.getFloat("cons_kw",     0f);
             if (soc < 0) return "";
-            return soc + "," + panelKw + "," + battGross + "," + battRes + "," + consKw
-                 + "," + gridExp + "," + gridImp + "," + gridDate;
+            return soc + "," + panelKw + "," + battGross + "," + battRes + "," + consKw;
         }
 
         @JavascriptInterface
@@ -512,16 +502,6 @@ public class MainActivity extends Activity {
             gpsLat  = prefs.getFloat("gps_lat", 0f);
             gpsLon  = prefs.getFloat("gps_lon", 0f);
             gpsName = prefs.getString("gps_name", "");
-        } else {
-            // GPS fix from LocationManager — reuse stored city name if coords match
-            float storedLat = prefs.getFloat("gps_lat", 0f);
-            float storedLon = prefs.getFloat("gps_lon", 0f);
-            String storedName = prefs.getString("gps_name", "");
-            if (!storedName.isEmpty()
-                    && Math.abs(gpsLat - storedLat) < 0.01
-                    && Math.abs(gpsLon - storedLon) < 0.01) {
-                gpsName = storedName;  // same location — reuse cached city name
-            }
         }
 
         if (gpsLat != 0 && gpsLon != 0) {
@@ -538,11 +518,7 @@ public class MainActivity extends Activity {
         float battGross = prefs.getFloat("batt_gross",  0f);
         float battRes   = prefs.getFloat("batt_res",    0f);
         float consKw    = prefs.getFloat("cons_kw",     0f);
-        // Only use bgPvKw if the last background run was within 90 minutes.
-        // If older, pass -1 so JS won't apply a stale (possibly night-time zero) value.
-        float bgPvKwRaw = prefs.getFloat("pv_kw", -1f);
-        long  bgAge     = System.currentTimeMillis() - prefs.getLong("soc_saved_at_ms", 0L);
-        float bgPvKw    = (bgAge > 0 && bgAge < 90L * 60 * 1000) ? bgPvKwRaw : -1f;
+        float bgPvKw    = prefs.getFloat("pv_kw",      -1f);
 
         // ── SOC CATCH-UP ─────────────────────────────────────────────────────
         // The alarm fires every 30 min. If the app was closed for only 5 minutes,
@@ -575,9 +551,7 @@ public class MainActivity extends Activity {
                     else                     bD = Math.min(hD, (double) battMaxD);
 
                     double battFlow = bC - bD;
-                    double battEff  = 0.95;
-                    double effFlow  = battFlow > 0 ? battFlow * battEff : battFlow / battEff;
-                    double newSoc   = soc + (effFlow / battUse) * elapsedH * 100.0;
+                    double newSoc   = soc + (battFlow / battUse) * elapsedH * 100.0;
                     newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
 
                     android.util.Log.d("MainActivity", String.format(
@@ -624,7 +598,7 @@ public class MainActivity extends Activity {
 
 
 
-write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarForegroundService.java"), """package com.dumitriualxlang.solardashboard;
+write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarForegroundService.java"), """package com.dumitriualxlang.solardasboard;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -824,20 +798,30 @@ public class SolarForegroundService extends Service {
                          + Math.cos(latR)*Math.cos(decR)*Math.cos(ha*Math.PI/180.0);
             double alt   = Math.asin(Math.max(-1,Math.min(1,sinAlt)))*180.0/Math.PI;
 
-
-            // ── Solar production (calibrated to Huawei SUN2000 real output) ─────
-            // Uses direct_radiation + diffuse_radiation from Open-Meteo directly.
-            // No POA geometric boost — the API irradiance is already measured;
-            // the 0.9 factor on beam accounts for tilt, soiling, wiring combined.
-            // Validated against FusionSolar live data (within ±5%).
             if (alt > 2.0) {
-                double poa_in = directRad * 0.9 + diffuseRad;
-                double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
-                double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
-                double acMax  = panelKw * 0.984;
-                pvKw = Math.max(0, Math.min(acMax, (poa_in / 1000.0) * panelKw * 0.984 * tFac * 0.85));
+                double cosZen = Math.max(0.001,Math.cos((90.0-alt)*Math.PI/180.0));
+                double I0    = 1367.0*(1+0.033*Math.cos(2*Math.PI*dayOfYear/365.0));
+                double AM    = 1.0/(cosZen+0.50572*Math.pow(96.07995-alt,-1.6364));
+                double csGHI = I0*Math.sin(alt*Math.PI/180.0)*0.98*Math.exp(-0.103*AM);
+                double ghi   = swr>0 ? Math.min(swr,csGHI)
+                                     : csGHI*Math.max(0,1-0.75*Math.pow(cloud/100.0,3.4));
+                double tiltR = 30.0*Math.PI/180.0;
+                double solAzR= Math.acos(Math.max(-1,Math.min(1,
+                    (Math.sin(decR)-Math.sin(latR)*sinAlt)
+                    /(Math.cos(latR)*Math.cos(Math.asin(Math.max(-1,Math.min(1,sinAlt))))+1e-9))));
+                if (ha > 0) solAzR = 2*Math.PI-solAzR;
+                double altR  = alt*Math.PI/180.0;
+                double cosAOI= Math.sin(altR)*Math.cos(tiltR)
+                             + Math.cos(altR)*Math.sin(tiltR)*Math.cos(solAzR-Math.PI);
+                double dhi   = diffuseRad>0 ? diffuseRad : ghi*0.15;
+                double dni   = Math.min(directRad>0 ? directRad/Math.max(0.001,cosZen)
+                                                    : Math.max(0,(ghi-dhi)/Math.max(0.001,cosZen)), 950);
+                double poa   = Math.max(0,cosAOI)*dni + dhi*(1+Math.cos(tiltR))/2.0
+                             + ghi*0.20*(1-Math.cos(tiltR))/2.0;
+                double cellT = tempC+(45.0-20.0)*(Math.max(50,poa)/800.0);
+                double tFac  = Math.max(0.80,1.0-Math.max(0,cellT-25.0)*0.0037);
+                pvKw = Math.max(0,Math.min(panelKw*0.984,(poa/1000.0)*panelKw*tFac*0.984));
             }
-
 
             // ── Energy flow (same model as JS calcFlow()) ─────────────────────
             double hardFlr = 0.0;
@@ -851,32 +835,15 @@ public class SolarForegroundService extends Service {
             else                     bD = Math.min(hD, battMaxD);
             battFlow   = bC - bD;
             gridImport = Math.max(0, hD - bD);
-            double gridExport = Math.max(0, pvS - bC);
 
             // ── Evolve SOC ────────────────────────────────────────────────────
-            // Battery round-trip efficiency 95%: charging stores less, discharging provides less
-            double battEff = 0.95;
-            double effFlow = battFlow > 0 ? battFlow * battEff : battFlow / battEff;
-            newSoc = soc + (effFlow / battUse) * dtH * 100.0;
+            newSoc = soc + (battFlow / battUse) * dtH * 100.0;
             newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
 
             // ── Persist all state for catch-up on next app open ───────────────
-
-            // ── Accumulate grid kWh for today ────────────────────────────────
-            java.util.Calendar calDate = java.util.Calendar.getInstance();
-            String todayStr = calDate.get(java.util.Calendar.YEAR) + "-"
-                + calDate.get(java.util.Calendar.DAY_OF_YEAR);
-            String lastGridDate = prefs.getString("grid_date", "");
-            float prevExp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
-            float prevImp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
-            float newExp  = prevExp + (float) gridExport * (float) dtH;
-            float newImp  = prevImp + (float) gridImport * (float) dtH;
             prefs.edit()
                  .putFloat("soc",            (float) newSoc)
                  .putFloat("pv_kw",          (float) pvKw)
-                 .putFloat("grid_export_kwh", newExp)
-                 .putFloat("grid_import_kwh", newImp)
-                 .putString("grid_date",      todayStr)
                  .putLong ("soc_saved_at_ms", nowMs)
                  .apply();
 
@@ -890,53 +857,46 @@ public class SolarForegroundService extends Service {
                 dtH, pvKw, (double)consKw, battFlow, (double)soc, newSoc, gridImport));
 
             // ── Notification rules ────────────────────────────────────────────
-                        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             boolean notifOk = nm != null && nm.areNotificationsEnabled();
             if (!notifOk) return;
-            // ── Quiet hours: no notifications 22:00–08:00 ──────────────────
-            int hourNow = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
-            if (hourNow < 22 && hourNow >= 8) {
-                // Shared throttle keys across all background services
-                long lHigh   = prefs.getLong("notif_last_high",     0);
-                long lLow    = prefs.getLong("notif_last_low",      0);
-                long lEve    = prefs.getLong("notif_last_eve",      0);
-                long lBattLo = prefs.getLong("notif_last_batt_low", 0);
-                long lHighC  = prefs.getLong("notif_last_high_cons",0);
-                long now30M  = 30L*60*1000, now2H = 2L*60*60*1000;
-                double surplus   = pvKw - consKw;
-                double storedKwh = battUse * (newSoc / 100.0);
-                double dispSoc   = 10.0 + (newSoc / 100.0) * 80.0;
 
-                if (surplus >= 2.0 && (nowMs - lHigh) > now30M) {
-                        sendAlert("Solar surplus — run large appliances",
-                            String.format("+%.1f kW surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.", surplus, dispSoc));
-                        prefs.edit().putLong("notif_last_high", nowMs).apply();
-                } else if (pvKw < 0.2 && consKw > 0.1 && (nowMs - lLow) > now2H) {
-                        double bkp = storedKwh / Math.max(0.01, consKw);
-                        sendAlert("Running on battery",
-                            String.format("Solar stopped (%.1f kW). Battery %.0f%% — ~%.1fh backup remaining.", pvKw, dispSoc, bkp));
-                        prefs.edit().putLong("notif_last_low", nowMs).apply();
-                } else if (hourNow == 20 && (nowMs - lEve) > now2H) {
-                        if (surplus > 0.5)
-                            sendAlert("Good solar conditions today",
-                                    String.format("Still producing %.1f kW. Battery %.0f%%. Plan large appliances for tomorrow mid-day.", pvKw, dispSoc));
-                        else
-                            sendAlert("Solar ended for today",
-                                    String.format("Production ended. Battery at %.0f%%. Check tomorrow's forecast in the app.", dispSoc));
-                        prefs.edit().putLong("notif_last_eve", nowMs).apply();
-                }
-                if (storedKwh < battUse * 0.15 && dispSoc < 20.0 && (nowMs - lBattLo) > now2H) {
-                        sendAlert("Battery low — grid starting",
-                            String.format("Battery %.0f%% — reserve floor approaching. Grid activating. Solar: %.1f kW.", dispSoc, pvKw));
-                        prefs.edit().putLong("notif_last_batt_low", nowMs).apply();
-                }
-                if (gridImport > 1.0 && battFlow < -0.2 && (nowMs - lHighC) > now2H) {
-                        sendAlert("High consumption — grid + battery active",
-                            String.format("Drawing %.1f kW from grid + %.1f kW battery. Solar %.1f kW of %.1f kW load. Battery %.0f%%.",
-                                    gridImport, Math.abs(battFlow), pvKw, (double) consKw, dispSoc));
-                        prefs.edit().putLong("notif_last_high_cons", nowMs).apply();
-                }
-            } // end quiet hours
+            long now2H  = 2L*60*60*1000, now30M = 30L*60*1000;
+            double surplus   = pvKw - consKw;
+            double storedKwh = battUse * (newSoc/100.0);
+            long lHigh  = prefs.getLong("fgs_last_high",     0);
+            long lLow   = prefs.getLong("fgs_last_low",      0);
+            long lEve   = prefs.getLong("fgs_last_eve",      0);
+            long lBattLo= prefs.getLong("fgs_last_batt_low", 0);
+            long lHighC = prefs.getLong("fgs_last_high_cons",0);
+
+            if (surplus >= 2.0 && (nowMs-lHigh) > now30M) {
+                sendAlert("Solar surplus \u2014 run large appliances",
+                    String.format("+%.1f kW surplus. Run washing machine, dishwasher or water heater. Battery: %.0f%%.", surplus, newSoc));
+                prefs.edit().putLong("fgs_last_high", nowMs).apply();
+            } else if (pvKw < 0.2 && consKw > 0.1 && (nowMs-lLow) > now2H) {
+                double bkp = storedKwh / Math.max(0.01, consKw);
+                sendAlert("Running on battery",
+                    String.format("Solar stopped (%.1f kW). Battery %.0f%% \u2014 ~%.1fh backup.", pvKw, newSoc, bkp));
+                prefs.edit().putLong("fgs_last_low", nowMs).apply();
+            } else if (cal.get(Calendar.HOUR_OF_DAY) == 20 && (nowMs-lEve) > now2H) {
+                if (surplus > 0.5)
+                    sendAlert("Good solar today", String.format("Still %.1f kW. Battery %.0f%%. Plan appliances tomorrow mid-day.", pvKw, newSoc));
+                else
+                    sendAlert("Solar ended for today", String.format("Battery at %.0f%%. Check forecast in the app.", newSoc));
+                prefs.edit().putLong("fgs_last_eve", nowMs).apply();
+            }
+            if (storedKwh < battUse*0.15 && newSoc < 20.0 && (nowMs-lBattLo) > now2H) {
+                sendAlert("Battery low \u2014 grid starting",
+                    String.format("Battery %.0f%% \u2014 reserve approaching. Grid activating. Solar: %.1f kW.", newSoc, pvKw));
+                prefs.edit().putLong("fgs_last_batt_low", nowMs).apply();
+            }
+            if (gridImport > 1.0 && battFlow < -0.2 && (nowMs-lHighC) > now2H) {
+                sendAlert("High consumption \u2014 grid + battery active",
+                    String.format("Grid %.1f kW + battery %.1f kW. Solar %.1f kW of %.1f kW load. Battery %.0f%%.",
+                        gridImport, Math.abs(battFlow), pvKw, (double)consKw, newSoc));
+                prefs.edit().putLong("fgs_last_high_cons", nowMs).apply();
+            }
 
         } catch (Exception e) {
             android.util.Log.e("SolarFGS", "doSolarCheck exception: " + e.getMessage());
@@ -1031,7 +991,7 @@ public class SolarForegroundService extends Service {
 """)
 
 
-write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarAlarmReceiver.java"), """package com.dumitriualxlang.solardashboard;
+write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarAlarmReceiver.java"), """package com.dumitriualxlang.solardasboard;
 
 import android.app.AlarmManager;
 import android.app.NotificationChannel;
@@ -1069,7 +1029,7 @@ import java.util.GregorianCalendar;
  */
 public class SolarAlarmReceiver extends BroadcastReceiver {
 
-    static final String ACTION      = "com.dumitriualxlang.solardashboard.SOLAR_CHECK";
+    static final String ACTION      = "com.dumitriualxlang.solardasboard.SOLAR_CHECK";
     static final String CHANNEL_ID  = "solar_alerts";
     static final String PREFS       = "SolarDashboard";
     static final int    INTERVAL_MS = 30 * 60 * 1000;   // 30 minutes
@@ -1203,18 +1163,30 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
                          + Math.cos(latR)*Math.cos(decR)*Math.cos(ha*Math.PI/180.0);
             double alt   = Math.asin(Math.max(-1,Math.min(1,sinAlt)))*180.0/Math.PI;
 
-            
-            // ── Solar production (calibrated to Huawei SUN2000 real output) ─────
-            // Uses direct_radiation*0.9 + diffuse_radiation as effective irradiance.
-            // Validated against FusionSolar live data (within ±5%). No POA boost.
             if (alt > 2.0) {
-                double poa_in = directRad * 0.9 + diffuseRad;
-                double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
-                double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
-                // 0.85 calibration factor validated against FusionSolar (2 real data points, within ±2%)
-                pvKw = Math.max(0, Math.min(panelKw * 0.984, (poa_in / 1000.0) * panelKw * 0.984 * tFac * 0.85));
+                double cosZen = Math.max(0.001, Math.cos((90.0-alt)*Math.PI/180.0));
+                double I0   = 1367.0*(1+0.033*Math.cos(2*Math.PI*dayOfYear/365.0));
+                double AM   = 1.0/(cosZen+0.50572*Math.pow(96.07995-alt,-1.6364));
+                double csGHI= I0*Math.sin(alt*Math.PI/180.0)*0.98*Math.exp(-0.103*AM);
+                double ghi  = swr>0 ? Math.min(swr,csGHI)
+                                    : csGHI*Math.max(0,1-0.75*Math.pow(cloud/100.0,3.4));
+                double tiltR= 30.0*Math.PI/180.0;
+                double solAzR = Math.acos(Math.max(-1,Math.min(1,
+                    (Math.sin(decR)-Math.sin(latR)*sinAlt)
+                    /(Math.cos(latR)*Math.cos(Math.asin(Math.max(-1,Math.min(1,sinAlt))))+1e-9))));
+                if (ha > 0) solAzR = 2*Math.PI - solAzR;
+                double altR = alt*Math.PI/180.0;
+                double cosAOI = Math.sin(altR)*Math.cos(tiltR)
+                              + Math.cos(altR)*Math.sin(tiltR)*Math.cos(solAzR-Math.PI);
+                double dhi  = diffuseRad>0 ? diffuseRad : ghi*0.15;
+                double dni  = Math.min(directRad>0 ? directRad/Math.max(0.001,cosZen)
+                                                   : Math.max(0,(ghi-dhi)/Math.max(0.001,cosZen)), 950);
+                double poa  = Math.max(0,cosAOI)*dni + dhi*(1+Math.cos(tiltR))/2.0
+                            + ghi*0.20*(1-Math.cos(tiltR))/2.0;
+                double cellT= tempC+(45.0-20.0)*(Math.max(50,poa)/800.0);
+                double tFac = Math.max(0.80,1.0-Math.max(0,cellT-25.0)*0.0037);
+                pvKw = Math.max(0,Math.min(panelKw*0.984,(poa/1000.0)*panelKw*tFac*0.984));
             }
-
 
             // Energy flow
             double battUse = battGross>0 ? battGross*(1.0-battRes) : 4.5;
@@ -1231,29 +1203,14 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
             gridImport= Math.max(0,hD-bD);
 
             // Evolve SOC
-            double battEff = 0.95;
-            double effFlow = battFlow > 0 ? battFlow * battEff : battFlow / battEff;
-            newSoc = soc + (effFlow/battUse)*dtH*100.0;
+            newSoc = soc + (battFlow/battUse)*dtH*100.0;
             newSoc = Math.max(hardFlr,Math.min(100.0,newSoc));
 
             // Persist evolved SOC + production + timestamp (used by catch-up in injectLocation)
-
-            // ── Accumulate grid kWh for today ────────────────────────────────
-            java.util.Calendar calDate = java.util.Calendar.getInstance();
-            String todayStr = calDate.get(java.util.Calendar.YEAR) + "-"
-                + calDate.get(java.util.Calendar.DAY_OF_YEAR);
-            String lastGridDate = prefs.getString("grid_date", "");
-            float prevExp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
-            float prevImp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
-            float newExp  = prevExp + (float) gridExport * (float) dtH;
-            float newImp  = prevImp + (float) gridImport * (float) dtH;
             prefs.edit()
                  .putFloat("soc",    (float) newSoc)
                  .putFloat("pv_kw",  (float) pvKw)
                  .putLong("soc_saved_at_ms", nowMs)
-                                  .putFloat("grid_export_kwh", newExp)
-                 .putFloat("grid_import_kwh", newImp)
-                 .putString("grid_date",       todayStr)
                  .apply();
 
             android.util.Log.d("SolarAlarm",
@@ -1266,48 +1223,53 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
                 Context.NOTIFICATION_SERVICE)).areNotificationsEnabled(); }
             catch (Exception e) { notifEnabled = true; }
             if (!notifEnabled) return;
-        // ── Quiet hours: no notifications 22:00–08:00 ──────────────────
-        int hourNow = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
-        if (hourNow < 22 && hourNow >= 8) {
-            long lHigh   = prefs.getLong("notif_last_high",     0);
-            long lLow    = prefs.getLong("notif_last_low",      0);
-            long lEve    = prefs.getLong("notif_last_eve",      0);
-            long lBattLo = prefs.getLong("notif_last_batt_low", 0);
-            long lHighC  = prefs.getLong("notif_last_high_cons",0);
-            long now30M  = 30L*60*1000, now2H = 2L*60*60*1000;
-            double surplus   = pvKw - consKw;
-            double storedKwh = battUse * (newSoc / 100.0);
-            double dispSoc   = 10.0 + (newSoc / 100.0) * 80.0;
-            if (surplus >= 2.0 && (nowMs - lHigh) > now30M) {
-                sendNotif(ctx, "Solar surplus — run large appliances",
-                    String.format("+%.1f kW surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.", surplus, dispSoc));
-                prefs.edit().putLong("notif_last_high", nowMs).apply();
-            } else if (pvKw < 0.2 && consKw > 0.1 && (nowMs - lLow) > now2H) {
-                double bkp = storedKwh / Math.max(0.01, consKw);
-                sendNotif(ctx, "Running on battery",
-                    String.format("Solar stopped (%.1f kW). Battery %.0f%% — ~%.1fh backup remaining.", pvKw, dispSoc, bkp));
-                prefs.edit().putLong("notif_last_low", nowMs).apply();
-            } else if (hourNow == 20 && (nowMs - lEve) > now2H) {
-                if (surplus > 0.5)
-                    sendNotif(ctx, "Good solar conditions today",
-                        String.format("Still producing %.1f kW. Battery %.0f%%. Plan appliances for tomorrow mid-day.", pvKw, dispSoc));
+
+            long now2H  = 2L*60*60*1000, now30M = 30L*60*1000;
+            double surplus    = pvKw-consKw;
+            double storedKwh  = battUse*(newSoc/100.0);
+
+            long lHigh   = prefs.getLong("al_last_high",     0);
+            long lLow    = prefs.getLong("al_last_low",      0);
+            long lEve    = prefs.getLong("al_last_eve",      0);
+            long lBattLo = prefs.getLong("al_last_batt_low", 0);
+            long lHighC  = prefs.getLong("al_last_high_cons",0);
+
+            // Rule 1: Solar surplus >= 2 kW
+            if (surplus>=2.0 && (nowMs-lHigh)>now30M) {
+                sendNotif(ctx,"Solar surplus \u2014 run large appliances",
+                    String.format("+%.1f kW surplus. Good time for washing machine, dishwasher or water heater. Battery: %.0f%%.",surplus,newSoc));
+                prefs.edit().putLong("al_last_high",nowMs).apply();
+            }
+            // Rule 2: Low/no solar — on battery
+            else if (pvKw<0.2 && consKw>0.1 && battUse>0 && (nowMs-lLow)>now2H) {
+                double bkp=storedKwh/Math.max(0.01,consKw);
+                sendNotif(ctx,"Running on battery",
+                    String.format("Solar stopped (%.1f kW). Battery at %.0f%% \u2014 ~%.1fh backup.",pvKw,newSoc,bkp));
+                prefs.edit().putLong("al_last_low",nowMs).apply();
+            }
+            // Rule 3: Evening summary at 20:00
+            else if (cal.get(Calendar.HOUR_OF_DAY)==20 && (nowMs-lEve)>now2H) {
+                if (surplus>0.5)
+                    sendNotif(ctx,"Good solar today",
+                        String.format("Still producing %.1f kW. Battery %.0f%%. Plan large appliances for tomorrow mid-day.",pvKw,newSoc));
                 else
-                    sendNotif(ctx, "Solar ended for today",
-                        String.format("Production ended. Battery at %.0f%%. Check tomorrow's forecast in the app.", dispSoc));
-                prefs.edit().putLong("notif_last_eve", nowMs).apply();
+                    sendNotif(ctx,"Solar ended for today",
+                        String.format("Production stopped. Battery at %.0f%%. Check tomorrow's forecast in the app.",newSoc));
+                prefs.edit().putLong("al_last_eve",nowMs).apply();
             }
-            if (storedKwh < battUse * 0.15 && dispSoc < 20.0 && (nowMs - lBattLo) > now2H) {
-                sendNotif(ctx, "Battery low — grid starting",
-                    String.format("Battery %.0f%% — reserve approaching. Grid activating. Solar: %.1f kW.", dispSoc, pvKw));
-                prefs.edit().putLong("notif_last_batt_low", nowMs).apply();
+            // Rule 4: Battery approaching reserve
+            if (storedKwh<battUse*0.15 && newSoc<20.0 && (nowMs-lBattLo)>now2H) {
+                sendNotif(ctx,"Battery low \u2014 grid starting",
+                    String.format("Battery at %.0f%% \u2014 reserve approaching. Grid activating. Solar: %.1f kW.",newSoc,pvKw));
+                prefs.edit().putLong("al_last_batt_low",nowMs).apply();
             }
-            if (gridImport > 1.0 && battFlow < -0.2 && (nowMs - lHighC) > now2H) {
-                sendNotif(ctx, "High consumption — grid + battery active",
-                    String.format("Drawing %.1f kW from grid + %.1f kW battery. Solar %.1f kW of %.1f kW. Battery %.0f%%.",
-                        gridImport, Math.abs(battFlow), pvKw, (double) consKw, dispSoc));
-                prefs.edit().putLong("notif_last_high_cons", nowMs).apply();
+            // Rule 5: High consumption — grid + battery active
+            if (gridImport>1.0 && battFlow<-0.2 && (nowMs-lHighC)>now2H) {
+                sendNotif(ctx,"High consumption \u2014 grid + battery active",
+                    String.format("Drawing %.1f kW from grid + %.1f kW battery. Solar covering %.1f kW of %.1f kW load. Battery %.0f%%.",
+                        gridImport,Math.abs(battFlow),pvKw,(double)consKw,newSoc));
+                prefs.edit().putLong("al_last_high_cons",nowMs).apply();
             }
-        } // end quiet hours
 
         } catch (Exception e) {
             android.util.Log.e("SolarAlarm", "doSolarCheck error: " + e.getMessage());
@@ -1370,7 +1332,7 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
 """)
 
 
-write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "BootReceiver.java"), """package com.dumitriualxlang.solardashboard;
+write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "BootReceiver.java"), """package com.dumitriualxlang.solardasboard;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -1418,7 +1380,7 @@ public class BootReceiver extends BroadcastReceiver {
 """)
 
 
-write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarWorker.java"), """package com.dumitriualxlang.solardashboard;
+write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarWorker.java"), """package com.dumitriualxlang.solardasboard;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -1543,18 +1505,47 @@ public class SolarWorker extends Worker {
             double alt    = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180.0 / Math.PI;
 
             // Night or sun below horizon — production is zero
-            
-            // ── Solar production (calibrated to Huawei SUN2000 real output) ─────
-            // Uses direct_radiation*0.9 + diffuse_radiation as effective irradiance.
-            // Validated against FusionSolar live data (within ±5%). No POA boost.
-            if (alt > 2.0) {
-                double poa_in = directRad * 0.9 + diffuseRad;
-                double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
-                double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
-                // 0.85 calibration factor validated against FusionSolar (2 real data points, within ±2%)
-                pvKw = Math.max(0, Math.min(panelKw * 0.984, (poa_in / 1000.0) * panelKw * 0.984 * tFac * 0.85));
-            }
+            if (alt <= 2.0) {
+                pvKw = 0;
+            } else {
+                // ── GHI: use SWR from API, cap at theoretical clear-sky ──────
+                double cosZen = Math.max(0.001, Math.cos((90.0 - alt) * Math.PI / 180.0));
+                double I0 = 1367.0 * (1 + 0.033 * Math.cos(2 * Math.PI * dayOfYear / 365.0));
+                double AM = 1.0 / (cosZen + 0.50572 * Math.pow(96.07995 - alt, -1.6364));
+                double csGHI = I0 * Math.sin(alt * Math.PI / 180.0)
+                             * 0.98 * Math.exp(-0.103 * AM);
+                double ghi = swr > 0 ? Math.min(swr, csGHI) : csGHI * Math.max(0, 1 - 0.75 * Math.pow(cloud / 100.0, 3.4));
 
+                // ── POA irradiance: isotropic tilt model (30 deg south-facing) ──
+                // This mirrors the JS calcPOA function for a south-facing tilted panel.
+                double tiltDeg = 30.0;
+                double panelAz = 180.0;  // south
+                double tiltR   = tiltDeg * Math.PI / 180.0;
+                double solAzR  = Math.acos(Math.max(-1, Math.min(1,
+                    (Math.sin(decR) - Math.sin(latR) * sinAlt)
+                    / (Math.cos(latR) * Math.cos(Math.asin(Math.max(-1, Math.min(1, sinAlt)))) + 1e-9)
+                )));
+                if (ha > 0) solAzR = 2 * Math.PI - solAzR;  // afternoon correction
+                double pnlAzR  = panelAz * Math.PI / 180.0;
+                double altR    = alt * Math.PI / 180.0;
+                double cosAOI  = Math.sin(altR) * Math.cos(tiltR)
+                               + Math.cos(altR) * Math.sin(tiltR) * Math.cos(solAzR - pnlAzR);
+                double dhi = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
+                double dni = directRad > 0 ? directRad / Math.max(0.001, cosZen)
+                                           : Math.max(0, (ghi - dhi) / Math.max(0.001, cosZen));
+                dni = Math.min(dni, 950);
+                double poaBeam   = Math.max(0, cosAOI) * dni;
+                double poaSky    = dhi * (1 + Math.cos(tiltR)) / 2.0;
+                double poaGround = ghi * 0.20 * (1 - Math.cos(tiltR)) / 2.0;
+                double poa       = poaBeam + poaSky + poaGround;
+
+                // ── AC output: NOCT temperature derating + inverter efficiency ──
+                double cellT   = tempC + (45.0 - 20.0) * (Math.max(50, poa) / 800.0);
+                double tempFac = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
+                double invEff  = 0.984;  // SUN2000-5KTL-M1
+                double acMax   = panelKw * invEff;
+                pvKw = Math.max(0, Math.min(acMax, (poa / 1000.0) * panelKw * tempFac * invEff));
+            }
 
         } catch (Exception e) {
             return Result.retry();
@@ -1587,32 +1578,16 @@ public class SolarWorker extends Worker {
         double gridImport = Math.max(0, hD - bD);
 
         // ── Evolve SOC over elapsed time ─────────────────────────────────────
-        // Battery round-trip efficiency 95%: charging stores less, discharging provides less
-        double battEff = 0.95;
-        double effFlow = battFlow > 0 ? battFlow * battEff : battFlow / battEff;
-        double newSoc  = soc + (effFlow / battUse) * dtH * 100.0;
+        double newSoc = soc + (battFlow / battUse) * dtH * 100.0;
         newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
 
         // ── Persist evolved state back to SharedPreferences ──────────────────
         // JS reads these on resume via applyStateFromNative / injectLocation
-
-            // ── Accumulate grid kWh for today ────────────────────────────────
-            java.util.Calendar calDate = java.util.Calendar.getInstance();
-            String todayStr = calDate.get(java.util.Calendar.YEAR) + "-"
-                + calDate.get(java.util.Calendar.DAY_OF_YEAR);
-            String lastGridDate = prefs.getString("grid_date", "");
-            float prevExp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
-            float prevImp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
-            float newExp  = prevExp + (float) gridExport * (float) dtH;
-            float newImp  = prevImp + (float) gridImport * (float) dtH;
         prefs.edit()
             .putFloat("soc",    (float) newSoc)
             .putFloat("pv_kw",  (float) pvKw)
             .putLong("soc_saved_at_ms", nowMs)
-                             .putFloat("grid_export_kwh", newExp)
-                 .putFloat("grid_import_kwh", newImp)
-                 .putString("grid_date",       todayStr)
-                 .apply();
+            .apply();
 
         android.util.Log.d("SolarWorker",
             String.format("dtH=%.2fh pvKw=%.2f soc %.1f->%.1f battFlow=%.3f",
@@ -1626,48 +1601,69 @@ public class SolarWorker extends Worker {
             notifEnabled = true;  // assume enabled if check fails
         }
         if (!notifEnabled) return Result.success();
-        // ── Quiet hours: no notifications 22:00–08:00 ──────────────────
-        int hourNow = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
-        if (hourNow < 22 && hourNow >= 8) {
-            long lHigh   = prefs.getLong("notif_last_high",     0);
-            long lLow    = prefs.getLong("notif_last_low",      0);
-            long lEve    = prefs.getLong("notif_last_eve",      0);
-            long lBattLo = prefs.getLong("notif_last_batt_low", 0);
-            long lHighC  = prefs.getLong("notif_last_high_cons",0);
-            long now30M  = 30L*60*1000, now2H = 2L*60*60*1000;
-            double surplus   = pvKw - consKw;
-            double storedKwh = battUse * (newSoc / 100.0);
-            double dispSoc   = 10.0 + (newSoc / 100.0) * 80.0;
-            if (surplus >= 2.0 && (nowMs - lHigh) > now30M) {
-                sendNotif(ctx, "Solar surplus — run large appliances",
-                    String.format("+%.1f kW surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.", surplus, dispSoc));
-                prefs.edit().putLong("notif_last_high", nowMs).apply();
-            } else if (pvKw < 0.2 && consKw > 0.1 && (nowMs - lLow) > now2H) {
-                double bkp = storedKwh / Math.max(0.01, consKw);
-                sendNotif(ctx, "Running on battery",
-                    String.format("Solar stopped (%.1f kW). Battery %.0f%% — ~%.1fh backup remaining.", pvKw, dispSoc, bkp));
-                prefs.edit().putLong("notif_last_low", nowMs).apply();
-            } else if (hourNow == 20 && (nowMs - lEve) > now2H) {
-                if (surplus > 0.5)
-                    sendNotif(ctx, "Good solar conditions today",
-                        String.format("Still producing %.1f kW. Battery %.0f%%. Plan appliances for tomorrow mid-day.", pvKw, dispSoc));
-                else
-                    sendNotif(ctx, "Solar ended for today",
-                        String.format("Production ended. Battery at %.0f%%. Check tomorrow's forecast in the app.", dispSoc));
-                prefs.edit().putLong("notif_last_eve", nowMs).apply();
+
+        long lastHighNotif  = prefs.getLong("bg_last_high",     0);
+        long lastLowNotif   = prefs.getLong("bg_last_low",      0);
+        long lastEveNotif   = prefs.getLong("bg_last_eve",      0);
+        long lastBattLow    = prefs.getLong("bg_last_batt_low", 0);
+        long thirtyMin      = 30L  * 60 * 1000;
+        long twoHours       = 2L   * 60 * 60 * 1000;
+        double surplus      = pvKw - consKw;
+        double storedKwh    = battUse * (newSoc / 100.0);
+
+        // 1. Good solar surplus — run large appliances (>=2 kW)
+        if (surplus >= 2.0 && (nowMs - lastHighNotif) > thirtyMin) {
+            String body = String.format(
+                "+%.1f kW solar surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.",
+                surplus, newSoc);
+            sendNotif(ctx, "Solar surplus \u2014 run large appliances", body);
+            prefs.edit().putLong("bg_last_high", nowMs).apply();
+        }
+        // 2. Low/no production — running on battery
+        else if (pvKw < 0.2 && consKw > 0.1 && battUse > 0 && (nowMs - lastLowNotif) > twoHours) {
+            double backupH = storedKwh / Math.max(0.01, consKw);
+            String body = String.format(
+                "Solar stopped (%.1f kW). Battery at %.0f%% \u2014 approx. %.1fh backup remaining.",
+                pvKw, newSoc, backupH);
+            sendNotif(ctx, "Running on battery", body);
+            prefs.edit().putLong("bg_last_low", nowMs).apply();
+        }
+        // 3. Evening forecast at 20:00
+        else if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) == 20
+                 && (nowMs - lastEveNotif) > twoHours) {
+            String title, body;
+            if (surplus > 0.5) {
+                title = "Good solar conditions today";
+                body  = String.format("Solar still producing %.1f kW. Battery at %.0f%%. Plan large appliances for tomorrow mid-day.", pvKw, newSoc);
+            } else {
+                title = "Solar forecast for tomorrow";
+                body  = String.format("Production ended for today. Battery at %.0f%%. Check app for tomorrow's forecast.", newSoc);
             }
-            if (storedKwh < battUse * 0.15 && dispSoc < 20.0 && (nowMs - lBattLo) > now2H) {
-                sendNotif(ctx, "Battery low — grid starting",
-                    String.format("Battery %.0f%% — reserve approaching. Grid activating. Solar: %.1f kW.", dispSoc, pvKw));
-                prefs.edit().putLong("notif_last_batt_low", nowMs).apply();
-            }
-            if (gridImport > 1.0 && battFlow < -0.2 && (nowMs - lHighC) > now2H) {
-                sendNotif(ctx, "High consumption — grid + battery active",
-                    String.format("Drawing %.1f kW from grid + %.1f kW battery. Solar %.1f kW of %.1f kW. Battery %.0f%%.",
-                        gridImport, Math.abs(battFlow), pvKw, (double) consKw, dispSoc));
-                prefs.edit().putLong("notif_last_high_cons", nowMs).apply();
-            }
-        } // end quiet hours
+            sendNotif(ctx, title, body);
+            prefs.edit().putLong("bg_last_eve", nowMs).apply();
+        }
+
+        // 4. Battery approaching reserve floor (independent of above)
+        if (storedKwh < battUse * 0.15 && newSoc < 20.0 && (nowMs - lastBattLow) > twoHours) {
+            String body = String.format(
+                "Battery at %.0f%% \u2014 reserve floor approaching. Grid will activate soon. Solar: %.1f kW.",
+                newSoc, pvKw);
+            sendNotif(ctx, "Battery low \u2014 grid starting", body);
+            prefs.edit().putLong("bg_last_batt_low", nowMs).apply();
+        }
+
+        // 5. High consumption: grid importing significantly while battery drains
+        // Covers the scenario where pvKw is non-zero but far below consKw
+        // (none of rules 1-3 fire in this case)
+        long lastHighCons = prefs.getLong("bg_last_high_cons", 0);
+        if (gridImport > 1.0 && battFlow < -0.2 && (nowMs - lastHighCons) > twoHours) {
+            String body = String.format(
+                "High consumption: drawing %.1f kW from grid + %.1f kW battery discharge. "
+                + "Solar covering %.1f kW of %.1f kW load. Battery at %.0f%%.",
+                gridImport, Math.abs(battFlow), pvKw, (double) consKw, newSoc);
+            sendNotif(ctx, "High consumption \u2014 grid + battery active", body);
+            prefs.edit().putLong("bg_last_high_cons", nowMs).apply();
+        }
 
         return Result.success();
     }
@@ -1754,7 +1750,6 @@ write(os.path.join(RES, "xml", "network_security_config.xml"), """<?xml version=
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">api.forecast.solar</domain>
         <domain includeSubdomains="true">api.open-meteo.com</domain>
-        <domain includeSubdomains="true">satellite-api.open-meteo.com</domain>
         <domain includeSubdomains="true">dumitriualx-lang.github.io</domain>\n        <domain includeSubdomains=\"true\">nominatim.openstreetmap.org</domain>
     </domain-config>
 </network-security-config>
