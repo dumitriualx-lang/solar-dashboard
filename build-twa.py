@@ -2,6 +2,18 @@
 import os, io, base64
 from PIL import Image
 
+# ── Auto version management ───────────────────────────────────────────────────
+# VERSION_CODE increments automatically on every build — no manual editing needed.
+# Only update VERSION_NAME manually when releasing a notable update to users.
+_vfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.txt")
+VERSION_NAME = "1.0.3"
+if os.path.exists(_vfile):
+    with open(_vfile) as _vf: VERSION_CODE = int(_vf.read().strip()) + 1
+else:
+    VERSION_CODE = 4
+with open(_vfile, "w") as _vf: _vf.write(str(VERSION_CODE))
+print(f"Build: versionCode={VERSION_CODE}  versionName={VERSION_NAME}")
+
 HOME = os.path.expanduser("~")
 ROOT = os.path.join(HOME, "twa")
 APP  = os.path.join(ROOT, "app")
@@ -41,7 +53,7 @@ org.gradle.jvmargs=-Xmx2048m
 """)
 
 write(os.path.join(APP, "build.gradle"), """plugins {
-    id 'com.android.application' version '8.7.0' apply true
+    id 'com.android.application' version '8.3.2' apply true
 }
 android {
     namespace "%s"
@@ -137,6 +149,13 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
     </application>
 </manifest>
 """)
+# Patch versionCode/versionName with auto-incremented values
+_bgpath = os.path.join(APP, "build.gradle")
+with open(_bgpath) as _f: _bg = _f.read()
+_bg = _bg.replace("versionCode 4", f"versionCode {VERSION_CODE}")
+_bg = _bg.replace('versionName "1.0.3"', f'versionName "{VERSION_NAME}"')
+with open(_bgpath, "w") as _f: _f.write(_bg)
+
 
 # Ownership verification file for Google Play package registration
 assets_dir = os.path.join(APP, "src", "main", "assets")
@@ -1771,7 +1790,7 @@ write(os.path.join(RES, "values", "strings.xml"), """<?xml version="1.0" encodin
 
 write(os.path.join(WRAP, "gradle-wrapper.properties"), """distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
-distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip
+distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-all.zip
 zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 """)
