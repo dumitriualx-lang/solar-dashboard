@@ -41,7 +41,7 @@ org.gradle.jvmargs=-Xmx2048m
 """)
 
 write(os.path.join(APP, "build.gradle"), """plugins {
-    id 'com.android.application' version '8.3.0' apply true
+    id 'com.android.application' version '8.7.0' apply true
 }
 android {
     namespace "%s"
@@ -50,8 +50,8 @@ android {
         applicationId "%s"
         minSdk 21
         targetSdk 35
-        versionCode 3
-        versionName "1.0.2"
+        versionCode 4
+        versionName "1.0.3"
         manifestPlaceholders = [
             hostName:     "dumitriualx-lang.github.io",
             defaultUrl:   "https://dumitriualx-lang.github.io/solar-dashboard/",
@@ -137,6 +137,12 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
     </application>
 </manifest>
 """)
+
+# Ownership verification file for Google Play package registration
+assets_dir = os.path.join(APP, "src", "main", "assets")
+os.makedirs(assets_dir, exist_ok=True)
+with open(os.path.join(assets_dir, "adi-registration.properties"), "w") as f:
+    f.write("DXQBJOK6FSERIAAAAAAAAAAAAA\n")
 
 write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "MainActivity.java"), """package com.dumitriualxlang.solardasboard;
 
