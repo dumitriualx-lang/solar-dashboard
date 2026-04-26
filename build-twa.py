@@ -45,11 +45,11 @@ write(os.path.join(APP, "build.gradle"), """plugins {
 }
 android {
     namespace "%s"
-    compileSdk 34
+    compileSdk 35
     defaultConfig {
         applicationId "%s"
         minSdk 21
-        targetSdk 34
+        targetSdk 35
         versionCode 2
         versionName "1.0.1"
         manifestPlaceholders = [
