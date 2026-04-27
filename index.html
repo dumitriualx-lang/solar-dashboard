@@ -653,7 +653,8 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   // bgPvKw=0 is intentionally skipped — it likely means the background ran at night
   // or when cloud cover was 100%. Let fetchWeather() determine the real value.
   // A stale 0 would incorrectly show "no production" while panels may be producing.
-  if (typeof bgPvKw === 'number' && bgPvKw > 0) { ST.pvKw = bgPvKw; }
+  // Only apply background pvKw if no live API result yet — prevents overwriting fresh satellite data on resume
+  if (typeof bgPvKw === 'number' && bgPvKw > 0 && !ST.apiOk) { ST.pvKw = bgPvKw; }
   // CRITICAL: reset the SOC evolution clock to NOW.
   // Without this, the 5s evolveSoc loop would see a huge dtH gap (hours since
   // last JS run) and apply a massive SOC change on top of what the worker
@@ -664,10 +665,10 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   const consEl  = document.getElementById('iCons');
   const panelEl = document.getElementById('cfgPanel');
   const battEl  = document.getElementById('cfgBatt');
-  if (socEl   && document.activeElement !== socEl)   socEl.value   = Math.round(socToDisplay(soc));
-  if (consEl  && document.activeElement !== consEl)  consEl.value  = consKw;
-  if (panelEl && document.activeElement !== panelEl) panelEl.value = panelKw;
-  if (battEl  && document.activeElement !== battEl)  battEl.value  = battGross;
+  if (socEl   && document.activeElement !== socEl   && soc >= 0)        socEl.value   = Math.round(socToDisplay(soc));
+  if (consEl  && document.activeElement !== consEl  && consKw > 0)      consEl.value  = consKw;
+  if (panelEl && document.activeElement !== panelEl && panelKw > 0)     panelEl.value = panelKw;
+  if (battEl  && document.activeElement !== battEl  && battGross > 0)   battEl.value  = battGross;
   updateSocDisplay();
   renderAll();
 }
@@ -847,9 +848,10 @@ function applySatelliteRadiation(sat) {
   // ×1.07 calibration: satellite measures surface irradiance accurately but
   // panel-level losses (soiling, wiring, mismatch) reduce real output ~7%
   const pvKw    = +Math.max(0, Math.min(acMax, (poa_in / 1000) * panelKw * 0.984 * tFac * 1.07)).toFixed(3);
-  ST.pvKw   = pvKw;
-  ST.irrWm2 = sat.swr;
-  ST.poaWm2 = +poa_in.toFixed(1);
+  ST.pvKw      = pvKw;
+  ST._satLastMs = Date.now();  // timestamp so NWP won't overwrite this
+  ST.irrWm2    = sat.swr;
+  ST.poaWm2    = +poa_in.toFixed(1);
 }
 
 async function fetchWeather() {
@@ -1028,7 +1030,12 @@ function processOpenMeteo(d) {
   const cellT_v = tempC_v + (SYS.noct - 20) / 800 * Math.max(50, poa_in);
   const tFac_v  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_v - 25));
   const acMax_v = SYS.acMax || (SYS.panelKw || 5) * 0.984;
-  ST.pvKw   = +Math.max(0, Math.min(acMax_v, (poa_in / 1000) * (SYS.panelKw || 5) * 0.984 * tFac_v * 0.85)).toFixed(3);
+  // Only update pvKw from NWP if satellite hasn't provided fresher data recently.
+  // Satellite data is more accurate — don't overwrite it with NWP estimate.
+  const satAge = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
+  if (satAge > 20 * 60 * 1000) {  // satellite data older than 20 min → use NWP
+    ST.pvKw = +Math.max(0, Math.min(acMax_v, (poa_in / 1000) * (SYS.panelKw || 5) * 0.984 * tFac_v * 0.85)).toFixed(3);
+  }
   ST.poaWm2 = +poa_in.toFixed(1);
   ST.cfGHI  = swr > 0 ? swr / Math.max(1, ghi) : 1;
 
