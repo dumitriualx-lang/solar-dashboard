@@ -324,6 +324,24 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
       </div>
     </div>
     <div class="cfg-grid">
+      <div class="cfg-group" style="grid-column:span 2">
+        <div class="cfg-lbl">🧭 Panel orientation</div>
+        <div class="cfg-inp-wrap" style="padding:6px 10px">
+          <select id="cfgAzimuth" onchange="onCfgChange()" style="width:100%;background:transparent;border:none;font-family:inherit;font-size:14px;color:var(--tx);outline:none">
+            <option value="180">South (180°) — recommended Romania</option>
+            <option value="135">South-East (135°)</option>
+            <option value="90">East (90°)</option>
+            <option value="45">North-East (45°)</option>
+            <option value="0">North (0°)</option>
+            <option value="315">North-West (315°)</option>
+            <option value="270">West (270°)</option>
+            <option value="225">South-West (225°)</option>
+          </select>
+        </div>
+        <div class="cfg-hint">Direction your panels face — affects morning/evening accuracy</div>
+      </div>
+    </div>
+    <div class="cfg-grid">
       <div class="cfg-group">
         <div class="cfg-lbl">🔋 Battery charge (SOC)</div>
         <div class="cfg-inp-wrap" style="border:.5px solid var(--g)">
@@ -565,7 +583,8 @@ function isSysConfigured() {
 
 const SYS = {
   panelKw:   savedCfg.panelKw   || null,     // kW peak — must be set by user
-  tiltDeg:   savedCfg.tiltDeg   || 30,       // panel tilt angle
+  tiltDeg:      savedCfg.tiltDeg      || 30,  // panel tilt angle
+  panelAzimuth: savedCfg.panelAzimuth || 180, // panel orientation (180=south default)
   invEff:    0.984,                            // SUN2000-5KTL-M1 (fixed)
   dcLoss:    0.97,                             // wiring + soiling (fixed)
   battGross: savedCfg.battGross || null,      // kWh gross — must be set by user
@@ -668,6 +687,8 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   if (socEl   && document.activeElement !== socEl   && soc >= 0)        socEl.value   = Math.round(socToDisplay(soc));
   if (consEl  && document.activeElement !== consEl  && consKw > 0)      consEl.value  = consKw;
   if (panelEl && document.activeElement !== panelEl && panelKw > 0)     panelEl.value = panelKw;
+  const azEl = document.getElementById('cfgAzimuth');
+  if (azEl) azEl.value = SYS.panelAzimuth || 180;
   if (battEl  && document.activeElement !== battEl  && battGross > 0)   battEl.value  = battGross;
   updateSocDisplay();
   // Do not call renderAll() here — the debounced intervals handle rendering.
@@ -840,7 +861,10 @@ function applySatelliteRadiation(sat) {
   if (directRad + diffuseRad <= 0) return;  // night or no data
   // Satellite measures actual surface irradiance — no ×0.85 calibration needed.
   // Only apply: tilt factor on beam (0.9), inverter efficiency (0.984), temp derating.
-  const poa_in  = directRad * 0.9 + diffuseRad;
+  // Proper azimuth/tilt geometry for satellite measured data
+  const poa_in  = (ST.lat && ST.lon && (directRad > 0 || diffuseRad > 0))
+    ? calcPOA(directRad, diffuseRad, directRad + diffuseRad, SYS.tiltDeg || 30, SYS.panelAzimuth || 180)
+    : directRad * 0.9 + diffuseRad;  // fallback if no GPS
   const panelKw = SYS.panelKw || 5;
   const tempC   = ST.wxTempC || 20;
   const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(50, poa_in);
@@ -1026,7 +1050,10 @@ function processOpenMeteo(d) {
   // Calibrated model: direct*0.9 + diffuse, temperature-derated, capped at acMax
   // Matches FusionSolar real output within ±5% (validated against live data).
   // The 0.9 factor on beam accounts for panel tilt benefit minus soiling/wiring losses.
-  const poa_in  = directRad * 0.9 + diffuseRad;
+  // Use proper azimuth/tilt geometry instead of fixed 0.9 approximation
+  const poa_in  = (ST.lat && ST.lon && (directRad > 0 || diffuseRad > 0))
+    ? calcPOA(directRad, diffuseRad, directRad + diffuseRad, SYS.tiltDeg || 30, SYS.panelAzimuth || 180)
+    : directRad * 0.9 + diffuseRad;  // fallback if no GPS
   const tempC_v = ST.wxTempC || 25;
   const cellT_v = tempC_v + (SYS.noct - 20) / 800 * Math.max(50, poa_in);
   const tFac_v  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_v - 25));
@@ -1052,7 +1079,10 @@ function processOpenMeteo(d) {
     const swr_h  = hr.shortwave_radiation?.[i] || 0;
     const dni_h  = hr.direct_normal_irradiance?.[i] || (swr_h * 0.85 / cosZen);
     const dhi_h  = Math.max(0, swr_h - Math.min(dni_h, 950) * cosZen);
-    const poa_h  = (hr.direct_radiation?.[i] || 0) * 0.9 + dhi_h;
+    const dir_h   = hr.direct_radiation?.[i] || 0;
+    const poa_h   = (ST.lat && ST.lon && (dir_h > 0 || dhi_h > 0))
+      ? calcPOA(dir_h, dhi_h, swr_h, SYS.tiltDeg || 30, SYS.panelAzimuth || 180)
+      : dir_h * 0.9 + dhi_h;  // fallback if no GPS
     const tFac_h = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, (ST.wxTempC||25) + (SYS.noct-20)/800*Math.max(50,poa_h) - 25));
     const pvKw   = +Math.max(0, Math.min(SYS.acMax||(SYS.panelKw||5)*0.984, (poa_h/1000)*(SYS.panelKw||5)*0.984*tFac_h*0.85)).toFixed(3);
     ST.todayH.push({ hour: h, pvKw, ghi: swr_h, dni: dni_h, dhi: dhi_h });
@@ -1218,7 +1248,7 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
   const cosZ     = pos ? Math.max(0.05, pos.cosZenith) : 0.5;
   const useDNI   = (corrDNI > 0) ? corrDNI :
                    (corrGHI * 0.60 / cosZ);   // fallback split only if no DNI
-  const poa      = calcPOA(useDNI, corrDHI, corrGHI, SYS.tiltDeg, 180);
+  const poa      = calcPOA(useDNI, corrDHI, corrGHI, SYS.tiltDeg, SYS.panelAzimuth || 180);
 
   // NOCT temperature model
   const ambient  = ST.wxTempC || 15;
@@ -2293,6 +2323,10 @@ function initCfgInputs() {
     ? Math.round(savedCfg.battRes * 100) : 10;  // default 10% reserve
   if (savedCfg.battSoc)   { document.getElementById('cfgSoc').value = Math.round(savedCfg.battSoc); ST.battSoc = socToInternal(savedCfg.battSoc); }
   if (savedCfg.consKw)    document.getElementById('iCons').value    = savedCfg.consKw;
+  if (savedCfg.panelAzimuth) {
+    const azEl = document.getElementById('cfgAzimuth');
+    if (azEl) azEl.value = String(savedCfg.panelAzimuth);
+  }
   updateUsableDisplay();
   updateSocDisplay();
 }
@@ -2369,14 +2403,20 @@ function saveCfgAndApply() {
   SYS._battMaxD = maxD;
 
   // Persist — include battSoc and consKw so they survive restart
+  const azimuth = parseInt(document.getElementById('cfgAzimuth').value) || 180;
+  SYS.panelAzimuth = azimuth;
   saveCfg({
     panelKw: panel, battGross: gross, battRes: res,
     battMaxC: maxC, battMaxD: maxD,
     battSoc: !isNaN(soc) && soc >= 0 && soc <= 100 ? soc : loadCfg().battSoc,
     consKw: ST.consKw || loadCfg().consKw || 0,
-    panelBrand: document.getElementById('cfgPanelBrand').value,
-    battBrand:  document.getElementById('cfgBattBrand').value,
-    notifEnabled: loadCfg().notifEnabled,
+    panelAzimuth: azimuth,
+    tiltDeg: SYS.tiltDeg,
+    panelBrand:    document.getElementById('cfgPanelBrand').value,
+    battBrand:     document.getElementById('cfgBattBrand').value,
+    panelAzimuth:  parseInt(document.getElementById('cfgAzimuth')?.value || '180'),
+    tiltDeg:       SYS.tiltDeg || 30,
+    notifEnabled:  loadCfg().notifEnabled,
   });
 
   // Update usable display
