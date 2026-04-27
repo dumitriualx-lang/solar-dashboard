@@ -649,9 +649,11 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   if (battGross > 0){ SYS.battGross  = battGross; SYS.battRes = battRes || 0.10; }
   if (soc >= 0)     { ST.battSoc     = soc; }
   if (consKw > 0)   { ST.consKw      = consKw; }
-  // Apply background-evolved solar production if provided and positive.
-  // This shows correct pvKw immediately on resume without waiting for weather fetch.
-  if (typeof bgPvKw === 'number' && bgPvKw >= 0) { ST.pvKw = bgPvKw; }
+  // Apply background-evolved solar production if provided and > 0.
+  // bgPvKw=0 is intentionally skipped — it likely means the background ran at night
+  // or when cloud cover was 100%. Let fetchWeather() determine the real value.
+  // A stale 0 would incorrectly show "no production" while panels may be producing.
+  if (typeof bgPvKw === 'number' && bgPvKw > 0) { ST.pvKw = bgPvKw; }
   // CRITICAL: reset the SOC evolution clock to NOW.
   // Without this, the 5s evolveSoc loop would see a huge dtH gap (hours since
   // last JS run) and apply a massive SOC change on top of what the worker
@@ -694,7 +696,15 @@ function applyGpsFromNative(lat, lon, name) {
   setGps('ok', '📍 ' + ST.locName);
   if (!name || name.includes('°')) {
     reverseGeocode(lat, lon).then(city => {
-      if (city) { ST.locName = city; setGps('ok', '📍 ' + city); }
+      if (city) {
+        ST.locName = city;
+        setGps('ok', '📍 ' + city);
+        // Persist resolved name to SharedPreferences so Java reuses it on next resume
+        if (window.AppBridge && AppBridge.saveGps) {
+          try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
+        }
+        try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
+      }
     });
   }
   try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: ST.locName })); } catch(e) {}
@@ -834,7 +844,9 @@ function applySatelliteRadiation(sat) {
   const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(50, poa_in);
   const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
   const acMax   = SYS.acMax || panelKw * 0.984;
-  const pvKw    = +Math.max(0, Math.min(acMax, (poa_in / 1000) * panelKw * 0.984 * tFac)).toFixed(3);
+  // ×1.07 calibration: satellite measures surface irradiance accurately but
+  // panel-level losses (soiling, wiring, mismatch) reduce real output ~7%
+  const pvKw    = +Math.max(0, Math.min(acMax, (poa_in / 1000) * panelKw * 0.984 * tFac * 1.07)).toFixed(3);
   ST.pvKw   = pvKw;
   ST.irrWm2 = sat.swr;
   ST.poaWm2 = +poa_in.toFixed(1);
@@ -903,32 +915,30 @@ async function fetchWeather() {
 }
 
 function wxLabel(code) {
-  if (code === 0) return 'Clear sky';
-  if (code <= 3) return 'Partly cloudy';
-  if (code <= 9) return 'Cloudy';
-  if (code <= 19) return 'Foggy';
-  if (code <= 29) return 'Drizzle';
-  if (code <= 39) return 'Rain';
-  if (code <= 49) return 'Snow';
-  if (code <= 59) return 'Rain showers';
-  if (code <= 69) return 'Snow showers';
-  if (code <= 79) return 'Hail';
-  if (code <= 84) return 'Rain showers';
-  if (code <= 94) return 'Thunderstorm';
-  return 'Thunderstorm';
+  if (code === 0)  return 'Clear sky';
+  if (code <= 3)   return 'Partly cloudy';
+  if (code <= 48)  return 'Foggy';        // WMO 4-48: fog, mist, dust haze
+  if (code <= 59)  return 'Drizzle';      // WMO 50-59: drizzle (not rain!)
+  if (code <= 69)  return 'Rain';         // WMO 60-69: rain / freezing rain
+  if (code <= 79)  return 'Snow';         // WMO 70-79: snow
+  if (code <= 84)  return 'Rain showers'; // WMO 80-84: rain showers
+  if (code <= 86)  return 'Snow showers'; // WMO 85-86: snow showers
+  if (code <= 94)  return 'Hail';         // WMO 87-94: hail
+  return 'Thunderstorm';                  // WMO 95-99
 }
 
-function wxIcon(code) {
+function wxIcon(code, tempC) {
+  // tempC used to avoid showing snow icons when temperature is above freezing
+  const isWarm = typeof tempC === 'number' && tempC > 3;
   if (code === 0) return '☀️';
-  if (code <= 2) return '🌤️';
-  if (code <= 3) return '☁️';
-  if (code <= 9) return '🌫️';
-  if (code <= 19) return '🌫️';
-  if (code <= 49) return '🌧️';
-  if (code <= 59) return '🌦️';
-  if (code <= 69) return '❄️';
-  if (code <= 79) return '🌨️';
-  if (code <= 84) return '🌦️';
+  if (code <= 2)  return '🌤️';
+  if (code <= 3)  return '☁️';
+  if (code <= 48) return '🌫️';    // WMO 4-48: fog / mist
+  if (code <= 59) return '🌦️';    // WMO 50-59: drizzle
+  if (code <= 69) return '🌧️';    // WMO 60-69: rain
+  if (code <= 79) return isWarm ? '🌧️' : '❄️'; // WMO 70-79: snow (→ rain if temp>3°C)
+  if (code <= 84) return '🌦️';    // WMO 80-84: rain showers
+  if (code <= 86) return isWarm ? '🌦️' : '🌨️'; // WMO 85-86: snow showers
   return '⛈️';
 }
 
@@ -971,7 +981,7 @@ function processOpenMeteo(d) {
 
   ST.wxTempC   = +(cur.temperature_2m || 15);
   ST.wxCond    = wxLabel(cur.weathercode || 0);
-  ST.wxIcon    = wxIcon(cur.weathercode  || 0);
+  ST.wxIcon    = wxIcon(cur.weathercode  || 0, ST.wxTempC);
 
   // Use direct_radiation + diffuse_radiation from Open-Meteo
   // direct_radiation = beam on horizontal surface (drops immediately when clouds block sun)
@@ -1059,7 +1069,7 @@ function processOpenMeteo(d) {
       d: dayName, yieldKwh,
       tempC: day.temperature_2m_max?.[i] || ST.wxTempC,
       rain:  day.precipitation_probability_max?.[i] || 0,
-      icon:  wxIcon(code)
+      icon:  wxIcon(code, ST.wxTempC)
     });
   });
   while (FORECAST.length < 5) FORECAST.push({ d:'--', yieldKwh:0, tempC:15, rain:50, icon:'☁️' });
@@ -1336,7 +1346,7 @@ function evolveSoc() {
   lastFlowT = now;
   const hardFlr = Math.round(SYS.battRes * 50);
   const prevSoc = ST.battSoc;
-  // Battery round-trip efficiency ~95%: charging puts less in, discharging takes more out
+  // Huawei Luna 2000: 96% charge × 96% discharge = 92% round-trip efficiency
   const battEff = 0.95;
   const effFlow = fl.battFlow > 0 ? fl.battFlow * battEff : fl.battFlow / battEff;
   ST.battSoc = Math.max(hardFlr, Math.min(100,
@@ -2745,6 +2755,25 @@ initNotifBar();                              // set notification bar state
         const p = s.split(',');
         const soc = parseFloat(p[0]), panelKw = parseFloat(p[1]);
         const battGross = parseFloat(p[2]), battRes = parseFloat(p[3]), consKw = parseFloat(p[4]);
+        // Restore today's grid kWh from SharedPreferences (background service accumulation)
+        if (p.length >= 7) {
+          const gridExp  = parseFloat(p[5]) || 0;
+          const gridImp  = parseFloat(p[6]) || 0;
+          const gridDate = (p[7] || '').trim();
+          const today    = new Date().toDateString();
+          if (gridDate) {
+            try {
+              const [yr, doy] = gridDate.split('-').map(Number);
+              const d = new Date(yr, 0, 1);
+              d.setDate(d.getDate() + doy - 1);
+              if (d.toDateString() === today) {
+                ST.gridExportKwh = Math.max(ST.gridExportKwh, gridExp);
+                ST.gridImportKwh = Math.max(ST.gridImportKwh, gridImp);
+                ST._lastDate = today;
+              }
+            } catch(e) {}
+          }
+        }
         if (soc >= 0 && panelKw > 0) {
           ST.battSoc = soc;
           SYS.panelKw = panelKw; SYS.battGross = battGross; SYS.battRes = battRes;
@@ -2859,6 +2888,7 @@ setInterval(()=>{
     socEl.value = Math.round(socToDisplay(ST.battSoc));
     updateSocDisplay();
   }
+  if (isSysConfigured() && ST.pvKw > 0 && ST.apiOk) snap(); // auto-log for learning
 }, 30000);  // full re-render + auto consumption every 30s
 // Battery evolution + flow sync — runs every 5s
 // renderFlow/renderGridPanel added here so the flow diagram stays in sync
