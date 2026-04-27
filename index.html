@@ -670,7 +670,8 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   if (panelEl && document.activeElement !== panelEl && panelKw > 0)     panelEl.value = panelKw;
   if (battEl  && document.activeElement !== battEl  && battGross > 0)   battEl.value  = battGross;
   updateSocDisplay();
-  renderAll();
+  // Do not call renderAll() here — the debounced intervals handle rendering.
+  // Calling it here causes a visible flash before fetchWeather returns fresh data.
 }
 
 // Reverse geocode lat/lon → city/locality via Nominatim (OSM, no API key needed)
@@ -2740,7 +2741,17 @@ function updateConsLabel() {
   }
 }
 
-function renderAll(){renderMetrics();renderIrr();renderBattery();renderFlow();renderGridPanel();renderForecastProduction();renderSmartSched();renderAlerts();}
+let _renderAllTimer = null;
+function renderAll() {
+  // Debounced — rapid back-to-back calls collapse into one 80ms delayed render.
+  // Prevents visible shake when multiple state updates arrive simultaneously on resume.
+  if (_renderAllTimer) clearTimeout(_renderAllTimer);
+  _renderAllTimer = setTimeout(() => {
+    _renderAllTimer = null;
+    renderMetrics(); renderIrr(); renderBattery(); renderFlow();
+    renderGridPanel(); renderForecastProduction(); renderSmartSched(); renderAlerts();
+  }, 80);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // BOOT
