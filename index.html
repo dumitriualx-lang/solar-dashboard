@@ -1395,7 +1395,7 @@ function evolveSoc() {
   // ST.battSoc=50 from being written as if it were a real user-entered SOC,
   // which would otherwise pre-fill the SOC field with 50% on every launch.
   if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
-    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5); } catch(e) {}
+    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
   }
   // Accumulate grid kWh for today
   ST.gridExportKwh = +(ST.gridExportKwh + fl.gridExport * dtH).toFixed(4);
@@ -1531,7 +1531,7 @@ function applySocEdit() {
   saveCfg({ ...loadCfg(), battSoc: displayPct });
   if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
     try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1,
-      ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5); } catch(e) {}
+      ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
   }
   closeSocEdit();
   renderBattery(); renderMetrics(); updateSocDisplay();
@@ -1553,7 +1553,7 @@ function onConsInput() {
   saveCfg({ ...loadCfg(), consKw: ST.consKw, battSoc: socToDisplay(ST.battSoc) });
   // Persist to Android SharedPreferences immediately (survives process kill)
   if (window.AppBridge && AppBridge.saveSoc) {
-    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw, SYS.battMaxC||2.5, SYS.battMaxD||2.5); } catch(e) {}
+    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
   }
   updateConsLabel();
   renderMetrics(); renderBattery(); renderFlow(); renderAlerts();
@@ -2393,7 +2393,7 @@ function saveCfgAndApply() {
   }
   // Persist to Android SharedPreferences
   if (window.AppBridge && AppBridge.saveSoc) {
-    try { AppBridge.saveSoc(ST.battSoc, panel, gross, res, ST.consKw||0, maxC||2.5, maxD||2.5); } catch(e) {}
+    try { AppBridge.saveSoc(ST.battSoc, panel, gross, res, ST.consKw||0, maxC||2.5, maxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
   }
   // Apply brand-specific max charge/discharge rates if set
   const maxCEl = document.getElementById('cfgBattBrand');
