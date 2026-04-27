@@ -292,7 +292,7 @@ public class MainActivity extends Activity {
         // soc_saved_at_ms is used by injectLocation() to catch-up SOC evolution
         // when the app reopens and the background service hasn't fired yet.
         @JavascriptInterface
-        public void saveSoc(float soc, float panelKw, float battGross, float battRes, float consKw, float battMaxC, float battMaxD) {
+        public void saveSoc(float soc, float panelKw, float battGross, float battRes, float consKw, float battMaxC, float battMaxD, float panelAzimuth) {
             getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE)
                 .edit()
                 .putFloat("soc",            soc)
@@ -302,6 +302,7 @@ public class MainActivity extends Activity {
                 .putFloat("cons_kw",        consKw)
                 .putFloat("batt_max_c",     battMaxC)
                 .putFloat("batt_max_d",     battMaxD)
+                .putFloat("panel_azimuth",   panelAzimuth)
                 .putLong ("soc_saved_at_ms", System.currentTimeMillis())
                 .apply();
         }
@@ -867,9 +868,27 @@ public class SolarForegroundService extends Service {
                          + Math.cos(latR)*Math.cos(decR)*Math.cos(ha*Math.PI/180.0);
             double alt   = Math.asin(Math.max(-1,Math.min(1,sinAlt)))*180.0/Math.PI;
 
+                // Solar azimuth (degrees from North, clockwise)
+                double cosZ    = Math.cos((90.0 - alt) * Math.PI / 180.0);
+                double sinAz   = Math.cos(decR) * Math.sin(ha * Math.PI / 180.0) / Math.cos(alt * Math.PI / 180.0);
+                double solAzDeg= Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
+                if (alt > 0 && ha > 0) solAzDeg = 180.0 - solAzDeg;
+                else if (alt > 0)      solAzDeg = 180.0 + solAzDeg;
+
             if (alt > 2.0) {
                 // Calibrated model: direct*0.9 + diffuse, validated vs FusionSolar (±5%)
-                double poa_in = directRad * 0.9 + diffuseRad;
+// Panel orientation-aware POA (matches JS calcPOA() exactly)
+                float  panelAz  = prefs.getFloat("panel_azimuth", 180f);
+                double tiltR    = 30.0 * Math.PI / 180.0;
+                double altR     = alt       * Math.PI / 180.0;
+                double solAzR   = solAzDeg  * Math.PI / 180.0;
+                double pnlAzR   = panelAz   * Math.PI / 180.0;
+                double cosAOI   = Math.sin(altR) * Math.cos(tiltR)
+                                + Math.cos(altR) * Math.sin(tiltR) * Math.cos(solAzR - pnlAzR);
+                double poaBeam  = Math.max(0, cosAOI) * Math.max(0, directRad);
+                double poaSky   = Math.max(0, diffuseRad) * (1 + Math.cos(tiltR)) / 2.0;
+                double poaGnd   = (directRad + diffuseRad) * 0.20 * (1 - Math.cos(tiltR)) / 2.0;
+                double poa_in   = poaBeam + poaSky + poaGnd;
                 double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
                 double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
                 pvKw = Math.max(0, Math.min(panelKw * 0.984,
@@ -1215,9 +1234,27 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
             double sinAlt = Math.sin(latR) * Math.sin(decR) + Math.cos(latR) * Math.cos(decR) * Math.cos(ha * Math.PI / 180.0);
             double alt   = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180.0 / Math.PI;
 
+                // Solar azimuth (degrees from North, clockwise)
+                double cosZ    = Math.cos((90.0 - alt) * Math.PI / 180.0);
+                double sinAz   = Math.cos(decR) * Math.sin(ha * Math.PI / 180.0) / Math.cos(alt * Math.PI / 180.0);
+                double solAzDeg= Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
+                if (alt > 0 && ha > 0) solAzDeg = 180.0 - solAzDeg;
+                else if (alt > 0)      solAzDeg = 180.0 + solAzDeg;
+
             // Calibrated solar model: direct*0.9 + diffuse (validated vs FusionSolar ±5%)
             if (alt > 2.0) {
-                double poa_in = directRad * 0.9 + diffuseRad;
+// Panel orientation-aware POA (matches JS calcPOA() exactly)
+                float  panelAz  = prefs.getFloat("panel_azimuth", 180f);
+                double tiltR    = 30.0 * Math.PI / 180.0;
+                double altR     = alt       * Math.PI / 180.0;
+                double solAzR   = solAzDeg  * Math.PI / 180.0;
+                double pnlAzR   = panelAz   * Math.PI / 180.0;
+                double cosAOI   = Math.sin(altR) * Math.cos(tiltR)
+                                + Math.cos(altR) * Math.sin(tiltR) * Math.cos(solAzR - pnlAzR);
+                double poaBeam  = Math.max(0, cosAOI) * Math.max(0, directRad);
+                double poaSky   = Math.max(0, diffuseRad) * (1 + Math.cos(tiltR)) / 2.0;
+                double poaGnd   = (directRad + diffuseRad) * 0.20 * (1 - Math.cos(tiltR)) / 2.0;
+                double poa_in   = poaBeam + poaSky + poaGnd;
                 double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
                 double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
                 pvKw = Math.max(0, Math.min(panelKw * 0.984, (poa_in / 1000.0) * panelKw * 0.984 * tFac * 0.85));
@@ -1531,10 +1568,28 @@ public class SolarWorker extends Worker {
                           + Math.cos(latR) * Math.cos(decR) * Math.cos(haR);
             double alt    = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180.0 / Math.PI;
 
+                // Solar azimuth (degrees from North, clockwise)
+                double cosZ    = Math.cos((90.0 - alt) * Math.PI / 180.0);
+                double sinAz   = Math.cos(decR) * Math.sin(ha * Math.PI / 180.0) / Math.cos(alt * Math.PI / 180.0);
+                double solAzDeg= Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
+                if (alt > 0 && ha > 0) solAzDeg = 180.0 - solAzDeg;
+                else if (alt > 0)      solAzDeg = 180.0 + solAzDeg;
+
             // Night or sun below horizon — production is zero
             if (alt > 2.0) {
             // Calibrated model: direct*0.9 + diffuse (validated vs FusionSolar ±5%)
-            double poa_in = directRad * 0.9 + diffuseRad;
+            // Panel orientation-aware POA (matches JS calcPOA() exactly)
+                float  panelAz  = prefs.getFloat("panel_azimuth", 180f);
+                double tiltR    = 30.0 * Math.PI / 180.0;
+                double altR     = alt       * Math.PI / 180.0;
+                double solAzR   = solAzDeg  * Math.PI / 180.0;
+                double pnlAzR   = panelAz   * Math.PI / 180.0;
+                double cosAOI   = Math.sin(altR) * Math.cos(tiltR)
+                                + Math.cos(altR) * Math.sin(tiltR) * Math.cos(solAzR - pnlAzR);
+                double poaBeam  = Math.max(0, cosAOI) * Math.max(0, directRad);
+                double poaSky   = Math.max(0, diffuseRad) * (1 + Math.cos(tiltR)) / 2.0;
+                double poaGnd   = (directRad + diffuseRad) * 0.20 * (1 - Math.cos(tiltR)) / 2.0;
+                double poa_in   = poaBeam + poaSky + poaGnd;
             double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
             double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
             pvKw = Math.max(0, Math.min(panelKw * 0.984,
