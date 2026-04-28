@@ -102,6 +102,20 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 /* Battery compact strip only — no batt-row, batt-vis, batt-body CSS needed */
 /* Flow */
 .flow{display:grid;grid-template-columns:1fr 40px 1fr;align-items:flex-start}
+/* New centered energy flow */
+.eflow{position:relative;padding:12px 0}
+.eflow-center{display:flex;justify-content:center;margin-bottom:14px;width:100%}
+.eflow-solar{background:var(--sf);border:.5px solid #1D9E7555;border-radius:var(--r);padding:12px 20px;text-align:center;width:auto;display:inline-block;box-shadow:var(--shadow-sm)}
+.eflow-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.eflow-node{background:var(--sf);border:.5px solid var(--br);border-radius:var(--r);padding:10px 12px;text-align:center;flex:1;box-shadow:var(--shadow-sm);min-width:0;max-width:140px}
+.eflow-line{position:relative;flex:0 0 40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.eflow-kw{font-size:11px;font-weight:600;white-space:nowrap}
+.eflow-dot{width:6px;height:6px;border-radius:50%;animation:flowPulse 1.2s ease-in-out infinite}
+.eflow-dot.off{animation:none;background:var(--t3)!important}
+@keyframes flowPulse{0%,100%{transform:scale(.8);opacity:.5}50%{transform:scale(1.2);opacity:1}}
+.eflow-arrow{font-size:10px;color:var(--t3)}
+.eflow-vert{display:flex;flex-direction:column;align-items:center;margin:6px 0}
+.eflow-vline{width:2px;height:24px;border-radius:1px;margin:2px 0}
 .right-col{display:flex;flex-direction:column;gap:6px}
 .mid-nodes{display:flex;flex-direction:column;gap:6px}
 .fnode{background:var(--sf);border-radius:var(--r);padding:12px 10px;text-align:center;border:.5px solid var(--br);box-shadow:var(--shadow-sm)}
@@ -250,9 +264,12 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 
   <!-- SYSTEM CONFIGURATION -->
   <div class="card">
-    <div class="ct" style="margin-bottom:10px">
-      ⚙️ System configuration
+    <div class="ct" style="margin-bottom:0;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px" onclick="toggleSection('cfgBody','cfgChevron')">
+      <span>⚙️ System configuration</span>
       <span class="pill p-ok" id="cfgSavedPill" style="display:none">✓ Saved</span>
+      <span id="cfgChevron" style="font-size:14px;transition:transform .25s;color:var(--t2)">▼</span>
+    </div>
+    <div id="cfgBody" style="display:none">
     </div>
 
     <!-- Brand dropdowns -->
@@ -397,6 +414,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     </div>
     <button class="cfg-save" onclick="saveCfgAndApply()">💾 Save configuration</button>
     <div class="cfg-saved" id="cfgSavedMsg"></div>
+    </div><!-- /cfgBody -->
   </div>
 
 
@@ -498,7 +516,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 
   <!-- FORECAST PRODUCTION PANEL -->
   <div class="card" id="forecastProdCard">
-    <div class="ct">Solar forecast — today &amp; week <span class="pill p-ok" id="fcProdPill">—</span></div>
+    <div class="ct">Solar forecast — today <span class="pill p-ok" id="fcProdPill">—</span></div>
     <div id="fcProdBody">
       <div class="empty-log">Awaiting forecast data...</div>
     </div>
@@ -506,12 +524,15 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 
   <!-- SMART APPLIANCE SCHEDULE -->
   <div class="card" id="schedCard">
-    <div class="ct" style="margin-bottom:0">
-      Smart schedule
+    <div class="ct" style="margin-bottom:0;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px" onclick="toggleSection('schedBody','schedChevron')">
+      <span>Smart schedule</span>
       <span class="pill" id="surplusPill">calculating...</span>
+      <span id="schedChevron" style="font-size:14px;transition:transform .25s;color:var(--t2)">▼</span>
     </div>
+    <div id="schedBody" style="display:none">
     <div id="surplusBar" style="margin:10px 0 8px"></div>
     <div id="smartSched"></div>
+    </div>
   </div>
 
 </div>
@@ -693,6 +714,7 @@ let ST = {
   gridExportKwh: 0,
   gridImportKwh: 0,
   gridLastT: Date.now(),  // timestamp of last accumulation tick
+  _socEvolvedMs: 0,       // timestamp of last evolveSoc run — prevents SharedPrefs overwrite
 };
 // Restore today's grid kWh from localStorage (survives app reopen within same day)
 (function() {
@@ -721,7 +743,10 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   // bgPvKw is the last solar production calculated by SolarWorker in background.
   if (panelKw > 0)  { SYS.panelKw   = panelKw; }
   if (battGross > 0){ SYS.battGross  = battGross; SYS.battRes = battRes || 0.10; }
-  if (soc >= 0)     { ST.battSoc     = soc; }
+  // Only restore SOC from SharedPreferences if evolveSoc hasn't run in the last 60s.
+  // If evolveSoc has been running, it has a more accurate evolved value — don't overwrite.
+  const socAge = Date.now() - (ST._socEvolvedMs || 0);
+  if (soc >= 0 && socAge > 60000) { ST.battSoc = soc; }
   if (consKw > 0)   { ST.consKw      = consKw; }
   // Apply background-evolved solar production if provided and > 0.
   // bgPvKw=0 is intentionally skipped — it likely means the background ran at night
@@ -1447,6 +1472,7 @@ function evolveSoc() {
   ST.battSoc = Math.max(hardFlr, Math.min(100,
     ST.battSoc + (effFlow / (SYS.battUse || 4.5)) * dtH * 100
   ));
+  ST._socEvolvedMs = now; // mark that evolveSoc has run — blocks SharedPrefs overwrite
   // Persist SOC to Android SharedPreferences (survives WebView process kill).
   // Only persist when system is properly configured — prevents the default
   // ST.battSoc=50 from being written as if it were a real user-entered SOC,
@@ -1518,6 +1544,21 @@ function evolveSoc() {
     );
   }
 
+  // Production dropped after high surplus — alert to stop appliances
+  const prevHighProd = ST._prevPvHigh;
+  ST._prevPvHigh = ST.pvKw >= 2.0;
+  if (prevHighProd && !ST._prevPvHigh && ST._lastSurplusNotif &&
+      nowMin - ST._lastSurplusNotif < 240 &&  // within 4h of surplus alert
+      (!ST._lastProdDropNotif || nowMin - ST._lastProdDropNotif > 60)) {
+    ST._lastProdDropNotif = nowMin;
+    showNotification(
+      '☁️ Solar dropping — reduce large appliances',
+      'Production fell to ' + f(ST.pvKw, 2) + ' kW. ' +
+      'Battery at ' + socToDisplay(ST.battSoc) + '%. Consider pausing high-load appliances.',
+      'prod-drop'
+    );
+  }
+
   // Battery fully charged
   if (ST.battSoc >= 99 && prevSoc < 99 &&
       (!ST._lastBattFullNotif || nowMin - ST._lastBattFullNotif > 15)) {
@@ -1562,6 +1603,16 @@ function toggleTheme() {
   const saved = localStorage.getItem('solarTheme');
   if (saved && saved !== 'system') applyTheme(saved);
 })();
+
+// Section toggle — used for config and smart schedule collapse
+function toggleSection(bodyId, chevronId) {
+  const body = document.getElementById(bodyId);
+  const chev = document.getElementById(chevronId);
+  if (!body) return;
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
+}
 
 const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
 const stored = () => SYS.battUse ? +((ST.battSoc/100) * SYS.battUse).toFixed(3) : 0;
@@ -1736,37 +1787,83 @@ function renderFlow() {
   document.getElementById('fTs').textContent=
     new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+
     ' · '+ST.wxIcon+' '+ST.wxCond+' · '+f(ST.wxTempC,0)+'°C';
-  function arr(kw,col,rev){
-    const a=Math.abs(kw)>0.005,c=a?col:'var(--br)',d=rev?'animation-direction:reverse':'';
-    return '<div class="arr"><div class="arr-val" style="color:'+c+'">'+(a?f(Math.abs(kw),2)+' kW':'—')+
-      '</div><div class="arr-track" style="background:'+c+'30">'+(a?'<div class="arr-dot" style="background:'+c+';'+d+'"></div>':'')+
-      '</div><div class="arr-head" style="color:'+c+'">'+(rev?'◀':'▶')+'</div></div>';
+
+  // Colors
+  const bc=fl.battFlow>0.01?'#378ADD':fl.battFlow<-0.01?'#BA7517':'var(--t3)';
+  const gc=fl.gridExport>0.01?'#1D9E75':fl.gridImport>0.01?'#D85A30':'var(--t3)';
+  const hc='#D85A30';
+
+  // Flow line helper — animated dot + kW label
+  function flowLine(kw, col, vertical) {
+    const active = Math.abs(kw) > 0.005;
+    const dot = active
+      ? '<div class="eflow-dot" style="background:'+col+'"></div>'
+      : '<div class="eflow-dot off"></div>';
+    const label = active ? f(Math.abs(kw),2)+' kW' : '';
+    if (vertical) return (
+      '<div class="eflow-vert">'+
+      '<div class="eflow-vline" style="background:'+(active?col:'var(--br2)')+'"></div>'+
+      dot+
+      '<div class="eflow-vline" style="background:'+(active?col:'var(--br2)')+'"></div>'+
+      (label?'<div class="eflow-kw" style="color:'+col+'">'+label+'</div>':'')+
+      '</div>');
+    return (
+      '<div class="eflow-line">'+
+      '<div style="width:100%;height:2px;background:'+(active?col:'var(--br2)')+'"></div>'+
+      dot+
+      (label?'<div class="eflow-kw" style="color:'+col+'">'+label+'</div>':'')+
+      '</div>');
   }
-  const bc=fl.battFlow>0.01?'#378ADD':fl.battFlow<-0.01?'#BA7517':'#888';
-  const gc=fl.gridExport>0.01?'#1D9E75':fl.gridImport>0.01?'#D85A30':'#888';
-  const gk=Math.max(fl.gridExport,fl.gridImport), gr=fl.gridImport>0.01;
-  document.getElementById('flowG').innerHTML=
-    '<div class="fnode" style="border-color:#1D9E7555"><div class="fic">☀️</div><div class="flb">Panels '+SYS.panelKw+' kW</div>'+
-    '<div class="fvl" style="color:#1D9E75">'+f(ST.pvKw,2)+' kW</div>'+
-    '<div class="fsub">'+Math.round(ST.irrWm2)+' W/m²</div>'+
-    '<div class="fsub">'+f(ST.pvKw/SYS.acMax*100,0)+'% of '+f(SYS.acMax,1)+'kW max</div></div>'+
-    arr(ST.pvKw,'#1D9E75',false)+
-    '<div class="right-col"><div class="mid-nodes">'+
-    '<div class="fnode" style="border-color:#D85A3055"><div class="fic">🏠</div><div class="flb">Home load</div>'+
-    '<div class="fvl" style="color:#D85A30">'+f(ST.consKw,2)+' kW</div>'+
-    '<div class="fsub">'+
-      f(fl.solar2home,2)+' solar'+
-      (fl.batt2home>0.005?' + '+f(fl.batt2home,2)+' batt\u2193':'')+ /* batt↓ = FROM battery */
-      (fl.gridImport>0.01?' + '+f(fl.gridImport,2)+' grid':'')+
+
+  const battName = document.getElementById('cfgBattBrand')&&BATT_BRANDS[document.getElementById('cfgBattBrand').value]
+    ? BATT_BRANDS[document.getElementById('cfgBattBrand').value].name : 'Battery';
+
+  document.getElementById('flowG').innerHTML =
+    // ── Solar centre ──────────────────────────────────────────────────────
+    '<div class="eflow">'+
+    '<div class="eflow-center">'+
+    '<div class="eflow-solar">'+
+    '<div style="font-size:22px">☀️</div>'+
+    '<div style="font-size:11px;color:var(--t2);margin:2px 0">Panels '+f(SYS.panelKw,0)+' kW</div>'+
+    '<div style="font-size:18px;font-weight:700;color:#1D9E75">'+f(ST.pvKw,2)+' kW</div>'+
+    '<div style="font-size:10px;color:var(--t3)">'+Math.round(ST.irrWm2)+' W/m² · '+f(ST.pvKw/(SYS.acMax||4.92)*100,0)+'%</div>'+
+    '</div>'+
+    '</div>'+
+    // ── Bottom row: Home ← Solar → Battery with flow lines ────────────────
+    '<div class="eflow-row">'+
+    // Home node
+    '<div class="eflow-node" style="border-color:#D85A3055">'+
+    '<div style="font-size:18px">🏠</div>'+
+    '<div style="font-size:11px;color:var(--t2)">Home</div>'+
+    '<div style="font-size:16px;font-weight:700;color:'+hc+'">'+f(fl.solar2home+fl.batt2home+fl.gridImport,2)+' kW</div>'+
+    '<div style="font-size:10px;color:var(--t3)">'+
+    (fl.solar2home>0.01?f(fl.solar2home,2)+'☀️':'')+
+    (fl.batt2home>0.01?' '+f(fl.batt2home,2)+'🔋':'')+
+    (fl.gridImport>0.01?' '+f(fl.gridImport,2)+'⚡':'')+
     '</div></div>'+
-    '<div class="fnode" style="border-color:'+bc+'55"><div class="fic">🔋</div><div class="flb">'+(document.getElementById('cfgBattBrand')&&BATT_BRANDS[document.getElementById('cfgBattBrand').value]?BATT_BRANDS[document.getElementById('cfgBattBrand').value].name:'Battery')+'</div>'+
-    /* ↑ charging = power going INTO battery; ↓ discharging = power coming OUT */
-    '<div class="fvl" style="color:'+bc+'">'+(fl.battFlow>0.01?'\u2191 +'+f(fl.battFlow,2)+' kW (charging)':fl.battFlow<-0.01?'\u2193 '+f(-fl.battFlow,2)+' kW \u2192 home':'0.00 kW')+' </div>'+
-    '<div class="fsub">'+socToDisplay(ST.battSoc)+'% · '+f(stored(),3)+' kWh stored'+(fl.solar2batt>0.01?' · ⚡ solar charging':fl.batt2home>0.01?' · ↓ powering home':' · idle')+'</div></div>'+
-    '</div><div style="display:flex;gap:6px;align-items:center">'+arr(gk,gc,gr)+
-    '<div class="fnode" style="flex:1;border-color:'+gc+'55"><div class="fic">⚡</div><div class="flb">Grid</div>'+
-    '<div class="fvl" style="color:'+gc+'">'+(fl.gridExport>0.01?'+'+f(fl.gridExport,2):fl.gridImport>0.01?'−'+f(fl.gridImport,2):'0.00')+' kW</div>'+
-    '<div class="fsub">'+(fl.gridExport>0.01?'export':fl.gridImport>0.01?'import':'idle')+'</div></div></div></div>';
+    // Flow line Solar→Home
+    flowLine(fl.solar2home,'#1D9E75',false)+
+    // Battery node
+    '<div class="eflow-node" style="border-color:'+bc+'55">'+
+    '<div style="font-size:18px">🔋</div>'+
+    '<div style="font-size:11px;color:var(--t2)">'+battName+'</div>'+
+    '<div style="font-size:15px;font-weight:700;color:'+bc+'">'+
+    (fl.battFlow>0.01?'↑ +'+f(fl.battFlow,2):fl.battFlow<-0.01?'↓ '+f(-fl.battFlow,2):'idle')+' kW</div>'+
+    '<div style="font-size:10px;color:var(--t3)">'+socToDisplay(ST.battSoc)+'% · '+f(stored(),2)+' kWh</div>'+
+    '</div>'+
+    '</div>'+
+    // ── Grid row ────────────────────────────────────────────────────────
+    '<div style="display:flex;justify-content:flex-end;margin-top:8px">'+
+    '<div style="display:flex;align-items:center;gap:6px">'+
+    flowLine(Math.max(fl.gridExport,fl.gridImport),gc,false)+
+    '<div class="eflow-node" style="max-width:110px;border-color:'+gc+'55">'+
+    '<div style="font-size:18px">⚡</div>'+
+    '<div style="font-size:11px;color:var(--t2)">Grid</div>'+
+    '<div style="font-size:15px;font-weight:700;color:'+gc+'">'+
+    (fl.gridExport>0.01?'+'+f(fl.gridExport,2):fl.gridImport>0.01?'−'+f(fl.gridImport,2):'0.00')+' kW</div>'+
+    '<div style="font-size:10px;color:var(--t3)">'+(fl.gridExport>0.01?'exporting':fl.gridImport>0.01?'importing':'idle')+'</div>'+
+    '</div></div></div>'+
+    '</div>';
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2316,6 +2413,7 @@ function notifyRealtime() {
     // High production — can run large appliances
     ST._lastRealtimeNotif = nowMin;
     const names = runnable.map(a => a.icon + ' ' + a.name).join(', ');
+    ST._lastSurplusNotif = nowMin;
     showNotification(
       '☀️ Solar surplus — run large appliances',
       '+' + f(surplus,2) + ' kW surplus. Good time to run: ' + names +
@@ -2402,8 +2500,7 @@ function initCfgInputs() {
   // Only populate if user has previously saved — otherwise leave blank
   if (savedCfg.panelKw)   document.getElementById('cfgPanel').value = savedCfg.panelKw;
   if (savedCfg.battGross) document.getElementById('cfgBatt').value  = savedCfg.battGross;
-  document.getElementById('cfgRes').value = savedCfg.battRes
-    ? Math.round(savedCfg.battRes * 100) : 10;  // default 10% reserve
+  if (savedCfg.battRes) document.getElementById('cfgRes').value = Math.round(savedCfg.battRes * 100);
   if (savedCfg.battSoc)   { document.getElementById('cfgSoc').value = Math.round(savedCfg.battSoc); ST.battSoc = socToInternal(savedCfg.battSoc); }
 
   if (savedCfg.panelAzimuth) {
@@ -2471,7 +2568,7 @@ function renderConsProfileSlots() {
         '<div class="ps-wrap" style="flex:1;margin:0 4px">' +
           '<div class="ps-track"><div class="ps-fill" id="psBar' + i + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
           '<div class="ps-thumb" id="psTh' + i + '" style="left:' + pct.toFixed(1) + '%"></div>' +
-          '<input class="ps-input" type="range" min="0" max="4" step="0.05" value="' + sl.kw + '" oninput="onProfileSlider(' + i + ',this.value)">' +
+          '<input class="ps-input" type="range" min="0" max="4" step="0.01" value="' + sl.kw + '" oninput="onProfileSlider(' + i + ',this.value)">' +
         '</div>' +
         '<div style="min-width:62px;text-align:right">' +
           '<div style="font-size:13px;font-weight:500;color:var(--tx)" id="psVal' + i + '">' + sl.kw.toFixed(2) + ' kW</div>' +
@@ -2674,23 +2771,7 @@ function renderForecastProduction() {
   let peakH = 12, peakKw = 0;
   ST.todayH.forEach(h => { if (h.pvKw > peakKw) { peakKw = h.pvKw; peakH = h.hour; } });
 
-  // Build 5-day mini bars
-  const barMax = Math.max(...FORECAST.map(d => d.yieldKwh), dailyNeed);
-  const dayBars = FORECAST.map((d,i) => {
-    const pct    = Math.round((d.yieldKwh / barMax) * 100);
-    const npct   = Math.round((dailyNeed  / barMax) * 100);
-    const col    = d.yieldKwh >= dailyNeed ? '#1D9E75' : '#BA7517';
-    const today_marker = i===0 ? 'style="outline:2px solid var(--g);outline-offset:2px;border-radius:3px"' : '';
-    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">' +
-      '<div style="font-size:9px;font-weight:700;color:'+col+'">' + f(d.yieldKwh,1) + '</div>' +
-      '<div style="width:100%;height:44px;background:var(--sf2);border-radius:3px;position:relative;overflow:hidden" '+today_marker+'>' +
-        '<div style="position:absolute;bottom:0;left:0;right:0;height:'+pct+'%;background:'+col+'44;border-top:2px solid '+col+'"></div>' +
-        '<div style="position:absolute;bottom:'+npct+'%;left:0;right:0;border-top:1px dashed #D85A30;opacity:.7"></div>' +
-      '</div>' +
-      '<div style="font-size:9px;color:var(--t2)">' + d.d + '</div>' +
-      '<div style="font-size:8px">' + d.icon + '</div>' +
-    '</div>';
-  }).join('');
+
 
   document.getElementById('fcProdBody').innerHTML =
     // Top stats row
@@ -2708,16 +2789,9 @@ function renderForecastProduction() {
       '<div style="text-align:center;background:var(--sf2);border-radius:var(--rs);padding:8px 4px">' +
         '<div style="font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Self-suff.</div>' +
         '<div style="font-size:14px;font-weight:700;color:'+(selfSuffPct>=80?'var(--g)':selfSuffPct>=50?'var(--am)':'var(--rd)')+'">' + selfSuffPct + '%</div>' +
-        '<div style="font-size:9px;color:var(--t2)">' + f(weekTotal,1) + ' kWh week</div>' +
+        '<div style="font-size:9px;color:var(--t2)">' + ''  +
       '</div>' +
     '</div>' +
-    // 5-day bars
-    '<div style="font-size:9px;color:var(--t2);margin-bottom:6px">5-day forecast — dashed line = daily need ' + f(dailyNeed,1) + ' kWh</div>' +
-    '<div style="display:flex;gap:6px;align-items:flex-end">' + dayBars + '</div>' +
-    '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--t2);margin-top:6px">' +
-      '<span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#1D9E7544;border-top:2px solid #1D9E75;display:inline-block;border-radius:1px"></span>Surplus day</span>' +
-      '<span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#BA751744;border-top:2px solid #BA7517;display:inline-block;border-radius:1px"></span>Deficit day</span>' +
-      '<span style="display:flex;align-items:center;gap:4px"><span style="width:14px;border-top:1px dashed #D85A30;display:inline-block"></span>Daily need</span>' +
     '</div>';
 }
 
