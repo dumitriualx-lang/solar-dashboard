@@ -1642,18 +1642,19 @@ const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
 async function checkForUpdate() {
   try {
     const res = await fetch('https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now());
-    if (!res.ok) return;
+    if (!res.ok) { console.warn('checkForUpdate: fetch failed', res.status); return; }
     const data = await res.json();
-    // Check against last dismissed version stored in localStorage
+    console.log('checkForUpdate: remote versionCode=', data.versionCode);
     const lastDismissed = parseInt(localStorage.getItem('updDismissed') || '0');
-    if (data.versionCode <= lastDismissed) return;
-    // Also check against installed version if AppBridge available
+    console.log('checkForUpdate: lastDismissed=', lastDismissed);
+    if (data.versionCode <= lastDismissed) { console.log('already dismissed'); return; }
     if (window.AppBridge && typeof AppBridge.getVersionCode === 'function') {
       const installed = AppBridge.getVersionCode();
-      if (installed && data.versionCode <= installed) return;
+      console.log('checkForUpdate: installed=', installed);
+      if (installed && data.versionCode <= installed) { console.log('already latest'); return; }
     }
     showUpdateDialog(data.versionName, data.storeUrl, data.versionCode);
-  } catch(e) {}
+  } catch(e) { console.error('checkForUpdate error:', e); }
 }
 
 function showUpdateDialog(versionName, storeUrl, versionCode) {
@@ -3133,6 +3134,7 @@ initNotifBar();                              // set notification bar state
     }
     fetchWeather();
     // Check for app updates after 5s delay
+    checkForUpdate(); // also immediate for debug
     setTimeout(checkForUpdate, 5000);
     // Silent background GPS refresh after 3s
     setTimeout(() => {
