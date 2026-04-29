@@ -455,7 +455,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 
   <div class="card">
     <div class="ct">Energy flow <span id="fTs" style="font-size:10px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--t3)"></span></div>
-    <div class="flow" id="flowG"><div style="grid-column:span 3;text-align:center;padding:20px;color:var(--t2);font-size:11px">Awaiting GPS and irradiance data...</div></div>
+    <div id="flowG" style="display:block"><div style="grid-column:span 3;text-align:center;padding:20px;color:var(--t2);font-size:11px">Awaiting GPS and irradiance data...</div></div>
   </div>
 
   <!-- GRID EXPORT / IMPORT PANEL -->
@@ -1760,45 +1760,52 @@ function renderFlow() {
   const bc = fl.battFlow > 0.01 ? '#378ADD' : fl.battFlow < -0.01 ? '#BA7517' : '#555';
   const gc = fl.gridExport > 0.01 ? '#1D9E75' : fl.gridImport > 0.01 ? '#D85A30' : '#555';
 
-  // Card: all 4 identical size, content always fits on one line each
-  function card(col, icon, label, value, sub) {
-    return '<div style="background:var(--sf2);border:1px solid '+col+'44;border-radius:var(--rs);'
-      +'padding:12px 8px;text-align:center;display:flex;flex-direction:column;'
-      +'align-items:center;justify-content:center;gap:3px">'
-      +'<div style="font-size:22px;line-height:1">'+icon+'</div>'
-      +'<div style="font-size:10px;color:var(--t2)">'+label+'</div>'
-      +'<div style="font-size:16px;font-weight:700;color:'+col+'">'+value+'</div>'
-      +'<div style="font-size:10px;color:var(--t3)">'+sub+'</div>'
-      +'</div>';
-  }
+  const CS = 'background:var(--sf2);border-radius:var(--rs);padding:10px 8px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;box-sizing:border-box';
 
-  // SVG overlay: lines from solar (top-left card centre) to each other card centre
-  // Layout: 2x2 grid, gap=8px. Each card = (containerW-8)/2 wide.
-  // We use percentage: solar centre at (25%, 25%), home at (75%, 25%), batt at (25%, 75%), grid at (75%, 75%)
-  // SVG covers full container with viewBox 0 0 100 100 (percentage-based)
-  function line(x1,y1,x2,y2,col,on) {
-    return '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+col+
-      '" stroke-width="1.5" stroke-linecap="round"'+(on?' stroke-dasharray="4 3" style="animation:fd .9s linear infinite"':' opacity="0.15"')+'/>';
+  // Solar card: fixed 140px wide, centred
+  const solCard =
+    '<div style="'+CS+';border:1px solid #1D9E7555;width:140px;margin:0 auto">' +
+    '<div style="font-size:26px;line-height:1">☀️</div>' +
+    '<div style="font-size:10px;color:var(--t2);margin-top:2px">'+f(SYS.panelKw,0)+' kW panels</div>' +
+    '<div style="font-size:18px;font-weight:700;color:#1D9E75">'+f(ST.pvKw,2)+' kW</div>' +
+    '<div style="font-size:10px;color:var(--t3)">'+Math.round(ST.irrWm2)+' W/m²</div>' +
+    '</div>';
+
+  // 3 bottom cards — equal flex, full width
+  function node(col, icon, label, value, sub) {
+    return '<div style="'+CS+';border:1px solid '+col+'44;flex:1;min-width:0">' +
+      '<div style="font-size:22px;line-height:1">'+icon+'</div>' +
+      '<div style="font-size:10px;color:var(--t2)">'+label+'</div>' +
+      '<div style="font-size:14px;font-weight:700;color:'+col+';white-space:nowrap">'+value+'</div>' +
+      '<div style="font-size:9px;color:var(--t3);white-space:nowrap">'+sub+'</div>' +
+      '</div>';
   }
-  const svgLines = '<svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none" viewBox="0 0 100 100" preserveAspectRatio="none">'+
-    line(25,25, 75,25, hc, hOn)+  // solar → home (horizontal)
-    line(25,25, 25,75, bc, bOn)+  // solar → battery (vertical)
-    line(25,25, 75,75, gc, gOn)+  // solar → grid (diagonal)
-    '</svg>';
 
   const battVal = fl.battFlow>0.01?'+'+f(fl.battFlow,2)+' kW':fl.battFlow<-0.01?'-'+f(-fl.battFlow,2)+' kW':'idle';
+  const battSub = socToDisplay(ST.battSoc)+'% · '+f(stored(),1)+' kWh';
   const gridVal = fl.gridExport>0.01?'+'+f(fl.gridExport,2)+' kW':fl.gridImport>0.01?'-'+f(fl.gridImport,2)+' kW':'0.00 kW';
-  const homeSrc = fl.batt2home>0.01&&fl.solar2home>0.01?'solar+batt':fl.solar2home>0.01?'solar':fl.batt2home>0.01?'batt':fl.gridImport>0.01?'grid':'idle';
+  const homeSrc = fl.solar2home>0.01&&fl.batt2home>0.01?'solar+batt':fl.solar2home>0.01?'solar':fl.batt2home>0.01?'batt':fl.gridImport>0.01?'grid':'idle';
+
+  // SVG: viewBox 300×60. Solar card bottom-centre at x=150,y=0.
+  // 3 cards: centres at x=50,150,250, top at y=60.
+  // Bezier curves: start at solar bottom, curve down to each card top.
+  function bez(x2, col, on) {
+    return '<path d="M150 0 C150 35 '+x2+' 35 '+x2+' 60" fill="none" stroke="'+col+
+      '" stroke-width="2" stroke-linecap="round"'+
+      (on?' stroke-dasharray="5 3" style="animation:fd .9s linear infinite"':' opacity="0.2"')+'/>';
+  }
+  const svg = '<svg width="100%" height="60" viewBox="0 0 300 60" preserveAspectRatio="none" style="display:block;overflow:visible">'+
+    bez(50, hc, hOn)+bez(150, bc, bOn)+bez(250, gc, gOn)+'</svg>';
 
   document.getElementById('flowG').innerHTML =
-    '<div style="display:flex;justify-content:center"><div style="position:relative;width:100%;max-width:320px">'+
-    svgLines+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;position:relative">'+
-    card('#1D9E75','☀️', f(SYS.panelKw,0)+' kW', f(ST.pvKw,2)+' kW', Math.round(ST.irrWm2)+' W/m2')+
-    card(hc,'🏠','Home', f(fl.solar2home+fl.batt2home+fl.gridImport,2)+' kW', homeSrc)+
-    card(bc,'🔋','Battery', battVal, socToDisplay(ST.battSoc)+'% '+f(stored(),1)+'kWh')+
-    card(gc,'⚡','Grid', gridVal, fl.gridExport>0.01?'export':fl.gridImport>0.01?'import':'idle')+
-    '</div></div></div>';
+    '<div style="display:flex;flex-direction:column;align-items:center;gap:0;margin:0 auto;width:100%">' +
+    solCard +
+    svg +
+    '<div style="display:flex;gap:6px;width:100%">' +
+    node(hc,'🏠','Home',f(fl.solar2home+fl.batt2home+fl.gridImport,2)+' kW',homeSrc)+
+    node(bc,'🔋','Battery',battVal,battSub)+
+    node(gc,'⚡','Grid',gridVal,fl.gridExport>0.01?'export':fl.gridImport>0.01?'import':'idle')+
+    '</div></div>';
 }
 
 // ═══════════════════════════════════════════════════════════════
