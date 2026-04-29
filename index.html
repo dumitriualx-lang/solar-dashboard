@@ -118,6 +118,13 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 @keyframes fd{to{stroke-dashoffset:-20}}.fa{stroke-dasharray:6 4;animation:fd .8s linear infinite}
 .fic{font-size:14px}.flb{font-size:10px;color:var(--t2);margin-top:2px;font-family:inherit}
 .fvl{font-size:14px;font-weight:700;margin-top:2px}.fsub{font-size:10px;color:var(--t3);margin-top:1px;font-family:inherit}
+.upd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+.upd-card{background:var(--bg);border-radius:var(--r);padding:24px 20px;max-width:320px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.3);text-align:center}
+.upd-title{font-size:17px;font-weight:700;color:var(--tx);margin-bottom:8px}
+.upd-body{font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:20px}
+.upd-btns{display:flex;gap:10px}
+.upd-later{flex:1;padding:10px;border-radius:var(--rs);border:.5px solid var(--br);background:none;color:var(--t2);font-size:13px;font-family:inherit;cursor:pointer}
+.upd-now{flex:1;padding:10px;border-radius:var(--rs);border:none;background:var(--g);color:#fff;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
 /* Consumption profile slider — hide native, show custom track */
 .ps-wrap{position:relative;height:20px;display:flex;align-items:center}
 .ps-track{position:absolute;left:0;right:0;height:5px;background:var(--sf2);border-radius:3px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.08)}
@@ -481,12 +488,12 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
       </div>
       <div class="grid-stat">
         <div class="gs-lbl">Exported today</div>
-        <div class="gs-val cg" id="gsExp">0.00 kWh</div>
+        <div class="gs-val cg" id="gsExp">— kWh</div>
         <div class="gs-sub">fed into grid</div>
       </div>
       <div class="grid-stat">
         <div class="gs-lbl">Imported today</div>
-        <div class="gs-val cr" id="gsImp">0.00 kWh</div>
+        <div class="gs-val cr" id="gsImp">— kWh</div>
         <div class="gs-sub">drawn from grid</div>
       </div>
     </div>
@@ -715,6 +722,7 @@ let ST = {
   consKw: savedCfg.consKw || 0,
 
   // Grid accumulation — tracks today's export/import in kWh
+  pvKwhToday: 0,    // PV kWh produced today — from background service
   gridExportKwh: 0,
   gridImportKwh: 0,
   gridLastT: Date.now(),  // timestamp of last accumulation tick
@@ -1548,17 +1556,26 @@ function evolveSoc() {
     );
   }
 
-  // Production dropped after high surplus — alert to stop appliances
+  // Production drop detection — 30-minute rolling window
+  // Store pvKw every 5s in a circular buffer (360 entries = 30 min)
+  if (!ST._pvHistory) ST._pvHistory = [];
+  ST._pvHistory.push(ST.pvKw);
+  if (ST._pvHistory.length > 360) ST._pvHistory.shift(); // keep 30 min
+
   const prevHighProd = ST._prevPvHigh;
-  ST._prevPvHigh = ST.pvKw >= 2.0;
-  if (prevHighProd && !ST._prevPvHigh && ST._lastSurplusNotif &&
-      nowMin - ST._lastSurplusNotif < 240 &&  // within 4h of surplus alert
-      (!ST._lastProdDropNotif || nowMin - ST._lastProdDropNotif > 60)) {
+  ST._prevPvHigh = ST.pvKw >= 1.5;
+  // Check 30-min drop: compare current to value 360 steps ago (or oldest available)
+  const pvOld = ST._pvHistory.length >= 360 ? ST._pvHistory[0] : ST._pvHistory[0] || 0;
+  const pvDrop = pvOld - ST.pvKw;                 // positive = dropped
+  const surplusWasHigh = pvOld >= 1.5;             // was producing enough 30 min ago
+
+  if (surplusWasHigh && pvDrop > 1.0 && ST.pvKw < 1.5 &&
+      (!ST._lastProdDropNotif || nowMin - ST._lastProdDropNotif > 30)) {
     ST._lastProdDropNotif = nowMin;
     showNotification(
-      '☁️ Solar dropping — reduce large appliances',
-      'Production fell to ' + f(ST.pvKw, 2) + ' kW. ' +
-      'Battery at ' + socToDisplay(ST.battSoc) + '%. Consider pausing high-load appliances.',
+      '☁️ Solar dropped — pause large appliances',
+      'Production fell from ' + f(pvOld,2) + ' kW to ' + f(ST.pvKw,2) +
+      ' kW in 30 min. Surplus no longer sufficient — pause high-load appliances.',
       'prod-drop'
     );
   }
@@ -1619,6 +1636,45 @@ function toggleSection(bodyId, chevronId) {
 }
 
 const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
+
+async function checkForUpdate() {
+  try {
+    if (!window.AppBridge || typeof AppBridge.getVersionCode !== 'function') return;
+    const installedCode = AppBridge.getVersionCode();
+    if (!installedCode) return;
+    const res = await fetch('https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now());
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.versionCode <= installedCode) return;
+    showUpdateDialog(data.versionName, data.storeUrl);
+  } catch(e) {}
+}
+
+function showUpdateDialog(versionName, storeUrl) {
+  const overlay = document.createElement('div');
+  overlay.className = 'upd-overlay';
+  const card = document.createElement('div');
+  card.className = 'upd-card';
+  card.innerHTML =
+    '<div style="font-size:40px;margin-bottom:12px">🚀</div>' +
+    '<div class="upd-title">Update available</div>' +
+    '<div class="upd-body">Version ' + versionName + ' is available on the Play Store with the latest improvements and fixes.</div>';
+  const btns = document.createElement('div');
+  btns.className = 'upd-btns';
+  const later = document.createElement('button');
+  later.className = 'upd-later';
+  later.textContent = 'Not now';
+  later.onclick = () => overlay.remove();
+  const now = document.createElement('button');
+  now.className = 'upd-now';
+  now.textContent = 'Update ↗';
+  now.onclick = () => { window.open(storeUrl, '_blank'); overlay.remove(); };
+  btns.appendChild(later);
+  btns.appendChild(now);
+  card.appendChild(btns);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
 const stored = () => SYS.battUse ? +((ST.battSoc/100) * SYS.battUse).toFixed(3) : 0;
 
 // ── Quick SOC correction from battery panel ───────────────────────────────
@@ -2021,48 +2077,39 @@ function deleteLog(idx) {
 }
 
 function renderLogStats() {
-  if (!rlog.length) return;
-  // Group entries by calendar day
-  const days = {};
-  rlog.forEach(r => {
-    const day = new Date(r.t).toDateString();
-    if (!days[day]) days[day] = [];
-    days[day].push(r);
-  });
-  const nDays = Object.keys(days).length;
-  const dtH = 30 / 3600; // each snap = 30s = 1/120 hour
+  const toGrid   = +(ST.gridExportKwh || 0);
+  const fromGrid = +(ST.gridImportKwh || 0);
 
-  // Accumulate from log entries
-  // consumed is derived from energy balance since r.cons is no longer stored:
-  //   consumed = pvKw + gridImport - gridExport - battCharge
-  //            = pvKw - grd - max(0, batt)
-  // where grd = gridExport - gridImport (positive=export, negative=import)
-  // and batt > 0 means charging (energy going INTO battery, not to home)
-  let produced = 0, consumed = 0, fromGrid = 0, toGrid = 0;
+  // produced: use background pv_kwh if available (accurate, runs 24/7)
+  // fall back to rlog accumulation if background not yet populated
+  const todayStr = new Date().toDateString();
+  const dtH = 30 / 3600;
+  let producedLog = 0, logMinutes = 0;
   rlog.forEach(r => {
-    const gridImport  = r.grd < 0 ? -r.grd : 0;  // energy drawn from grid
-    const gridExport  = r.grd > 0 ?  r.grd : 0;  // energy sent to grid
-    const battCharge  = r.batt > 0 ? r.batt : 0; // energy going into battery
-    const consKw      = Math.max(0, (r.pvKw || 0) + gridImport - gridExport - battCharge);
-    produced += (r.pvKw || 0) * dtH;
-    consumed += consKw          * dtH;
-    fromGrid += gridImport      * dtH;
-    toGrid   += gridExport      * dtH;
+    if (new Date(r.t).toDateString() !== todayStr) return;
+    producedLog += (r.pvKw || 0) * dtH;
+    logMinutes  += 0.5;
   });
+  const produced = (ST.pvKwhToday > 0)
+    ? Math.max(ST.pvKwhToday, producedLog)
+    : producedLog;
+
+  // consumed via energy balance: produced + fromGrid - toGrid
+  const consumed  = Math.max(0, produced + fromGrid - toGrid);
   const fromSolar = Math.max(0, consumed - fromGrid);
   const selfSuff  = consumed > 0 ? Math.min(100, fromSolar / consumed * 100) : 0;
-  const dailyAvg  = nDays > 0 ? consumed / nDays : 0;
 
   const lbl = document.getElementById('logDaysLbl');
-  if (lbl) lbl.textContent = nDays + (nDays === 1 ? ' day' : ' days') + ' recorded';
+  const src = ST.pvKwhToday > 0 ? 'background data' : Math.round(logMinutes) + ' min logged';
+  if (lbl) lbl.textContent = 'Today · ' + src;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  set('statProduced',  f(produced, 2) + ' kWh');
-  set('statConsumed',  f(consumed, 2) + ' kWh');
-  set('statDailyAvg',  f(dailyAvg, 2) + ' kWh');
+  set('statProduced',  f(produced,  2) + ' kWh');
+  set('statConsumed',  f(consumed,  2) + ' kWh');
+  set('statDailyAvg',  f(consumed,  2) + ' kWh');
   set('statFromSolar', f(fromSolar, 2) + ' kWh');
-  set('statFromGrid',  f(fromGrid, 2) + ' kWh');
-  set('statToGrid',    f(toGrid, 2) + ' kWh');
-  set('statSelfSuff',  f(selfSuff, 1) + '%');
+  set('statFromGrid',  f(fromGrid,  2) + ' kWh');
+  set('statToGrid',    f(toGrid,    2) + ' kWh');
+  set('statSelfSuff',  f(selfSuff,  1) + '%');
 }
 
 function renderLogTable() {
@@ -2533,7 +2580,7 @@ function renderConsProfileSlots() {
       '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">' +
         '<div style="min-width:72px">' +
           '<div style="font-size:12px;font-weight:500;color:var(--tx)">' + sl.label + '</div>' +
-          '<div style="font-size:10px;color:var(--t3)">' + String(sl.from).padStart(2,'0') + ':00–' + String(sl.to===0?24:sl.to).padStart(2,'0') + ':00</div>' +
+          '<div style="font-size:10px;color:var(--t2);font-weight:500">' + String(sl.from).padStart(2,'0') + ':00–' + String(sl.to===0?24:sl.to).padStart(2,'0') + ':00</div>' +
         '</div>' +
         '<button style="' + btnStyle + '" onclick="nudgeSlider(' + i + ',-0.01)">−</button>' +
         '<div style="flex:1;text-align:center">' +
@@ -2715,8 +2762,10 @@ function renderGridPanel() {
     isExporting ? 'feed-in to grid' : isImporting ? 'drawing from grid' : 'no grid exchange';
 
   // Accumulated today
-  document.getElementById('gsExp').textContent = f(ST.gridExportKwh,2) + ' kWh';
-  document.getElementById('gsImp').textContent = f(ST.gridImportKwh,2) + ' kWh';
+  const expVal = ST._lastDate ? f(ST.gridExportKwh,2) + ' kWh' : '— kWh';
+  const impVal = ST._lastDate ? f(ST.gridImportKwh,2) + ' kWh' : '— kWh';
+  document.getElementById('gsExp').textContent = expVal;
+  document.getElementById('gsImp').textContent = impVal;
 
   // Flow bar: centre = balanced, left = export (green), right = import (red)
   // Range: -5 kW import (right) to +5 kW export (left)
@@ -2832,15 +2881,19 @@ function renderSmartSched() {
     '<div style="height:100%;width:' + barPct + '%;background:' + barCol + ';border-radius:3px;transition:width .6s ease"></div>' +
     '</div>';
 
-  // Build appliance rows
+  // Build appliance rows — only ONE appliance can run at a time
+  // Find the first (highest priority) appliance that can run
+  const firstRunnable = APPLIANCES.find(app => surplus >= 1.5 && surplus >= app.kw);
   const rows = APPLIANCES.map(app => {
-    const canRun    = surplus >= app.kw;                       // surplus fully covers it
+    const canRun    = surplus >= 1.5 && surplus >= app.kw;    // need ≥1.5 kW surplus AND enough for this app
     const partial   = !canRun && surplus > 0 && surplus >= app.kw * 0.4; // partial solar
     const battCovers= !canRun && !partial && stored() > app.kw * 0.5;   // battery can help
     const deficit   = !canRun && !partial && !battCovers;
 
     let statusCls, statusTxt, statusDot;
-    if      (canRun)      { statusCls='sb-b'; statusTxt='Run now';   statusDot='#1D9E75'; }
+    const isFirst = firstRunnable && app.id === firstRunnable.id;
+    if      (canRun && isFirst){ statusCls='sb-b'; statusTxt='Run now ✓'; statusDot='#1D9E75'; }
+    else if (canRun && !isFirst){ statusCls='sb-o'; statusTxt='Queue';    statusDot='#BA7517'; }
     else if (partial)     { statusCls='sb-o'; statusTxt='Partial';   statusDot='#BA7517'; }
     else if (battCovers)  { statusCls='sb-o'; statusTxt='Batt only'; statusDot='#378ADD'; }
     else                  { statusCls='sb-a'; statusTxt='Wait';      statusDot='#D85A30'; }
@@ -2854,8 +2907,10 @@ function renderSmartSched() {
 
     // Surplus needed indicator
     const needed = app.kw - Math.max(0, surplus);
-    const extraInfo = canRun
+    const extraInfo = canRun && isFirst
       ? 'Solar covers it · ' + f(surplus - app.kw, 2) + ' kW left after'
+      : canRun && !isFirst
+      ? 'Finish current appliance first · surplus ' + f(surplus,2) + ' kW'
       : partial
       ? 'Need ' + f(needed,2) + ' kW more solar · battery makes up rest'
       : 'Need ' + f(needed,2) + ' kW more solar · wait for peak';
@@ -2965,6 +3020,7 @@ initNotifBar();                              // set notification bar state
           const gridExp  = parseFloat(p[5]) || 0;
           const gridImp  = parseFloat(p[6]) || 0;
           const gridDate = (p[7] || '').trim();
+          const pvKwhBg  = parseFloat(p[8]) || 0;
           const today    = new Date().toDateString();
           if (gridDate) {
             try {
@@ -2974,6 +3030,7 @@ initNotifBar();                              // set notification bar state
               if (d.toDateString() === today) {
                 ST.gridExportKwh = Math.max(ST.gridExportKwh, gridExp);
                 ST.gridImportKwh = Math.max(ST.gridImportKwh, gridImp);
+                if (pvKwhBg > 0) ST.pvKwhToday = Math.max(ST.pvKwhToday, pvKwhBg);
                 ST._lastDate = today;
               }
             } catch(e) {}
@@ -3004,6 +3061,7 @@ initNotifBar();                              // set notification bar state
               // Use max of SharedPreferences and localStorage (background may have more)
               ST.gridExportKwh = Math.max(ST.gridExportKwh, gridExp);
               ST.gridImportKwh = Math.max(ST.gridImportKwh, gridImp);
+              if (pvKwhBg > 0) ST.pvKwhToday = Math.max(ST.pvKwhToday, pvKwhBg);
               ST._lastDate = today;
             }
           }
@@ -3052,6 +3110,8 @@ initNotifBar();                              // set notification bar state
       });
     }
     fetchWeather();
+    // Check for app updates after 5s delay
+    setTimeout(checkForUpdate, 5000);
     // Silent background GPS refresh after 3s
     setTimeout(() => {
       if (!('geolocation' in navigator)) return;
