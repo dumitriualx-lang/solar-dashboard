@@ -2029,12 +2029,21 @@ function renderLogStats() {
   const dtH = 30 / 3600; // each snap = 30s = 1/120 hour
 
   // Accumulate from log entries
+  // consumed is derived from energy balance since r.cons is no longer stored:
+  //   consumed = pvKw + gridImport - gridExport - battCharge
+  //            = pvKw - grd - max(0, batt)
+  // where grd = gridExport - gridImport (positive=export, negative=import)
+  // and batt > 0 means charging (energy going INTO battery, not to home)
   let produced = 0, consumed = 0, fromGrid = 0, toGrid = 0;
   rlog.forEach(r => {
+    const gridImport  = r.grd < 0 ? -r.grd : 0;  // energy drawn from grid
+    const gridExport  = r.grd > 0 ?  r.grd : 0;  // energy sent to grid
+    const battCharge  = r.batt > 0 ? r.batt : 0; // energy going into battery
+    const consKw      = Math.max(0, (r.pvKw || 0) + gridImport - gridExport - battCharge);
     produced += (r.pvKw || 0) * dtH;
-    consumed += (r.cons || 0) * dtH;
-    fromGrid += Math.max(0, r.grd < 0 ? -r.grd : 0) * dtH;
-    toGrid   += Math.max(0, r.grd > 0 ? r.grd  : 0) * dtH;
+    consumed += consKw          * dtH;
+    fromGrid += gridImport      * dtH;
+    toGrid   += gridExport      * dtH;
   });
   const fromSolar = Math.max(0, consumed - fromGrid);
   const selfSuff  = consumed > 0 ? Math.min(100, fromSolar / consumed * 100) : 0;
