@@ -1492,21 +1492,15 @@ function evolveSoc() {
   if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
     try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
   }
-  // Accumulate grid kWh for today
-  ST.gridExportKwh = +(ST.gridExportKwh + fl.gridExport * dtH).toFixed(4);
-  ST.gridImportKwh = +(ST.gridImportKwh + fl.gridImport * dtH).toFixed(4);
-  // Reset at midnight
+  // Grid kWh accumulation is handled by the Java background services (accurate).
+  // JS only tracks the date for midnight reset; values come from applyStateFromNative.
   const today = new Date(now).toDateString();
   if (!ST._lastDate) ST._lastDate = today;
   if (today !== ST._lastDate) {
-    ST.gridExportKwh = 0; ST.gridImportKwh = 0; ST._lastDate = today;
+    // New day — reset and wait for Java to report today's values
+    ST.gridExportKwh = 0; ST.gridImportKwh = 0; ST.pvKwhToday = 0;
+    ST._lastDate = today;
   }
-  // Persist grid kWh to localStorage so totals survive app reopen
-  try {
-    localStorage.setItem('solarGridKwh', JSON.stringify({
-      exp: ST.gridExportKwh, imp: ST.gridImportKwh, date: today
-    }));
-  } catch(e) {}
 
   // ── Real-time alerts ──────────────────────────────────────────────────────
   if (!isSysConfigured()) return;
@@ -2762,8 +2756,8 @@ function renderGridPanel() {
     isExporting ? 'feed-in to grid' : isImporting ? 'drawing from grid' : 'no grid exchange';
 
   // Accumulated today
-  const expVal = ST._lastDate ? f(ST.gridExportKwh,2) + ' kWh' : '— kWh';
-  const impVal = ST._lastDate ? f(ST.gridImportKwh,2) + ' kWh' : '— kWh';
+  const expVal = f(ST.gridExportKwh, 2) + ' kWh';
+  const impVal = f(ST.gridImportKwh, 2) + ' kWh';
   document.getElementById('gsExp').textContent = expVal;
   document.getElementById('gsImp').textContent = impVal;
 
@@ -3022,18 +3016,34 @@ initNotifBar();                              // set notification bar state
           const gridDate = (p[7] || '').trim();
           const pvKwhBg  = parseFloat(p[8]) || 0;
           const today    = new Date().toDateString();
-          if (gridDate) {
+          // Match gridDate (Java: "YEAR-DAY_OF_YEAR") against today
+          const todayDoy = (function() {
+            const t = new Date(); const s = new Date(t.getFullYear(), 0, 0);
+            return t.getFullYear() + '-' + Math.floor((t - s) / 86400000);
+          })();
+          const gridDateMatch = gridDate && (gridDate === todayDoy || (function() {
             try {
               const [yr, doy] = gridDate.split('-').map(Number);
-              const d = new Date(yr, 0, 1);
-              d.setDate(d.getDate() + doy - 1);
-              if (d.toDateString() === today) {
-                ST.gridExportKwh = Math.max(ST.gridExportKwh, gridExp);
-                ST.gridImportKwh = Math.max(ST.gridImportKwh, gridImp);
-                if (pvKwhBg > 0) ST.pvKwhToday = Math.max(ST.pvKwhToday, pvKwhBg);
-                ST._lastDate = today;
-              }
-            } catch(e) {}
+              const d = new Date(yr, 0, 1); d.setDate(d.getDate() + doy - 1);
+              return d.toDateString() === today;
+            } catch(e) { return false; }
+          })());
+          if (gridDateMatch) {
+            ST.gridExportKwh = Math.max(ST.gridExportKwh, gridExp);
+            ST.gridImportKwh = Math.max(ST.gridImportKwh, gridImp);
+            if (pvKwhBg > 0) ST.pvKwhToday = Math.max(ST.pvKwhToday, pvKwhBg);
+            ST._lastDate = today;
+            // Persist to localStorage so values survive app reopen before Java calls back
+            try { localStorage.setItem('solarGridKwh', JSON.stringify({
+              exp: ST.gridExportKwh, imp: ST.gridImportKwh, date: today })); } catch(e) {}
+          } else if (!gridDate) {
+            if (gridExp > 0 || gridImp > 0) {
+              ST.gridExportKwh = Math.max(ST.gridExportKwh, gridExp);
+              ST.gridImportKwh = Math.max(ST.gridImportKwh, gridImp);
+              ST._lastDate = today;
+              try { localStorage.setItem('solarGridKwh', JSON.stringify({
+                exp: ST.gridExportKwh, imp: ST.gridImportKwh, date: today })); } catch(e) {}
+            }
           }
         }
         if (soc >= 0 && panelKw > 0) {
