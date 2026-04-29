@@ -1640,21 +1640,35 @@ function toggleSection(bodyId, chevronId) {
 const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
 
 async function checkForUpdate() {
-  try {
-    const res = await fetch('https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now());
-    if (!res.ok) { console.warn('checkForUpdate: fetch failed', res.status); return; }
-    const data = await res.json();
-    console.log('checkForUpdate: remote versionCode=', data.versionCode);
-    const lastDismissed = parseInt(localStorage.getItem('updDismissed') || '0');
-    console.log('checkForUpdate: lastDismissed=', lastDismissed);
-    if (data.versionCode <= lastDismissed) { console.log('already dismissed'); return; }
-    if (window.AppBridge && typeof AppBridge.getVersionCode === 'function') {
-      const installed = AppBridge.getVersionCode();
-      console.log('checkForUpdate: installed=', installed);
-      if (installed && data.versionCode <= installed) { console.log('already latest'); return; }
+  function dbg(msg) {
+    // Show debug message as a small banner at top of screen
+    let bar = document.getElementById('updDbg');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'updDbg';
+      bar.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#1D9E75;color:#fff;font-size:11px;padding:6px 10px;z-index:99999;font-family:monospace;white-space:pre-wrap;word-break:break-all';
+      document.body.appendChild(bar);
     }
+    bar.textContent = msg;
+  }
+  try {
+    dbg('Fetching version.json...');
+    const res = await fetch('https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now());
+    if (!res.ok) { dbg('FAIL: HTTP ' + res.status); return; }
+    const data = await res.json();
+    const lastDismissed = parseInt(localStorage.getItem('updDismissed') || '0');
+    const installed = (window.AppBridge && typeof AppBridge.getVersionCode === 'function')
+      ? AppBridge.getVersionCode() : 'n/a';
+    dbg('remote=' + data.versionCode + ' dismissed=' + lastDismissed + ' installed=' + installed);
+    if (data.versionCode <= lastDismissed) { dbg('Skipped: already dismissed v' + data.versionCode); return; }
+    if (installed !== 'n/a' && data.versionCode <= installed) { dbg('Skipped: already on v' + installed); return; }
+    dbg('Showing dialog...');
     showUpdateDialog(data.versionName, data.storeUrl, data.versionCode);
-  } catch(e) { console.error('checkForUpdate error:', e); }
+  } catch(e) { 
+    let bar = document.getElementById('updDbg');
+    if (!bar) { bar = document.createElement('div'); bar.id='updDbg'; bar.style.cssText='position:fixed;top:0;left:0;right:0;background:#D85A30;color:#fff;font-size:11px;padding:6px 10px;z-index:99999;font-family:monospace'; document.body.appendChild(bar); }
+    bar.textContent = 'ERROR: ' + e.message;
+  }
 }
 
 function showUpdateDialog(versionName, storeUrl, versionCode) {
