@@ -255,7 +255,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
   <div class="notif-bar notif-off" id="notifBar">
     <span id="notifMsg">🔔 Enable notifications to get alerts when it's best to run large appliances</span>
     <button class="notif-btn" id="notifBtn" onclick="requestNotifPermission()">Enable</button>
-    <button class="notif-btn" id="notifTestBtn" onclick="testNotifications()" style="display:none;margin-left:4px">Test 🔔</button>
   </div>
 
   <!-- SYSTEM CONFIGURATION -->
@@ -2224,7 +2223,6 @@ function setNotifBar(type, msg) {
   const msgEl = document.getElementById('notifMsg');
   if (msgEl) msgEl.textContent = msg;
   const btn     = document.getElementById('notifBtn');
-  const testBtn = document.getElementById('notifTestBtn');
   if (btn)     btn.style.display     = (type === 'ok') ? 'none' : '';
   if (testBtn) testBtn.style.display = (type === 'ok') ? ''     : 'none';
 }
