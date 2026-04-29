@@ -1641,18 +1641,22 @@ const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
 
 async function checkForUpdate() {
   try {
-    if (!window.AppBridge || typeof AppBridge.getVersionCode !== 'function') return;
-    const installedCode = AppBridge.getVersionCode();
-    if (!installedCode) return;
     const res = await fetch('https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now());
     if (!res.ok) return;
     const data = await res.json();
-    if (data.versionCode <= installedCode) return;
-    showUpdateDialog(data.versionName, data.storeUrl);
+    // Check against last dismissed version stored in localStorage
+    const lastDismissed = parseInt(localStorage.getItem('updDismissed') || '0');
+    if (data.versionCode <= lastDismissed) return;
+    // Also check against installed version if AppBridge available
+    if (window.AppBridge && typeof AppBridge.getVersionCode === 'function') {
+      const installed = AppBridge.getVersionCode();
+      if (installed && data.versionCode <= installed) return;
+    }
+    showUpdateDialog(data.versionName, data.storeUrl, data.versionCode);
   } catch(e) {}
 }
 
-function showUpdateDialog(versionName, storeUrl) {
+function showUpdateDialog(versionName, storeUrl, versionCode) {
   const overlay = document.createElement('div');
   overlay.className = 'upd-overlay';
   const card = document.createElement('div');
@@ -1666,7 +1670,7 @@ function showUpdateDialog(versionName, storeUrl) {
   const later = document.createElement('button');
   later.className = 'upd-later';
   later.textContent = 'Not now';
-  later.onclick = () => overlay.remove();
+  later.onclick = () => { try { localStorage.setItem('updDismissed', versionCode); } catch(e) {} overlay.remove(); };
   const now = document.createElement('button');
   now.className = 'upd-now';
   now.textContent = 'Update ↗';
