@@ -1041,9 +1041,8 @@ public class SolarForegroundService extends Service {
                         && hourNow >= 8 && hourNow < 22
                         && (nowMs - prefs.getLong("notif_last_drop", 0L)) > 30L * 60 * 1000) {
                     prefs.edit().putLong("notif_last_drop", nowMs).commit();
-                    showNotification(ctx, "☁️ Solar dropped — pause large appliances",
-                        String.format("Production fell from %.2f kW to %.2f kW. Pause high-load appliances.", lastPvKw, (float) pvKw),
-                        "prod-drop");
+                    sendAlert("☁️ Solar dropped — pause large appliances",
+                        String.format("Production fell from %.2f kW to %.2f kW. Pause high-load appliances.", lastPvKw, (float) pvKw));
                 }
 
 
@@ -1392,9 +1391,8 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
                         && hourNow >= 8 && hourNow < 22
                         && (nowMs - prefs.getLong("notif_last_drop", 0L)) > 30L * 60 * 1000) {
                     prefs.edit().putLong("notif_last_drop", nowMs).commit();
-                    showNotification(ctx, "☁️ Solar dropped — pause large appliances",
-                        String.format("Production fell from %.2f kW to %.2f kW. Pause high-load appliances.", lastPvKw, (float) pvKw),
-                        "prod-drop");
+                    sendNotif(ctx, "☁️ Solar dropped — pause large appliances",
+                        String.format("Production fell from %.2f kW to %.2f kW. Pause high-load appliances.", lastPvKw, (float) pvKw));
                 }
 
 
@@ -1783,9 +1781,8 @@ public class SolarWorker extends Worker {
                         && hourNow >= 8 && hourNow < 22
                         && (nowMs - prefs.getLong("notif_last_drop", 0L)) > 30L * 60 * 1000) {
                     prefs.edit().putLong("notif_last_drop", nowMs).commit();
-                    showNotification(ctx, "☁️ Solar dropped — pause large appliances",
-                        String.format("Production fell from %.2f kW to %.2f kW. Pause high-load appliances.", lastPvKw, (float) pvKw),
-                        "prod-drop");
+                    sendNotif(ctx, "☁️ Solar dropped — pause large appliances",
+                        String.format("Production fell from %.2f kW to %.2f kW. Pause high-load appliances.", lastPvKw, (float) pvKw));
                 }
 
 
