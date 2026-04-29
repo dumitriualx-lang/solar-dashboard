@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1D9E75">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2224,7 +2225,6 @@ function setNotifBar(type, msg) {
   if (msgEl) msgEl.textContent = msg;
   const btn     = document.getElementById('notifBtn');
   if (btn)     btn.style.display     = (type === 'ok') ? 'none' : '';
-  if (testBtn) testBtn.style.display = (type === 'ok') ? ''     : 'none';
 }
 
 function testNotifications() {
@@ -2522,17 +2522,17 @@ function renderConsProfileSlots() {
           '<div style="font-size:12px;font-weight:500;color:var(--tx)">' + sl.label + '</div>' +
           '<div style="font-size:10px;color:var(--t3)">' + String(sl.from).padStart(2,'0') + ':00–' + String(sl.to===0?24:sl.to).padStart(2,'0') + ':00</div>' +
         '</div>' +
-        '<button style="' + btnStyle + '" onclick="nudgeSlider(' + i + ',-0.05)">−</button>' +
+        '<button style="' + btnStyle + '" onclick="nudgeSlider(' + i + ',-0.01)">−</button>' +
         '<div style="flex:1;text-align:center">' +
           '<div style="font-size:14px;font-weight:600;color:var(--tx)" id="psVal' + i + '">' + sl.kw.toFixed(2) + ' kW</div>' +
           '<div style="font-size:10px;color:var(--t3)" id="psKwh' + i + '">' + kwh + ' kWh</div>' +
         '</div>' +
-        '<button style="' + btnStyle + '" onclick="nudgeSlider(' + i + ',0.05)">+</button>' +
+        '<button style="' + btnStyle + '" onclick="nudgeSlider(' + i + ',0.01)">+</button>' +
       '</div>' +
       '<div class="ps-wrap">' +
         '<div class="ps-track"><div class="ps-fill" id="psBar' + i + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
         '<div class="ps-thumb" id="psTh' + i + '" style="left:' + pct.toFixed(1) + '%"></div>' +
-        '<input class="ps-input" type="range" min="0" max="4" step="0.05" value="' + sl.kw + '" oninput="onProfileSlider(' + i + ',this.value)">' +
+        '<input class="ps-input" type="range" min="0" max="4" step="0.01" value="' + sl.kw + '" oninput="onProfileSlider(' + i + ',this.value)">' +
       '</div>';
     c.appendChild(div);
   });
