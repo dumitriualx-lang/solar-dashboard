@@ -2514,28 +2514,50 @@ function renderConsProfileSlots() {
     const pct   = Math.min(100, sl.kw / 4 * 100);
     const div   = document.createElement('div');
     div.style.cssText = 'padding:10px 0;border-bottom:.5px solid var(--br)';
+    const btnStyle = 'width:30px;height:30px;border-radius:50%;border:.5px solid var(--br);background:var(--sf2);color:var(--tx);font-size:16px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;user-select:none';
     div.innerHTML =
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
-        '<div style="min-width:90px">' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">' +
+        '<div style="min-width:72px">' +
           '<div style="font-size:12px;font-weight:500;color:var(--tx)">' + sl.label + '</div>' +
           '<div style="font-size:10px;color:var(--t3)">' + String(sl.from).padStart(2,'0') + ':00–' + String(sl.to===0?24:sl.to).padStart(2,'0') + ':00</div>' +
         '</div>' +
-        '<div class="ps-wrap" style="flex:1;margin:0 4px">' +
-          '<div class="ps-track"><div class="ps-fill" id="psBar' + i + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
-          '<div class="ps-thumb" id="psTh' + i + '" style="left:' + pct.toFixed(1) + '%"></div>' +
-          '<input class="ps-input" type="range" min="0" max="4" step="0.01" value="' + sl.kw + '" oninput="onProfileSlider(' + i + ',this.value)">' +
-        '</div>' +
-        '<div style="min-width:62px;text-align:right">' +
-          '<div style="font-size:13px;font-weight:500;color:var(--tx)" id="psVal' + i + '">' + sl.kw.toFixed(2) + ' kW</div>' +
+        '<button style="' + btnStyle + '" onclick="nudgeSlider(' + i + ',-0.05)">−</button>' +
+        '<div style="flex:1;text-align:center">' +
+          '<div style="font-size:14px;font-weight:600;color:var(--tx)" id="psVal' + i + '">' + sl.kw.toFixed(2) + ' kW</div>' +
           '<div style="font-size:10px;color:var(--t3)" id="psKwh' + i + '">' + kwh + ' kWh</div>' +
         '</div>' +
+        '<button style="' + btnStyle + '" onclick="nudgeSlider(' + i + ',0.05)">+</button>' +
       '</div>' +
-      '';
+      '<div class="ps-wrap">' +
+        '<div class="ps-track"><div class="ps-fill" id="psBar' + i + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+        '<div class="ps-thumb" id="psTh' + i + '" style="left:' + pct.toFixed(1) + '%"></div>' +
+        '<input class="ps-input" type="range" min="0" max="4" step="0.05" value="' + sl.kw + '" oninput="onProfileSlider(' + i + ',this.value)">' +
+      '</div>';
     c.appendChild(div);
   });
-  // Remove border from last slot
   if (c.lastChild) c.lastChild.style.borderBottom = 'none';
   updateProfileTotal();
+}
+
+function nudgeSlider(i, delta) {
+  const newKw = Math.max(0, Math.min(4, +(SYS.consProfile[i].kw + delta).toFixed(2)));
+  SYS.consProfile[i].kw = newKw;
+  // Update value display
+  const hours = (SYS.consProfile[i].to === 0 ? 24 : SYS.consProfile[i].to) - SYS.consProfile[i].from;
+  const pct = Math.min(100, newKw / 4 * 100).toFixed(1);
+  const valEl = document.getElementById('psVal' + i);
+  const kwhEl = document.getElementById('psKwh' + i);
+  const barEl = document.getElementById('psBar' + i);
+  const thEl  = document.getElementById('psTh' + i);
+  if (valEl) valEl.textContent = newKw.toFixed(2) + ' kW';
+  if (kwhEl) kwhEl.textContent = (newKw * hours).toFixed(2) + ' kWh';
+  if (barEl) barEl.style.width = pct + '%';
+  if (thEl)  thEl.style.left   = pct + '%';
+  // Sync the range input value
+  const inputs = document.querySelectorAll('.ps-input');
+  if (inputs[i]) inputs[i].value = newKw;
+  updateProfileTotal();
+  applyAutoConsumption();
 }
 
 function onProfileSlider(i, val) {
