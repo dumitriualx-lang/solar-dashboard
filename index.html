@@ -353,6 +353,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
         <div class="cfg-lbl">🧭 Panel orientation</div>
         <div class="cfg-inp-wrap" style="padding:6px 10px">
           <select id="cfgAzimuth" onchange="onCfgChange()" style="width:100%;background:transparent;border:none;font-family:inherit;font-size:14px;color:var(--tx);outline:none">
+            <option value="">— Select orientation —</option>
             <option value="180">South (180°)</option>
             <option value="135">South-East (135°)</option>
             <option value="90">East (90°)</option>
@@ -664,14 +665,14 @@ const SYS = {
   panelKw:   savedCfg.panelKw   || null,     // kW peak — must be set by user
   tiltDeg:      savedCfg.tiltDeg      || 30,  // panel tilt angle
   consProfile:  savedCfg.consProfile  || [
-    { from:0,  to:6,  label:'Night',     kw:0.15 },
-    { from:6,  to:9,  label:'Morning',   kw:0.80 },
-    { from:9,  to:13, label:'Midday',    kw:0.35 },
-    { from:13, to:18, label:'Afternoon', kw:0.30 },
-    { from:18, to:22, label:'Evening',   kw:1.20 },
-    { from:22, to:24, label:'Late night',kw:0.20 },
+    { from:0,  to:6,  label:'Night',      kw:0 },
+    { from:6,  to:9,  label:'Morning',    kw:0 },
+    { from:9,  to:13, label:'Midday',     kw:0 },
+    { from:13, to:18, label:'Afternoon',  kw:0 },
+    { from:18, to:22, label:'Evening',    kw:0 },
+    { from:22, to:24, label:'Late night', kw:0 },
   ],
-  panelAzimuth: savedCfg.panelAzimuth || 180, // panel orientation (180=south default)
+  panelAzimuth: savedCfg.panelAzimuth || null, // null = not set by user
   invEff:    0.984,                            // SUN2000-5KTL-M1 (fixed)
   dcLoss:    0.97,                             // wiring + soiling (fixed)
   battGross: savedCfg.battGross || null,      // kWh gross — must be set by user
@@ -775,11 +776,14 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   const socEl   = document.getElementById('cfgSoc');
   const panelEl = document.getElementById('cfgPanel');
   const battEl  = document.getElementById('cfgBatt');
-  if (socEl   && document.activeElement !== socEl   && soc >= 0)        socEl.value   = Math.round(socToDisplay(soc));
-  if (panelEl && document.activeElement !== panelEl && panelKw > 0)     panelEl.value = panelKw;
-  const azEl = document.getElementById('cfgAzimuth');
-  if (azEl) azEl.value = SYS.panelAzimuth || 180;
-  if (battEl  && document.activeElement !== battEl  && battGross > 0)   battEl.value  = battGross;
+  // Only fill config fields if user has previously saved a config (not on fresh install)
+  const userHasSavedCfg = savedCfg && (savedCfg.panelKw || savedCfg.battGross);
+  if (userHasSavedCfg) {
+    if (socEl   && document.activeElement !== socEl   && soc >= 0)        socEl.value   = Math.round(socToDisplay(soc));
+    if (panelEl && document.activeElement !== panelEl && panelKw > 0)     panelEl.value = panelKw;
+    if (azEl) azEl.value = SYS.panelAzimuth || 180;
+    if (battEl  && document.activeElement !== battEl  && battGross > 0)   battEl.value  = battGross;
+  }
   updateSocDisplay();
   // Do not call renderAll() here — the debounced intervals handle rendering.
   // Calling it here causes a visible flash before fetchWeather returns fresh data.
@@ -1640,35 +1644,18 @@ function toggleSection(bodyId, chevronId) {
 const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
 
 async function checkForUpdate() {
-  function dbg(msg) {
-    // Show debug message as a small banner at top of screen
-    let bar = document.getElementById('updDbg');
-    if (!bar) {
-      bar = document.createElement('div');
-      bar.id = 'updDbg';
-      bar.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#1D9E75;color:#fff;font-size:11px;padding:6px 10px;z-index:99999;font-family:monospace;white-space:pre-wrap;word-break:break-all';
-      document.body.appendChild(bar);
-    }
-    bar.textContent = msg;
-  }
   try {
-    dbg('Fetching version.json...');
     const res = await fetch('https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now());
-    if (!res.ok) { dbg('FAIL: HTTP ' + res.status); return; }
+    if (!res.ok) return;
     const data = await res.json();
     const lastDismissed = parseInt(localStorage.getItem('updDismissed') || '0');
-    const installed = (window.AppBridge && typeof AppBridge.getVersionCode === 'function')
-      ? AppBridge.getVersionCode() : 'n/a';
-    dbg('remote=' + data.versionCode + ' dismissed=' + lastDismissed + ' installed=' + installed);
-    if (data.versionCode <= lastDismissed) { dbg('Skipped: already dismissed v' + data.versionCode); return; }
-    if (installed !== 'n/a' && data.versionCode <= installed) { dbg('Skipped: already on v' + installed); return; }
-    dbg('Showing dialog...');
+    if (data.versionCode <= lastDismissed) return;
+    if (window.AppBridge && typeof AppBridge.getVersionCode === 'function') {
+      const installed = AppBridge.getVersionCode();
+      if (installed && data.versionCode <= installed) return;
+    }
     showUpdateDialog(data.versionName, data.storeUrl, data.versionCode);
-  } catch(e) { 
-    let bar = document.getElementById('updDbg');
-    if (!bar) { bar = document.createElement('div'); bar.id='updDbg'; bar.style.cssText='position:fixed;top:0;left:0;right:0;background:#D85A30;color:#fff;font-size:11px;padding:6px 10px;z-index:99999;font-family:monospace'; document.body.appendChild(bar); }
-    bar.textContent = 'ERROR: ' + e.message;
-  }
+  } catch(e) {}
 }
 
 function showUpdateDialog(versionName, storeUrl, versionCode) {
@@ -1689,7 +1676,12 @@ function showUpdateDialog(versionName, storeUrl, versionCode) {
   const now = document.createElement('button');
   now.className = 'upd-now';
   now.textContent = 'Update ↗';
-  now.onclick = () => { window.open(storeUrl, '_blank'); overlay.remove(); };
+  now.onclick = () => {
+    // Try Play Store app first (market://), fall back to web URL
+    const fallback = 'https://play.google.com/store/apps/details?id=com.dumitriualxlang.solardasboard';
+    try { window.location.href = storeUrl; } catch(e) { window.open(fallback, '_blank'); }
+    setTimeout(() => overlay.remove(), 500);
+  };
   btns.appendChild(later);
   btns.appendChild(now);
   card.appendChild(btns);
@@ -3148,7 +3140,6 @@ initNotifBar();                              // set notification bar state
     }
     fetchWeather();
     // Check for app updates after 5s delay
-    checkForUpdate(); // also immediate for debug
     setTimeout(checkForUpdate, 5000);
     // Silent background GPS refresh after 3s
     setTimeout(() => {
