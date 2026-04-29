@@ -1492,14 +1492,22 @@ function evolveSoc() {
   if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
     try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
   }
-  // Grid kWh accumulation is handled by the Java background services (accurate).
-  // JS only tracks the date for midnight reset; values come from applyStateFromNative.
+  // Accumulate grid kWh in real-time from live calcFlow() values.
+  // Only accumulate when API has loaded (ST.apiOk) so ST.pvKw is real, not 0.
+  // Java background service corrects the total every 30 min via applyStateFromNative.
   const today = new Date(now).toDateString();
   if (!ST._lastDate) ST._lastDate = today;
   if (today !== ST._lastDate) {
-    // New day — reset and wait for Java to report today's values
     ST.gridExportKwh = 0; ST.gridImportKwh = 0; ST.pvKwhToday = 0;
     ST._lastDate = today;
+  }
+  if (ST.apiOk) {
+    ST.gridExportKwh = +(ST.gridExportKwh + fl.gridExport * dtH).toFixed(4);
+    ST.gridImportKwh = +(ST.gridImportKwh + fl.gridImport * dtH).toFixed(4);
+    ST.pvKwhToday    = +(ST.pvKwhToday    + (ST.pvKw||0)  * dtH).toFixed(4);
+    // Persist so values survive brief app reopen
+    try { localStorage.setItem('solarGridKwh', JSON.stringify({
+      exp: ST.gridExportKwh, imp: ST.gridImportKwh, date: today })); } catch(e) {}
   }
 
   // ── Real-time alerts ──────────────────────────────────────────────────────
