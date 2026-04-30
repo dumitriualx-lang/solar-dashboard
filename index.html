@@ -500,8 +500,9 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     <div id="smartSched"></div>
     </div>
   </div>
+</div>
 
-<div id="pgForecast" class="page">
+<div id="pgForecast" class="page" style="padding:14px;padding-bottom:90px">
   <div class="card">
     <div class="ct">5-day yield forecast <span class="pill p-ok">Live · Open-Meteo</span></div>
     <div class="wstrip" id="ws"><div class="empty-log" style="width:100%">Awaiting GPS...</div></div>
@@ -523,11 +524,11 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
   </div>
   <div class="card" style="margin-top:10px">
     <div class="ct">Alerts</div>
-    <div id="altsHidden"><div class="empty-log">Loading...</div></div></div><!-- /logBody -->
+    <div id="altsHidden"><div class="empty-log">Loading...</div></div>
   </div>
 </div>
 
-<div id="pgSched" class="page">
+<div id="pgSched" class="page" style="padding:14px;padding-bottom:90px">
   <div class="card" id="schedCardFull">
     <div class="ct">Smart appliance schedule <span class="pill" id="surplusPillFull">calculating...</span></div>
     <div id="surplusBarFull" style="margin:10px 0 8px"></div>
@@ -535,7 +536,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
   </div>
 </div>
 
-<div id="pgLog" class="page">
+<div id="pgLog" class="page" style="padding:14px;padding-bottom:90px">
   <div class="card" style="margin-bottom:10px">
     <div class="ct">Energy summary <span style="font-size:10px;font-weight:400;color:var(--t2)" id="logDaysLbl"></span></div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
@@ -585,6 +586,8 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     <div id="logBodyInner"><div class="empty-log">No readings yet.<br>The app logs automatically every 30 seconds when solar is active.</div></div>
   </div>
 </div>
+
+</div><!-- /pgLog -->
 
 </div><!-- /body -->
 
@@ -3143,7 +3146,7 @@ applyAutoConsumption();  // apply profile on startup if available
 
 </script>
 
-<div class="page" id="pgFaq">
+<div class="page" id="pgFaq" style="padding:14px;padding-bottom:90px">
   <div class="card">
     <div class="ct">❓ How this app works</div>
     <p style="font-size:14px;line-height:1.7;color:var(--tx);margin:0 0 12px">
