@@ -531,7 +531,11 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 </div>
 
 <div id="pgSched" class="page">
-  <div class="card"><div class="ct">Smart appliance schedule</div><div class="sched" id="sch"><div class="empty-log">Awaiting forecast data...</div></div></div>
+  <div class="card" id="schedCardFull">
+    <div class="ct">Smart appliance schedule <span class="pill" id="surplusPillFull">calculating...</span></div>
+    <div id="surplusBarFull" style="margin:10px 0 8px"></div>
+    <div id="smartSchedFull"></div>
+  </div>
 </div>
 
 <div id="pgLog" class="page">
@@ -1999,7 +2003,7 @@ function renderSched() {
     '<div class="stm">'+a.b+' · '+a.r+'</div></div>'+
     '<div class="sbg '+(a.s==='best'?'sb-b':a.s==='ok'?'sb-o':'sb-a')+'">'+(a.s==='best'?'Best':a.s==='ok'?'OK':'Avoid')+'</div></div>'
   ).join('');
-  document.getElementById('sch').innerHTML=html;
+  (document.getElementById('sch')||{innerHTML:''}).innerHTML=html;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2737,7 +2741,7 @@ function renderForecastProduction() {
 
 
 
-  document.getElementById('fcProdBody').innerHTML =
+  const _fcb = document.getElementById('fcProdBody'); if (!_fcb) return; _fcb.innerHTML =
     // Top stats row
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">' +
       '<div style="text-align:center;background:var(--sf2);border-radius:var(--rs);padding:8px 4px">' +
@@ -2861,6 +2865,13 @@ function renderSmartSched() {
 
   document.getElementById('smartSched').innerHTML =
     '<div class="sched">' + rows + '</div>';
+  // Also render into the Schedule tab (full page view)
+  const fullSched = document.getElementById('smartSchedFull');
+  if (fullSched) fullSched.innerHTML = '<div class="sched">' + rows + '</div>';
+  const fullBar = document.getElementById('surplusBarFull');
+  if (fullBar) fullBar.innerHTML = document.getElementById('surplusBar').innerHTML;
+  const fullPill = document.getElementById('surplusPillFull');
+  if (fullPill) { fullPill.textContent = pill.textContent; fullPill.className = pill.className; }
 
 }
 
