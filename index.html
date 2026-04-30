@@ -2864,16 +2864,25 @@ const applianceState = {};
 
 function renderSmartSched() {
   const fl      = calcFlow();
-  const surplus = fl.pv - fl.cons;           // kW available above consumption
   const acMax   = SYS.acMax;
+  // Use gridExport as the clearest surplus signal (real energy going to grid)
+  // If battery is discharging, no meaningful solar surplus for appliances
+  const battDischarging = fl.battFlow < -0.05;
+  const lowSolar        = ST.pvKw < 0.5;
+  const surplus = fl.gridExport > 0.05
+    ? fl.gridExport          // real surplus exported to grid
+    : fl.pv - fl.cons;       // model estimate
 
   // Surplus pill
   const pill = document.getElementById('surplusPill');
-  if (surplus > 0.1) {
+  if (surplus >= 1.5 && !battDischarging && !lowSolar) {
     pill.textContent = '+' + f(surplus,2) + ' kW surplus';
     pill.className   = 'pill p-ok';
-  } else if (surplus > -0.3) {
-    pill.textContent = 'balanced';
+  } else if (battDischarging || lowSolar) {
+    pill.textContent = lowSolar ? 'low solar' : 'battery discharging';
+    pill.className   = 'pill p-warn';
+  } else if (surplus > 0.1) {
+    pill.textContent = '+' + f(surplus,2) + ' kW — too low';
     pill.className   = 'pill p-info';
   } else {
     pill.textContent = f(surplus,2) + ' kW deficit';
@@ -2894,7 +2903,7 @@ function renderSmartSched() {
   // Find the first (highest priority) appliance that can run
   const firstRunnable = APPLIANCES.find(app => surplus >= 1.5 && surplus >= app.kw);
   const rows = APPLIANCES.map(app => {
-    const canRun    = surplus >= 1.5 && surplus >= app.kw;    // need ≥1.5 kW surplus AND enough for this app
+    const canRun    = surplus >= 1.5 && surplus >= app.kw && !battDischarging && !lowSolar;
     const partial   = !canRun && surplus > 0 && surplus >= app.kw * 0.4; // partial solar
     const battCovers= !canRun && !partial && stored() > app.kw * 0.5;   // battery can help
     const deficit   = !canRun && !partial && !battCovers;
