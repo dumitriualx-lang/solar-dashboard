@@ -3207,9 +3207,11 @@ setInterval(updateClock, 1000);              // clock every second
 // Instant refresh when app comes back from background
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
-    lastFlowT = Date.now(); // reset clock to avoid huge SOC jump
+    lastFlowT = Date.now(); // reset clock to avoid SOC jump on resume
     applyAutoConsumption();
     renderAll();
+    // Re-fetch weather immediately on resume so data is fresh (don't wait 60s)
+    fetchWeather();
   }
 });
 applyAutoConsumption();  // apply profile on startup if available
