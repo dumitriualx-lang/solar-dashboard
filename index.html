@@ -759,7 +759,7 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   // Only restore SOC from SharedPreferences if evolveSoc hasn't run in the last 60s.
   // If evolveSoc has been running, it has a more accurate evolved value — don't overwrite.
   const socAge = Date.now() - (ST._socEvolvedMs || 0);
-  if (soc >= 0 && socAge > 60000) { ST.battSoc = soc; }
+  if (soc >= 0 && socAge > 300000) { ST.battSoc = soc; } // 5 min guard
   if (consKw > 0)   { ST.consKw      = consKw; }
   // Apply background-evolved solar production if provided and > 0.
   // bgPvKw=0 is intentionally skipped — it likely means the background ran at night
@@ -776,12 +776,13 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   const socEl   = document.getElementById('cfgSoc');
   const panelEl = document.getElementById('cfgPanel');
   const battEl  = document.getElementById('cfgBatt');
+  const azEl    = document.getElementById('cfgAzimuth');
   // Only fill config fields if user has previously saved a config (not on fresh install)
   const userHasSavedCfg = savedCfg && (savedCfg.panelKw || savedCfg.battGross);
   if (userHasSavedCfg) {
     if (socEl   && document.activeElement !== socEl   && soc >= 0)        socEl.value   = Math.round(socToDisplay(soc));
     if (panelEl && document.activeElement !== panelEl && panelKw > 0)     panelEl.value = panelKw;
-    if (azEl) azEl.value = SYS.panelAzimuth || 180;
+    if (azEl    && savedCfg.panelAzimuth)                                 azEl.value    = SYS.panelAzimuth;
     if (battEl  && document.activeElement !== battEl  && battGross > 0)   battEl.value  = battGross;
   }
   updateSocDisplay();
@@ -966,7 +967,7 @@ function applySatelliteRadiation(sat) {
   const acMax   = SYS.acMax || panelKw * 0.984;
   // ×1.07 calibration: satellite measures surface irradiance accurately but
   // panel-level losses (soiling, wiring, mismatch) reduce real output ~7%
-  const pvKw    = +Math.max(0, Math.min(acMax, (poa_in / 1000) * panelKw * 0.984 * tFac * 1.07)).toFixed(3);
+  const pvKw    = +Math.max(0, Math.min(acMax, (poa_in / 1000) * panelKw * 0.984 * tFac)).toFixed(3);
   ST.pvKw      = pvKw;
   ST._satLastMs = Date.now();  // timestamp so NWP won't overwrite this
   ST.irrWm2    = sat.swr;
@@ -1676,12 +1677,7 @@ function showUpdateDialog(versionName, storeUrl, versionCode) {
   const now = document.createElement('button');
   now.className = 'upd-now';
   now.textContent = 'Update ↗';
-  now.onclick = () => {
-    // Try Play Store app first (market://), fall back to web URL
-    const fallback = 'https://play.google.com/store/apps/details?id=com.dumitriualxlang.solardasboard';
-    try { window.location.href = storeUrl; } catch(e) { window.open(fallback, '_blank'); }
-    setTimeout(() => overlay.remove(), 500);
-  };
+  now.onclick = () => { window.open(storeUrl, '_blank'); overlay.remove(); };
   btns.appendChild(later);
   btns.appendChild(now);
   card.appendChild(btns);
@@ -3185,6 +3181,7 @@ setInterval(()=>{
 // renderFlow/renderGridPanel added here so the flow diagram stays in sync
 // with the battery panel (was only updated in the 30s renderAll causing stale display)
 setInterval(()=>{
+  applyAutoConsumption(); // sync profile kW with current hour
   evolveSoc();
   renderBattery();
   renderMetrics();
@@ -3197,6 +3194,15 @@ setInterval(()=>{
   }
 }, 5000);
 setInterval(updateClock, 1000);              // clock every second
+
+// Instant refresh when app comes back from background
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    lastFlowT = Date.now(); // reset clock to avoid huge SOC jump
+    applyAutoConsumption();
+    renderAll();
+  }
+});
 applyAutoConsumption();  // apply profile on startup if available
 // consumption label removed — profile auto-applies via applyAutoConsumption()
 
