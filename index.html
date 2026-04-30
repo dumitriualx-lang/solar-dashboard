@@ -477,43 +477,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
   </div>
 
 
-  
-
-<div class="card">
-    <div class="ct">Grid connection <span class="pill" id="gridPill">—</span></div>
-    <div class="grid-panel">
-      <div class="grid-stat">
-        <div class="gs-lbl">Now</div>
-        <div class="gs-val" id="gsNow">— kW</div>
-        <div class="gs-sub" id="gsNowSub">—</div>
-      </div>
-      <div class="grid-stat">
-        <div class="gs-lbl">Exported today</div>
-        <div class="gs-val cg" id="gsExp">— kWh</div>
-        <div class="gs-sub">fed into grid</div>
-      </div>
-      <div class="grid-stat">
-        <div class="gs-lbl">Imported today</div>
-        <div class="gs-val cr" id="gsImp">— kWh</div>
-        <div class="gs-sub">drawn from grid</div>
-      </div>
-    </div>
-    <div class="grid-flow-bar">
-      <div class="grid-flow-fill" id="gridFlowFill"></div>
-    </div>
-    <div class="grid-status-row">
-      <span style="color:var(--g)">← Exporting</span>
-      <span id="gridBalLbl" style="font-weight:600;color:var(--tx)">Net: 0.00 kWh</span>
-      <span style="color:var(--rd)">Importing →</span>
-    </div>
-  </div>
-
-  <!-- FORECAST PRODUCTION PANEL -->
-  
-
-<div class="card" id="forecastProdCard">
-    <div class="ct">Solar forecast — today <span class="pill p-ok" id="fcProdPill">—</span></div>
-
 <div class="card">
     <div class="ct">Solar irradiance <span id="irrPill" class="pill p-info">Awaiting GPS</span></div>
     <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t2);margin-bottom:4px">
@@ -2749,52 +2712,7 @@ if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch((
 // ═══════════════════════════════════════════════════════════════
 // RENDER — GRID PANEL
 // ═══════════════════════════════════════════════════════════════
-function renderGridPanel() {
-  const fl  = calcFlow();
-  const exp = fl.gridExport, imp = fl.gridImport;
-  const net = +(ST.gridExportKwh - ST.gridImportKwh).toFixed(3);
-  const isExporting = exp > 0.01;
-  const isImporting = imp > 0.01;
-
-  // Pill
-  const pill = document.getElementById('gridPill');
-  if (isExporting) { pill.textContent='Exporting ↑'; pill.className='pill p-ok'; }
-  else if (isImporting) { pill.textContent='Importing ↓'; pill.className='pill p-err'; }
-  else { pill.textContent='Balanced · idle'; pill.className='pill p-info'; }
-
-  // Now value
-  const nowEl = document.getElementById('gsNow');
-  const nowKw = isExporting ? exp : imp;
-  nowEl.textContent = (isExporting?'+':isImporting?'−':'') + f(nowKw,2) + ' kW';
-  nowEl.className = 'gs-val ' + (isExporting?'cg':isImporting?'cr':'');
-  document.getElementById('gsNowSub').textContent =
-    isExporting ? 'feed-in to grid' : isImporting ? 'drawing from grid' : 'no grid exchange';
-
-  // Accumulated today
-  const expVal = f(ST.gridExportKwh, 2) + ' kWh';
-  const impVal = f(ST.gridImportKwh, 2) + ' kWh';
-  document.getElementById('gsExp').textContent = expVal;
-  document.getElementById('gsImp').textContent = impVal;
-
-  // Flow bar: centre = balanced, left = export (green), right = import (red)
-  // Range: -5 kW import (right) to +5 kW export (left)
-  const maxKw  = Math.max(SYS.panelKw, 5);
-  const fill   = document.getElementById('gridFlowFill');
-  if (isExporting) {
-    const pct = Math.min(50, (exp / maxKw) * 50);
-    fill.style.cssText = 'left:' + (50-pct) + '%;width:' + pct + '%;background:#1D9E75';
-  } else if (isImporting) {
-    const pct = Math.min(50, (imp / maxKw) * 50);
-    fill.style.cssText = 'left:50%;width:' + pct + '%;background:#D85A30';
-  } else {
-    fill.style.cssText = 'left:49%;width:2%;background:#888';
-  }
-
-  // Net balance label
-  const balEl = document.getElementById('gridBalLbl');
-  balEl.textContent = 'Net today: ' + (net >= 0 ? '+' : '') + f(net,2) + ' kWh';
-  balEl.style.color = net > 0.01 ? 'var(--g)' : net < -0.01 ? 'var(--rd)' : 'var(--t2)';
-}
+function renderGridPanel() { /* grid panel removed */ }
 
 // ═══════════════════════════════════════════════════════════════
 // RENDER — FORECAST PRODUCTION PANEL
@@ -2813,6 +2731,7 @@ function renderForecastProduction() {
 
   // Pill
   const pill = document.getElementById('fcProdPill');
+  if (!pill) return;
   pill.textContent = today.yieldKwh >= dailyNeed ? 'Surplus day ✓' : 'Deficit day';
   pill.className   = today.yieldKwh >= dailyNeed ? 'pill p-ok' : 'pill p-warn';
 
