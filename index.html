@@ -916,21 +916,18 @@ function applySatelliteRadiation(sat) {
   if (!sat) return;
   const directRad  = sat.direct;
   const diffuseRad = sat.diffuse;
-  if (directRad + diffuseRad <= 0) return;  // night or no data
-  // Satellite measures actual surface irradiance — no ×0.85 calibration needed.
-  // Only apply: tilt factor on beam (0.9), inverter efficiency (0.984), temp derating.
-  // Proper azimuth/tilt geometry for satellite measured data
-  const poa_in  = (ST.lat && ST.lon && (directRad > 0 || diffuseRad > 0))
-    ? calcPOA(directRad, diffuseRad, directRad + diffuseRad, SYS.tiltDeg || 30, SYS.panelAzimuth || 180)
-    : directRad * 0.9 + diffuseRad;  // fallback if no GPS
-  const panelKw = SYS.panelKw || 5;
-  const tempC   = ST.wxTempC || 20;
-  const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(50, poa_in);
-  const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
-  const acMax   = SYS.acMax || panelKw * 0.984;
-  // ×1.07 calibration: satellite measures surface irradiance accurately but
-  // panel-level losses (soiling, wiring, mismatch) reduce real output ~7%
-  const pvKw    = +Math.max(0, Math.min(acMax, (poa_in / 1000) * panelKw * 0.984 * tFac)).toFixed(3);
+  if (directRad + diffuseRad <= 0 && sat.swr <= 0) return;  // night or no data
+  // Use measured GHI (shortwave_radiation) directly — avoids calcPOA geometry blowup
+  // at low sun angles where DNI estimation from direct horizontal becomes unreliable.
+  // Simple tilt gain of 1.10 for 30° south-facing panels at Romanian latitude.
+  // Performance ratio 0.75 accounts for inverter, wiring, soiling, mismatch losses.
+  const ghi      = sat.swr > 0 ? sat.swr : (directRad + diffuseRad);
+  const panelKw  = SYS.panelKw || 5;
+  const tempC    = ST.wxTempC || 20;
+  const cellT    = tempC + (SYS.noct - 20) / 800 * Math.max(0, ghi);
+  const tFac     = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
+  const acMax    = SYS.acMax || panelKw * 0.984;
+  const pvKw     = +Math.max(0, Math.min(acMax, (ghi / 1000) * panelKw * 1.10 * 0.75 * tFac)).toFixed(3);
   ST.pvKw      = pvKw;
   ST._satLastMs = Date.now();  // timestamp so NWP won't overwrite this
   ST.irrWm2    = sat.swr;
@@ -1109,20 +1106,18 @@ function processOpenMeteo(d) {
   // Matches FusionSolar real output within ±5% (validated against live data).
   // The 0.9 factor on beam accounts for panel tilt benefit minus soiling/wiring losses.
   // Use proper azimuth/tilt geometry instead of fixed 0.9 approximation
-  const poa_in  = (ST.lat && ST.lon && (directRad > 0 || diffuseRad > 0))
-    ? calcPOA(directRad, diffuseRad, directRad + diffuseRad, SYS.tiltDeg || 30, SYS.panelAzimuth || 180)
-    : directRad * 0.9 + diffuseRad;  // fallback if no GPS
-  const tempC_v = ST.wxTempC || 25;
-  const cellT_v = tempC_v + (SYS.noct - 20) / 800 * Math.max(50, poa_in);
-  const tFac_v  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_v - 25));
-  const acMax_v = SYS.acMax || (SYS.panelKw || 5) * 0.984;
-  // Only update pvKw from NWP if satellite hasn't provided fresher data recently.
-  // Satellite data is more accurate — don't overwrite it with NWP estimate.
-  const satAge = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
-  if (satAge > 20 * 60 * 1000) {  // satellite data older than 20 min → use NWP
-    ST.pvKw = +Math.max(0, Math.min(acMax_v, (poa_in / 1000) * (SYS.panelKw || 5) * 0.984 * tFac_v * 0.85)).toFixed(3);
+  // Use GHI directly — calcPOA blows up at low sun angles (DNI = dir/cos(SZA) explodes).
+  // Tilt gain 1.10 for 30° south panels, PR 0.75 for real-world losses.
+  const ghi_nwp   = swr > 0 ? Math.min(swr, cs.ghi) : (directRad + diffuseRad);
+  const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
+  const tAmb_nwp  = ST.wxTempC || 25;
+  const cellT_nwp = tAmb_nwp + (SYS.noct - 20) / 800 * Math.max(0, ghi_nwp);
+  const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
+  const satAge    = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
+  if (satAge > 20 * 60 * 1000) {
+    ST.pvKw = +Math.max(0, Math.min(acMax_nwp, (ghi_nwp / 1000) * (SYS.panelKw || 5) * 1.10 * 0.75 * tFac_nwp)).toFixed(3);
   }
-  ST.poaWm2 = +poa_in.toFixed(1);
+  ST.poaWm2 = +ghi_nwp.toFixed(1);
   ST.cfGHI  = swr > 0 ? swr / Math.max(1, ghi) : 1;
 
   // Build todayH from hourly
@@ -1301,25 +1296,19 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
   const corrDHI  = dhi * cfGHI;
   const corrDNI  = (dni || 0) * cfDNI;
 
-  // Plane-of-array irradiance (tilted south-facing panel)
-  const pos      = ST.lat ? solarPosition(ST.lat, ST.lon) : null;
-  const cosZ     = pos ? Math.max(0.05, pos.cosZenith) : 0.5;
-  const useDNI   = (corrDNI > 0) ? corrDNI :
-                   (corrGHI * 0.60 / cosZ);   // fallback split only if no DNI
-  const poa      = calcPOA(useDNI, corrDHI, corrGHI, SYS.tiltDeg, SYS.panelAzimuth || 180);
-
-  // NOCT temperature model
+  // Use GHI directly — calcPOA + DNI estimation blows up at low sun angles.
+  // Tilt gain 1.10 for 30° south panels, PR 0.75 for real-world losses.
   const ambient  = ST.wxTempC || 15;
-  const cellT    = ambient + (45 - 20) * (Math.max(50, poa) / 800);
+  const cellT    = ambient + (45 - 20) * (Math.max(0, corrGHI) / 800);
   const tempF    = Math.max(0.80, 1 - Math.max(0, cellT - 25) * 0.004);
 
   ST.tempFactor  = +tempF.toFixed(4);
   ST.cellTempC   = +cellT.toFixed(1);
-  ST.poaWm2      = +poa.toFixed(1);
+  ST.poaWm2      = +corrGHI.toFixed(1);
   ST.cfGHI       = +cfGHI.toFixed(3);
 
   const acMax    = SYS.acMax;
-  const raw      = (poa / 1000) * acMax * tempF * 0.85;  // calibration factor
+  const raw      = (corrGHI / 1000) * acMax * 1.10 * 0.75 * tempF;
   return +Math.max(0, Math.min(acMax, raw)).toFixed(3);
 }
 
