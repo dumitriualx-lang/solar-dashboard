@@ -838,6 +838,16 @@ function applyPosition(pos) {
   if (moved) fetchWeather();
 }
 
+function onLocationErr(err) {
+  if (err.code === 1) {
+    // Permission denied by user in browser/system prompt
+    setGps('err', '⚠️ Location denied — tap Allow GPS and accept the permission prompt.');
+  } else if (err.code === 2) {
+    setGps('err', '⚠️ Location unavailable — ensure GPS/Location is enabled on this device.');
+  } else {
+    setGps('err', '⚠️ Location timed out — tap Allow GPS to retry.');
+  }
+}
 
 function onLocationOk(lat, lon, name, acc) {
   ST.lat = lat; ST.lon = lon; ST.locName = name; ST.gpsAccuracy = acc; ST.gpsOk = true;
@@ -873,12 +883,14 @@ function setGps(type, html) {
 // Falls back silently — existing forecast path remains the safety net.
 async function fetchSatelliteRadiation(lat, lon) {
   try {
+    // timezone=UTC so returned timestamps are UTC — safe to compare against Date.now()
+    // regardless of device timezone or panel location timezone.
     const url = 'https://satellite-api.open-meteo.com/v1/archive?'
       + 'latitude=' + lat + '&longitude=' + lon
       + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation'
       + '&models=satellite_radiation_seamless'
       + '&temporal_resolution=native'
-      + '&timezone=auto&forecast_days=1';
+      + '&timezone=UTC&forecast_days=1';
     const r = await fetch(url, { headers: { 'User-Agent': 'SolarDashboard/1.0' } });
     if (!r.ok) return null;
     const d = await r.json();
@@ -889,10 +901,10 @@ async function fetchSatelliteRadiation(lat, lon) {
     const dir    = hr.direct_radiation      || [];
     const dif    = hr.diffuse_radiation     || [];
     const nowMs  = Date.now();
-    // Find the most recent reading at or before current time
+    // Append 'Z' so JS parses the timestamp as UTC, not device local time
     let lastIdx = -1;
     for (let i = times.length - 1; i >= 0; i--) {
-      if (new Date(times[i]).getTime() <= nowMs && swr[i] !== null && swr[i] !== undefined) {
+      if (new Date(times[i] + 'Z').getTime() <= nowMs && swr[i] !== null && swr[i] !== undefined) {
         lastIdx = i; break;
       }
     }
@@ -1103,44 +1115,70 @@ function processOpenMeteo(d) {
     ghi = 0; dni = 0; dhi = 0;
   }
 
-  ST.irrWm2  = ghi;
-  // Calibrated model: direct*0.9 + diffuse, temperature-derated, capped at acMax
-  // Matches FusionSolar real output within ±5% (validated against live data).
-  // The 0.9 factor on beam accounts for panel tilt benefit minus soiling/wiring losses.
-  // Use proper azimuth/tilt geometry instead of fixed 0.9 approximation
-  // Use GHI directly — calcPOA blows up at low sun angles (DNI = dir/cos(SZA) explodes).
-  // Tilt gain 1.10 for 30° south panels, PR 0.75 for real-world losses.
-  const ghi_nwp   = swr > 0 ? Math.min(swr, cs.ghi) : (directRad + diffuseRad);
-  const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
-  const tAmb_nwp  = ST.wxTempC || 25;
-  const cellT_nwp = tAmb_nwp + (SYS.noct - 20) / 800 * Math.max(0, ghi_nwp);
-  const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
-  const satAge    = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
-  if (satAge > 20 * 60 * 1000) {
-    ST.pvKw = +Math.max(0, Math.min(acMax_nwp, (ghi_nwp / 1000) * (SYS.panelKw || 5) * 1.10 * 0.75 * tFac_nwp)).toFixed(3);
-  }
-  ST.poaWm2 = +ghi_nwp.toFixed(1);
+  ST.irrWm2 = ghi;
   ST.cfGHI  = swr > 0 ? swr / Math.max(1, ghi) : 1;
 
-  // Build todayH from hourly
-  const now      = new Date();
+  // Store location UTC offset for use elsewhere (satellite timezone alignment, etc.)
+  const utcOffsetSec = d.utc_offset_seconds || 0;
+  ST._utcOffsetSec = utcOffsetSec;
+
+  // Current NWP production — use calcPOA with proper DNI (prefer API DNI over computed)
+  const dniCur = (cur.direct_normal_irradiance || 0) > 0
+    ? +(cur.direct_normal_irradiance)
+    : directRad > 0 ? directRad / cosZen : 0;
+  const dhiCur = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
+  const satAge = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
+  if (satAge > 20 * 60 * 1000) {
+    let poaCur = 0;
+    if (pos.altitude > 2 && (dniCur > 0 || dhiCur > 0)) {
+      poaCur = calcPOA(dniCur, dhiCur, ghi, SYS.tiltDeg || 30, SYS.panelAzimuth || 180);
+    }
+    const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
+    const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
+    const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
+    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * (SYS.panelKw || 5) * 0.75 * tFac_nwp)).toFixed(3);
+    ST.poaWm2 = +poaCur.toFixed(1);
+  }
+
+  // Build todayH from hourly — using location's timezone (utc_offset_seconds)
+  // so "today" matches the panels' local date, not the device's local date.
   const pad = n => String(n).padStart(2,'0');
-  const todayStr = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+  const locNow   = new Date(Date.now() + utcOffsetSec * 1000);
+  const todayStr = locNow.getUTCFullYear() + '-' + pad(locNow.getUTCMonth()+1) + '-' + pad(locNow.getUTCDate());
+  const [todayYr, todayMo, todayDy] = todayStr.split('-').map(Number);
 
   ST.todayH = [];
   (hr.time || []).forEach((t, i) => {
     if (!t.startsWith(todayStr)) return;
-    const h      = parseInt(t.slice(11,13));
-    const swr_h  = hr.shortwave_radiation?.[i] || 0;
-    const dni_h  = hr.direct_normal_irradiance?.[i] || (swr_h * 0.85 / cosZen);
-    const dhi_h  = Math.max(0, swr_h - Math.min(dni_h, 950) * cosZen);
-    const dir_h   = hr.direct_radiation?.[i] || 0;
-    const poa_h   = (ST.lat && ST.lon && (dir_h > 0 || dhi_h > 0))
-      ? calcPOA(dir_h, dhi_h, swr_h, SYS.tiltDeg || 30, SYS.panelAzimuth || 180)
-      : dir_h * 0.9 + dhi_h;  // fallback if no GPS
-    const tFac_h = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, (ST.wxTempC||25) + (SYS.noct-20)/800*Math.max(50,poa_h) - 25));
-    const pvKw   = +Math.max(0, Math.min(SYS.acMax||(SYS.panelKw||5)*0.984, (poa_h/1000)*(SYS.panelKw||5)*0.984*tFac_h*0.85)).toFixed(3);
-    ST.todayH.push({ hour: h, pvKw, ghi: swr_h, dni: dni_h, dhi: dhi_h });
+    const localHour = parseInt(t.slice(11, 13));
+    const swr_h = hr.shortwave_radiation?.[i]        || 0;
+    const dni_h = hr.direct_normal_irradiance?.[i]   || 0;  // already DNI — no conversion needed
+    const dhi_h = hr.diffuse_radiation?.[i]           || 0;
+    const tmp_h = hr.temperature_2m?.[i]              || ST.wxTempC || 20;
+
+    if (swr_h <= 0 && dni_h <= 0) {
+      ST.todayH.push({ hour: localHour, pvKw: 0, ghi: 0, dni: 0, dhi: 0 });
+      return;
+    }
+
+    // Build a UTC Date for the midpoint of this local hour so solarPosition()
+    // computes the correct sun angle for THAT hour, not the current moment.
+    const utcHourFrac = localHour + 0.5 - utcOffsetSec / 3600;
+    const hDate = new Date(Date.UTC(todayYr, todayMo - 1, todayDy) + utcHourFrac * 3600000);
+    const pos_h = solarPosition(ST.lat, ST.lon, hDate);
+
+    const poa_h = (ST.lat && ST.lon && pos_h.altitude > 0 && (dni_h > 0 || dhi_h > 0))
+      ? calcPOA(dni_h, dhi_h, swr_h, SYS.tiltDeg || 30, SYS.panelAzimuth || 180, pos_h)
+      : 0;
+
+    const cellT_h = tmp_h + (SYS.noct - 20) / 800 * Math.max(0, poa_h);
+    const tFac_h  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_h - 25));
+    const pvKw    = +Math.max(0, Math.min(
+      SYS.acMax || (SYS.panelKw||5) * 0.984,
+      (poa_h / 1000) * (SYS.panelKw || 5) * 0.75 * tFac_h
+    )).toFixed(3);
+
+    ST.todayH.push({ hour: localHour, pvKw, ghi: swr_h, dni: dni_h, dhi: dhi_h });
   });
 
   // Build 5-day forecast
@@ -1158,7 +1196,7 @@ function processOpenMeteo(d) {
       const cf_d = Math.max(0, 1 - 0.75 * Math.pow(rain / 100, 3.4));
       yieldKwh   = +((SYS.panelKw || 5) * 5 * cf_d).toFixed(2);
     }
-    FORECAST.push({
+       FORECAST.push({
       d: dayName, yieldKwh,
       tempC: day.temperature_2m_max?.[i] || ST.wxTempC,
       rain:  day.precipitation_probability_max?.[i] || 0,
@@ -1234,15 +1272,16 @@ function wmoText(c){if(c===0)return'Clear sky';if(c<=2)return'Partly cloudy';if(
 // IRRADIANCE → kW (STC: 1000 W/m² = 5 kW peak)
 // ═══════════════════════════════════════════════════════════════
 // ── SOLAR POSITION ─────────────────────────────────────────────
-// Returns { altitude, azimuth } in degrees for current date/time
-function solarPosition(lat, lon) {
-  const now    = new Date();
-  const doy    = Math.floor((now - new Date(now.getFullYear(),0,0)) / 86400000);
-  // Must use UTC hour + longitude for correct solar hour angle
-  // Using local hour double-counts the timezone offset
+// Returns { altitude, azimuth } in degrees.
+// Pass utcDate to get position at a specific UTC moment (used for hourly forecast).
+// Omit utcDate (or pass null) to use current time.
+function solarPosition(lat, lon, utcDate) {
+  const now     = utcDate || new Date();
+  const yr      = now.getUTCFullYear();
+  const doy     = Math.floor((now.getTime() - Date.UTC(yr, 0, 0)) / 86400000);
   const hourUTC = now.getUTCHours() + now.getUTCMinutes()/60 + now.getUTCSeconds()/3600;
-  const decl   = 23.45 * Math.sin((360/365*(doy - 81)) * Math.PI/180);   // degrees
-  const ha     = (hourUTC - 12)*15 + lon;                                  // true solar hour angle
+  const decl   = 23.45 * Math.sin((360/365*(doy - 81)) * Math.PI/180);
+  const ha     = (hourUTC - 12)*15 + lon;
   const latR   = lat  * Math.PI/180;
   const decR   = decl * Math.PI/180;
   const haR    = ha   * Math.PI/180;
@@ -1263,22 +1302,23 @@ function solarPosition(lat, lon) {
 // ghi = Global Horizontal Irradiance (W/m²)
 // tiltDeg = panel tilt from horizontal (e.g. 30)
 // panelAz = panel azimuth (180 = south)
-function calcPOA(dni, dhi, ghi, tiltDeg, panelAz) {
+// pos is optional — when omitted uses current sun position (real-time).
+// Pass a pre-computed solarPosition() result to use a specific-hour position (hourly forecast).
+function calcPOA(dni, dhi, ghi, tiltDeg, panelAz, pos) {
   const lat = ST.lat || 0;
   const lon = ST.lon || 0;
   if (!lat || !lon || (!ghi && !dni)) return 0;
-  const pos     = solarPosition(lat, lon);
-  if (pos.altitude <= 0) return 0;
+  const p = pos || solarPosition(lat, lon);
+  if (p.altitude <= 0) return dhi > 0 ? dhi * (1 + Math.cos(tiltDeg * Math.PI/180)) / 2 : 0;
   const tiltR   = tiltDeg * Math.PI/180;
-  const altR    = pos.altitude * Math.PI/180;
-  const solAzR  = pos.azimuth  * Math.PI/180;
-  const pnlAzR  = panelAz      * Math.PI/180;
-  // Angle of incidence between sun ray and panel normal
+  const altR    = p.altitude * Math.PI/180;
+  const solAzR  = p.azimuth  * Math.PI/180;
+  const pnlAzR  = panelAz    * Math.PI/180;
   const cosAOI  = Math.sin(altR)*Math.cos(tiltR) +
                   Math.cos(altR)*Math.sin(tiltR)*Math.cos(solAzR - pnlAzR);
   const poaBeam   = Math.max(0, cosAOI) * dni;
-  const poaSky    = dhi * (1 + Math.cos(tiltR)) / 2;    // isotropic sky model
-  const poaGround = ghi * 0.20 * (1 - Math.cos(tiltR)) / 2; // ground reflection albedo=0.2
+  const poaSky    = dhi * (1 + Math.cos(tiltR)) / 2;
+  const poaGround = ghi * 0.20 * (1 - Math.cos(tiltR)) / 2;
   return poaBeam + poaSky + poaGround;
 }
 
@@ -1688,7 +1728,7 @@ function updateClock() {
 
 
 // ═══════════════════════════════════════════════════════════════
-  // SNAPSHOT LOG
+// SNAPSHOT LOG
 // ═══════════════════════════════════════════════════════════════
 function snap() {
   const fl = calcFlow();
