@@ -838,16 +838,6 @@ function applyPosition(pos) {
   if (moved) fetchWeather();
 }
 
-function onLocationErr(err) {
-  if (err.code === 1) {
-    // Permission denied by user in browser/system prompt
-    setGps('err', '⚠️ Location denied — tap Allow GPS and accept the permission prompt.');
-  } else if (err.code === 2) {
-    setGps('err', '⚠️ Location unavailable — ensure GPS/Location is enabled on this device.');
-  } else {
-    setGps('err', '⚠️ Location timed out — tap Allow GPS to retry.');
-  }
-}
 
 function onLocationOk(lat, lon, name, acc) {
   ST.lat = lat; ST.lon = lon; ST.locName = name; ST.gpsAccuracy = acc; ST.gpsOk = true;
@@ -917,21 +907,33 @@ function applySatelliteRadiation(sat) {
   const directRad  = sat.direct;
   const diffuseRad = sat.diffuse;
   if (directRad + diffuseRad <= 0 && sat.swr <= 0) return;  // night or no data
-  // Use measured GHI (shortwave_radiation) directly — avoids calcPOA geometry blowup
-  // at low sun angles where DNI estimation from direct horizontal becomes unreliable.
-  // Simple tilt gain of 1.10 for 30° south-facing panels at Romanian latitude.
-  // Performance ratio 0.75 accounts for inverter, wiring, soiling, mismatch losses.
-  const ghi      = sat.swr > 0 ? sat.swr : (directRad + diffuseRad);
-  const panelKw  = SYS.panelKw || 5;
-  const tempC    = ST.wxTempC || 20;
-  const cellT    = tempC + (SYS.noct - 20) / 800 * Math.max(0, ghi);
-  const tFac     = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
-  const acMax    = SYS.acMax || panelKw * 0.984;
-  const pvKw     = +Math.max(0, Math.min(acMax, (ghi / 1000) * panelKw * 1.10 * 0.75 * tFac)).toFixed(3);
+  const ghi = sat.swr > 0 ? sat.swr : (directRad + diffuseRad);
+
+  // Compute POA using the user's configured tilt/azimuth and the satellite beam/diffuse split.
+  // direct_radiation from Open-Meteo is beam on horizontal; DNI = direct / cos(SZA).
+  let poa;
+  if ((directRad > 0 || diffuseRad > 0) && ST.lat && ST.lon) {
+    const pos    = solarPosition(ST.lat, ST.lon);
+    const cosZen = Math.max(0.017, Math.cos((90 - pos.altitude) * Math.PI / 180));
+    const dni    = directRad > 0 ? directRad / cosZen : 0;
+    poa = calcPOA(dni, diffuseRad > 0 ? diffuseRad : ghi * 0.15,
+                  ghi, SYS.tiltDeg || 30, SYS.panelAzimuth || 180);
+  } else {
+    // Fallback: no split data or no GPS — use modest flat tilt approximation
+    poa = ghi * 1.05;
+  }
+
+  const panelKw = SYS.panelKw || 5;
+  const tempC   = ST.wxTempC || 20;
+  const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(0, poa);
+  const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
+  const acMax   = SYS.acMax || panelKw * 0.984;
+  // PR 0.75 covers inverter, DC wiring, soiling and mismatch losses
+  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * panelKw * 0.75 * tFac)).toFixed(3);
   ST.pvKw      = pvKw;
   ST._satLastMs = Date.now();  // timestamp so NWP won't overwrite this
   ST.irrWm2    = sat.swr;
-  ST.poaWm2    = +poa_in.toFixed(1);
+  ST.poaWm2    = +poa.toFixed(1);
 }
 
 async function fetchWeather() {
@@ -1629,7 +1631,14 @@ function showUpdateDialog(versionName, storeUrl, versionCode) {
   const now = document.createElement('button');
   now.className = 'upd-now';
   now.textContent = 'Update ↗';
-  now.onclick = () => { window.open(storeUrl, '_blank'); overlay.remove(); };
+  now.onclick = () => {
+    if (window.AppBridge && typeof AppBridge.openUrl === 'function') {
+      AppBridge.openUrl(storeUrl);
+    } else {
+      window.open(storeUrl, '_blank');
+    }
+    overlay.remove();
+  };
   btns.appendChild(later);
   btns.appendChild(now);
   card.appendChild(btns);
@@ -1679,7 +1688,7 @@ function updateClock() {
 
 
 // ═══════════════════════════════════════════════════════════════
-// SNAPSHOT LOG
+  // SNAPSHOT LOG
 // ═══════════════════════════════════════════════════════════════
 function snap() {
   const fl = calcFlow();
@@ -2210,7 +2219,7 @@ async function requestNotifPermission() {
     if (window.AppBridge.notifGranted && window.AppBridge.notifGranted()) {
       setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
       saveCfg({ ...loadCfg(), notifEnabled: true });
-      scheduleNotifications();
+      scheduleAllNotifications();
     } else {
       if (window.AppBridge.requestNotif) window.AppBridge.requestNotif();
       setNotifBar('ok', '🔔 Allow notifications in the system prompt · then tap Enable again');
@@ -2224,14 +2233,14 @@ async function requestNotifPermission() {
   }
   if ((typeof Notification !== 'undefined' && Notification.permission === 'granted')) {
     setNotifBar('ok', '🔔 Notifications already enabled. Will alert before peak solar windows.');
-    scheduleNotifications();
+    scheduleAllNotifications();
     return;
   }
   const perm = await (typeof Notification !== 'undefined' ? Notification.requestPermission() : Promise.resolve('denied'));
   if (perm === 'granted') {
     setNotifBar('ok', '✅ Notifications enabled! You\'ll be alerted before peak solar windows.');
     saveCfg({ ...loadCfg(), notifEnabled: true });
-    scheduleNotifications();
+    scheduleAllNotifications();
   } else {
     setNotifBar('off', '🔕 Notifications blocked. Enable in browser settings to get appliance alerts.');
     saveCfg({ ...loadCfg(), notifEnabled: false });
@@ -2299,7 +2308,7 @@ function initNotifBar() {
     if (window.AppBridge.notifGranted && window.AppBridge.notifGranted()) {
       setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
       saveCfg({ ...loadCfg(), notifEnabled: true });
-      scheduleNotifications();
+      scheduleAllNotifications();
     } else {
       setNotifBar('req', '🔔 Enable notifications for solar production alerts');
     }
@@ -2313,7 +2322,7 @@ function initNotifBar() {
     }
     if (Notification.permission === 'granted') {
       setNotifBar('ok', '🔔 Notifications active · alerts scheduled around peak solar windows');
-      scheduleNotifications();
+      scheduleAllNotifications();
     } else if (Notification.permission === 'denied') {
       setNotifBar('off', '🔕 Notifications blocked — enable in browser/phone settings');
     } else {
@@ -2380,6 +2389,13 @@ function notifAllowed() {
 function notifyRealtime() {
   if (!notifAllowed()) return;
   const nowMin = Date.now() / 60000;
+  // Restore persisted timestamp on first call so app resume doesn't re-fire within 30 min
+  if (!ST._lastRealtimeNotif) {
+    try {
+      const saved = parseFloat(localStorage.getItem('lastRealtimeNotif') || '0');
+      if (saved > 0) ST._lastRealtimeNotif = saved;
+    } catch(e) {}
+  }
   if (ST._lastRealtimeNotif && nowMin - ST._lastRealtimeNotif < 30) return;
 
   const surplus = +(ST.pvKw - (ST.consKw || 0)).toFixed(2);
@@ -2389,6 +2405,7 @@ function notifyRealtime() {
   if (runnable.length > 0) {
     // High production — can run large appliances
     ST._lastRealtimeNotif = nowMin;
+    try { localStorage.setItem('lastRealtimeNotif', nowMin); } catch(e) {}
     const names = runnable.map(a => a.icon + ' ' + a.name).join(', ');
     ST._lastSurplusNotif = nowMin;
     showNotification(
@@ -2406,6 +2423,7 @@ function notifyRealtime() {
     );
     if (nextWindow) {
       ST._lastRealtimeNotif = nowMin;
+      try { localStorage.setItem('lastRealtimeNotif', nowMin); } catch(e) {}
       showNotification(
         '⏰ Next solar window at ' + nextWindow.hour + ':00',
         'Production too low now (' + f(ST.pvKw,2) + ' kW). ' +
@@ -2464,8 +2482,60 @@ function scheduleEveningForecast() {
   }, msUntil);
 }
 
+// Schedule the morning forecast notification for today
+// Fires at 07:30 with today's production outlook and best appliance window
+function scheduleMorningForecast() {
+  if (notifTimers['morning_forecast']) {
+    clearTimeout(notifTimers['morning_forecast']);
+    delete notifTimers['morning_forecast'];
+  }
+
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(7, 30, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1);
+  const msUntil = target - now;
+
+  notifTimers['morning_forecast'] = setTimeout(() => {
+    delete notifTimers['morning_forecast'];
+    if (!notifAllowed()) { scheduleMorningForecast(); return; }
+    if (!FORECAST.length) { scheduleMorningForecast(); return; }
+
+    const today = FORECAST[0];
+    const peakKw = (SYS.panelKw || 5);
+    const bestHour = ST.todayH && ST.todayH.length
+      ? ST.todayH.reduce((a, b) => b.pvKw > a.pvKw ? b : a, { pvKw: 0, hour: 12 })
+      : { pvKw: 0, hour: 12 };
+    const large = APPLIANCES.filter(a => a.kw >= HIGH_KW);
+    const runnable = large.filter(a => bestHour.pvKw - (ST.consKw || 0) >= a.kw);
+    const names = runnable.length
+      ? runnable.slice(0, 3).map(a => a.icon + ' ' + a.name).join(', ')
+      : 'limited surplus today';
+
+    if (today.yieldKwh >= peakKw * 2) {
+      showNotification(
+        '☀️ Good solar day — ' + f(today.yieldKwh, 1) + ' kWh forecast',
+        today.icon + ' Peak at ' + bestHour.hour + ':00 (' + f(bestHour.pvKw, 2) +
+        ' kW). Best for: ' + names + '. Battery: ' + socToDisplay(ST.battSoc) + '%.',
+        'morning-forecast'
+      );
+    } else {
+      showNotification(
+        '☁️ Limited solar today — ' + f(today.yieldKwh, 1) + ' kWh forecast',
+        today.icon + ' ' + today.d + ': low production expected. ' +
+        'Defer large appliances to a sunnier day. Battery: ' + socToDisplay(ST.battSoc) + '%.',
+        'morning-forecast'
+      );
+    }
+
+    // Reschedule for next morning
+    scheduleMorningForecast();
+  }, msUntil);
+}
+
 function scheduleAllNotifications() {
   if (!notifAllowed()) return;
+  scheduleMorningForecast();
   scheduleEveningForecast();
   // Real-time notifications are triggered by fetchWeather via notifyRealtime()
 }
@@ -2667,6 +2737,8 @@ function saveCfgAndApply() {
   msg.style.color = 'var(--g)';
   setTimeout(() => { pill.style.display = 'none'; }, 3000);
 
+  // Apply current-hour consumption from updated profile before re-rendering
+  applyAutoConsumption();
   // Re-render everything with new values
   renderAll();
   renderSched();
@@ -3124,9 +3196,12 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     lastFlowT = Date.now(); // reset clock to avoid SOC jump on resume
     applyAutoConsumption();
-    renderAll();
+        renderAll();
     // Re-fetch weather immediately on resume so data is fresh (don't wait 60s)
     fetchWeather();
+    // Re-check for updates on every resume — catches cases where update was
+    // released while the app was running in background
+    checkForUpdate();
   }
 });
 applyAutoConsumption();  // apply profile on startup if available
@@ -3170,9 +3245,8 @@ applyAutoConsumption();  // apply profile on startup if available
         <strong>Tip:</strong> Your average daily consumption divided by 24 gives a rough starting kW per slot.
         Adjust evening higher (cooking, TV, lighting) and night lower (standby only).
         The <strong>Log tab</strong> shows your cumulative energy summary — produced, consumed, self-sufficiency
-        and daily average — calculated automatically from all recorded snapshots. Use it to validate and
-        refine your consumption profile over time.
-      </div>
+        and daily average — calculated automatically from all recorded snapshots. Use it to validate and refine your consumption profile over time.
+        </div>
     </div>
 
     <div style="font-size:13px;font-weight:700;color:var(--bl);margin-bottom:6px">🔋 Battery</div>
@@ -3200,14 +3274,26 @@ applyAutoConsumption();  // apply profile on startup if available
     </p>
 
     <div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:6px">📡 Data sources</div>
-    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 80px">
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
       Weather &amp; irradiance: <strong style="color:var(--tx)">Open-Meteo</strong> (free, no API key, updates every 5 min).<br>
       Location: device GPS.<br>
       All calculations run locally on your device — no data is sent anywhere.
     </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:6px">🚀 App updates</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 10px">
+      The app checks for updates automatically on launch. You can also check manually at any time.
+    </p>
+    <button onclick="checkForUpdate().then(()=>{ document.getElementById('faqUpdMsg').textContent='✅ Check complete'; setTimeout(()=>document.getElementById('faqUpdMsg').textContent='',3000); })"
+      style="background:var(--bl);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:6px">
+      🔍 Check for updates
+    </button>
+    <span id="faqUpdMsg" style="font-size:12px;color:var(--g);margin-left:8px"></span>
+    <div style="margin-bottom:80px"></div>
   </div>
 </div>
 
 </body>
 </html>
 </div>
+    
