@@ -722,8 +722,7 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   // Only restore SOC from SharedPreferences if evolveSoc hasn't run in the last 60s.
   // If evolveSoc has been running, it has a more accurate evolved value — don't overwrite.
   const socAge = Date.now() - (ST._socEvolvedMs || 0);
-  - if (soc >= 0 && socAge > 300000) { ST.battSoc = soc; } // 5 min guard
-+ if (soc >= 0 && socAge > 90000) { ST.battSoc = soc; } // 90s guard — allow native evolved SOC to win
+  if (soc >= 0 && socAge > 90000) { ST.battSoc = soc; } // 90s guard — allow native evolved SOC to win
   if (consKw > 0)   { ST.consKw      = consKw; }
   // Apply background-evolved solar production if provided and > 0.
   // bgPvKw=0 is intentionally skipped — it likely means the background ran at night
@@ -849,7 +848,7 @@ function onLocationErr(err) {
     setGps('err', '⚠️ Location timed out — tap Allow GPS to retry.');
   }
 }
-
+  
 function onLocationOk(lat, lon, name, acc) {
   ST.lat = lat; ST.lon = lon; ST.locName = name; ST.gpsAccuracy = acc; ST.gpsOk = true;
   setGps('ok', '📍 ' + (name && !name.includes('°') ? name : 'Locating...'));
@@ -1131,8 +1130,7 @@ function processOpenMeteo(d) {
   const satAge = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
   if (satAge > 20 * 60 * 1000) {
     let poaCur = 0;
-   - if (pos.altitude > 2 && (dniCur > 0 || dhiCur > 0)) {
-+ if (pos.altitude > 0 && (dniCur > 0 || dhiCur > 0)) {
+    if (pos.altitude > 0 && (dniCur > 0 || dhiCur > 0)) {
       poaCur = calcPOA(dniCur, dhiCur, ghi, SYS.tiltDeg || 30, SYS.panelAzimuth || 180);
     }
     const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
@@ -1198,7 +1196,7 @@ function processOpenMeteo(d) {
       const cf_d = Math.max(0, 1 - 0.75 * Math.pow(rain / 100, 3.4));
       yieldKwh   = +((SYS.panelKw || 5) * 5 * cf_d).toFixed(2);
     }
-       FORECAST.push({
+    FORECAST.push({
       d: dayName, yieldKwh,
       tempC: day.temperature_2m_max?.[i] || ST.wxTempC,
       rain:  day.precipitation_probability_max?.[i] || 0,
@@ -1700,7 +1698,7 @@ function openSocEdit() {
 }
 function closeSocEdit() {
   const row = document.getElementById('socEditRow');
-  if (row) row.style.display = 'none';
+    if (row) row.style.display = 'none';
 }
 function applySocEdit() {
   const inp = document.getElementById('socEditInput');
@@ -2499,6 +2497,7 @@ function scheduleEveningForecast() {
     const todayKey = new Date().toDateString();
     if (localStorage.getItem('lastEveningNotifDay') === todayKey) { scheduleEveningForecast(); return; }
     localStorage.setItem('lastEveningNotifDay', todayKey);
+
     // Tomorrow is FORECAST[1]
     const tomorrow = FORECAST[1];
     const peakKw = (SYS.panelKw || 5);
@@ -2549,6 +2548,7 @@ function scheduleMorningForecast() {
     const todayKey = new Date().toDateString();
     if (localStorage.getItem('lastMorningNotifDay') === todayKey) { scheduleMorningForecast(); return; }
     localStorage.setItem('lastMorningNotifDay', todayKey);
+    
     const today = FORECAST[0];
     const peakKw = (SYS.panelKw || 5);
     const bestHour = ST.todayH && ST.todayH.length
@@ -3285,32 +3285,9 @@ document.addEventListener('visibilitychange', () => {
     checkForUpdate();
   }
 });
-        // Compute flow with estimated background production, evolve SOC
-        const savedPvKw = ST.pvKw;
-        ST.pvKw = avgPvKw;
-        const fl = calcFlow();
-        ST.pvKw = savedPvKw;
-        const hardFlr = Math.round((SYS.battRes || 0.1) * 50);
-        const battEff = 0.95;
-        const effFlow = fl.battFlow > 0 ? fl.battFlow * battEff : fl.battFlow;
-        ST.battSoc = Math.max(hardFlr, Math.min(100,
-          ST.battSoc + (effFlow / (SYS.battUse || 4.5)) * bgGapH * 100
-        ));
-        if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
-          try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
-        }
-      }
-    }
-    lastFlowT = Date.now(); // reset clock so evolveSoc doesn't double-count
-    applyAutoConsumption();
-    renderAll();
-    // Re-fetch weather immediately on resume so data is fresh (don't wait 60s)
-    fetchWeather();
-    // Re-check for updates on every resume — catches cases where update was
-    // released while the app was running in background
-    checkForUpdate();
-  }
-});
+applyAutoConsumption();  // apply profile on startup if available
+// consumption label removed — profile auto-applies via applyAutoConsumption()
+
 
 </script>
 
@@ -3349,8 +3326,9 @@ document.addEventListener('visibilitychange', () => {
         <strong>Tip:</strong> Your average daily consumption divided by 24 gives a rough starting kW per slot.
         Adjust evening higher (cooking, TV, lighting) and night lower (standby only).
         The <strong>Log tab</strong> shows your cumulative energy summary — produced, consumed, self-sufficiency
-        and daily average — calculated automatically from all recorded snapshots. Use it to validate and refine your consumption profile over time.
-        </div>
+        and daily average — calculated automatically from all recorded snapshots. Use it to validate and
+        refine your consumption profile over time.
+      </div>
     </div>
 
     <div style="font-size:13px;font-weight:700;color:var(--bl);margin-bottom:6px">🔋 Battery</div>
@@ -3400,4 +3378,3 @@ document.addEventListener('visibilitychange', () => {
 </body>
 </html>
 </div>
-    
