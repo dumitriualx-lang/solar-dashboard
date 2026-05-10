@@ -1605,11 +1605,16 @@ function showUpdateDialog(versionName, storeUrl, versionCode) {
   now.className = 'upd-now';
   now.textContent = 'Update ↗';
   now.onclick = () => {
-    // Use Android intent URL — forces OS to open Play Store app, bypasses TWA WebView interception
-    const pkg = 'com.dumitriualxlang.solardasboard';
-    const intentUrl = 'intent://details?id=' + pkg + '#Intent;scheme=market;package=com.android.vending;end';
-    window.location.href = intentUrl;
-    setTimeout(() => overlay.remove(), 300);
+    try { localStorage.setItem('updDismissed', versionCode); } catch(e) {}
+    overlay.remove();
+    // Create a real anchor and click it — TWA routes _blank anchors to Chrome Custom Tab
+    const a = document.createElement('a');
+    a.href = storeUrl;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
   btns.appendChild(later);
   btns.appendChild(now);
