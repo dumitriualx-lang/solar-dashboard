@@ -41,7 +41,6 @@
   --shadow-sm:0 1px 2px rgba(0,0,0,.2),0 2px 8px rgba(0,0,0,.15);
   --glass:rgba(20,24,32,.82);--glass-border:rgba(255,255,255,.1);
 }}
-/* Explicit dark — overrides system light */
 [data-theme="dark"]{
   --bg:#0A0D12;--sf:#141820;--sf2:#1A1F28;
   --br:rgba(255,255,255,.08);--br2:rgba(255,255,255,.04);
@@ -50,7 +49,6 @@
   --shadow-sm:0 1px 2px rgba(0,0,0,.2),0 2px 8px rgba(0,0,0,.15);
   --glass:rgba(20,24,32,.82);--glass-border:rgba(255,255,255,.1);
 }
-/* Explicit light — overrides system dark */
 [data-theme="light"]{
   --bg:#F0F2F5;--sf:#fff;--sf2:#F7F8FA;
   --br:rgba(0,0,0,.07);--br2:rgba(0,0,0,.04);
@@ -74,21 +72,13 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 .ct{font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
 .pill{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600;text-transform:none;letter-spacing:0;backdrop-filter:blur(8px)}
 .p-ok{background:var(--gl);color:#0F6E56}.p-warn{background:var(--aml);color:#854F0B}.p-info{background:var(--bll);color:#185FA5}.p-err{background:var(--rdl);color:var(--rd)}
-/* GPS banner */
 .gps-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:13px;margin-bottom:10px;gap:8px;flex-wrap:wrap}
 .gps-ok{background:var(--gl);color:#0F6E56}.gps-req{background:var(--bll);color:#185FA5}.gps-err{background:var(--aml);color:#854F0B}
 .gps-btn{background:none;border:.5px solid currentColor;border-radius:6px;padding:2px 8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:inherit;white-space:nowrap}
-/* API status */
 .api-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:13px;margin-bottom:10px;gap:8px}
 .api-ok{background:var(--gl);color:#0F6E56}.api-err{background:var(--aml);color:#854F0B}.api-load{background:var(--bll);color:#185FA5}
 .api-refresh{background:none;border:.5px solid currentColor;border-radius:6px;padding:2px 8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:inherit;white-space:nowrap}
-/* Consumption input */
-
-
-
-
 .log-btn{background:linear-gradient(135deg,var(--g),var(--g2));color:#fff;border:none;border-radius:var(--rs);padding:9px 16px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(29,158,117,.35);letter-spacing:.01em}
-/* Metrics */
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .mc{background:var(--sf);border-radius:var(--r);border:.5px solid var(--br);padding:14px;box-shadow:var(--shadow-sm);transition:transform .15s ease}
 .mc.wide{grid-column:span 2}
@@ -96,14 +86,9 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 .mc-val{font-size:14px;font-weight:700;line-height:1}
 .mc-sub{font-size:11px;color:var(--t2);margin-top:4px;line-height:1.3}
 .cg{color:var(--g)!important}.ca{color:var(--am)!important}.cr{color:var(--rd)!important}.cb{color:var(--bl)!important}
-/* Irradiance bar */
 .irr-bar{height:8px;border-radius:4px;background:var(--sf2);margin:8px 0 4px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.08)}
 .irr-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#F5A623,#27AE60);transition:width 1s cubic-bezier(.4,0,.2,1);box-shadow:0 0 8px rgba(29,158,117,.4)}
-/* Battery */
-/* Battery compact strip only — no batt-row, batt-vis, batt-body CSS needed */
-/* Flow */
 .flow{display:grid;grid-template-columns:1fr 40px 1fr;align-items:flex-start}
-/* Energy flow */
 .ef{display:flex;align-items:center;gap:8px;padding:4px 0}
 .ef-sol{flex:0 0 80px;background:var(--sf2);border:1px solid #1D9E7555;border-radius:var(--rs);padding:10px 6px;text-align:center;box-sizing:border-box}
 .ef-nodes{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
@@ -122,7 +107,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 .upd-btns{display:flex;gap:10px}
 .upd-later{flex:1;padding:10px;border-radius:var(--rs);border:.5px solid var(--br);background:none;color:var(--t2);font-size:13px;font-family:inherit;cursor:pointer}
 .upd-now{flex:1;padding:10px;border-radius:var(--rs);border:none;background:var(--g);color:#fff;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
-/* Consumption profile slider — hide native, show custom track */
 .ps-wrap{position:relative;height:20px;display:flex;align-items:center}
 .ps-track{position:absolute;left:0;right:0;height:5px;background:var(--sf2);border-radius:3px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.08)}
 .ps-fill{height:100%;background:var(--g);border-radius:3px;transition:width .15s ease}
@@ -134,30 +118,25 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 .arr-dot{width:8px;height:8px;border-radius:50%;position:absolute;top:-2.5px;animation:adot 1s linear infinite}
 @keyframes adot{0%{left:-8px}100%{left:100%}}
 .arr-head{font-size:11px;color:var(--t3)}
-/* Weather */
 .wstrip{display:flex;gap:4px;margin-bottom:10px}
 .wd{flex:1;text-align:center;padding:6px 2px;border-radius:var(--rs);background:var(--sf2)}
 .wd.today{background:var(--gl);border:.5px solid var(--g)}
 .wi{font-size:15px}.wn{font-size:10px;color:var(--t2);margin:2px 0}
 .wt{font-size:11px;font-weight:600;color:var(--tx)}.wkwh{font-size:10px;font-weight:700}.wr{font-size:9px;color:var(--t3)}
-/* Schedule */
 .sched{display:flex;flex-direction:column;gap:6px}
 .si{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--rs);background:var(--sf2)}
 .sic{font-size:13px;flex-shrink:0}.sinf{flex:1;min-width:0}
 .snm{font-size:13px;font-weight:600;color:var(--tx)}.stm{font-size:11px;color:var(--t2);line-height:1.35;margin-top:1px}
 .sbg{font-size:11px;padding:2px 8px;border-radius:8px;flex-shrink:0;font-weight:600}
 .sb-b{background:var(--gl);color:#0F6E56}.sb-o{background:var(--bll);color:#185FA5}.sb-a{background:var(--rdl);color:var(--rd)}
-/* Alerts */
 .alert{padding:10px 12px;border-radius:var(--rs);font-size:12px;margin-bottom:6px;line-height:1.55;border-left:3px solid}
 .alert:last-child{margin-bottom:0}
 .al-s{background:var(--gl);border-color:var(--g);color:#0F6E56}.al-w{background:var(--aml);border-color:var(--am);color:#854F0B}
 .al-i{background:var(--bll);border-color:var(--bl);color:#185FA5}.al-d{background:var(--rdl);border-color:var(--rd);color:var(--rd)}
-/* Charts */
 .chart-wrap{position:relative;width:100%;height:175px}.chart-sm{position:relative;width:100%;height:150px}
 .leg{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
 .li{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--t2)}
 .lln{width:12px;height:2px;display:inline-block;border-radius:1px}.lbr{width:9px;height:9px;display:inline-block;border-radius:2px}
-/* Tabs + Nav */
 .tabs{display:flex;gap:2px;background:var(--sf2);padding:3px;border-radius:var(--rs);margin-bottom:10px}
 .tab{flex:1;padding:5px;text-align:center;font-size:12px;border-radius:6px;cursor:pointer;color:var(--t2);border:none;background:transparent;font-family:inherit}
 .tab.on{background:var(--sf);color:var(--tx);font-weight:700;border:.5px solid var(--br)}
@@ -165,19 +144,16 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 .nb{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px 6px;gap:3px;font-size:13px;color:var(--t3);border:none;background:none;cursor:pointer;font-family:inherit}
 .nb.on{color:var(--g)}.ni{font-size:16px}
 .page{display:none}.page.on{display:block}
-/* Log */
 .log-table{width:100%;border-collapse:collapse;font-size:12px}
 .log-table th{text-align:left;padding:6px 8px;font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;border-bottom:.5px solid var(--br)}
 .log-table td{padding:7px 8px;border-bottom:.5px solid var(--br);color:var(--tx)}
 .log-table tr:last-child td{border-bottom:none}
 .empty-log{text-align:center;padding:28px;color:var(--t2);font-size:12px;line-height:1.6}
-/* Install */
 .inst{background:var(--g);color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
 .inst button{background:rgba(255,255,255,.22);border:none;color:#fff;padding:5px 12px;border-radius:7px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer}
 .toggle-wrap{display:flex;gap:2px;background:var(--sf2);padding:3px;border-radius:var(--rs)}
 .tog-btn{padding:3px 12px;font-size:11px;font-weight:600;border-radius:6px;border:none;background:transparent;color:var(--t2);cursor:pointer;font-family:inherit;transition:all .15s}
 .tog-btn.on{background:var(--sf);color:var(--tx);border:.5px solid var(--br)}
-/* Settings card */
 .cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .cfg-group{display:flex;flex-direction:column;gap:3px}
 .cfg-lbl{font-size:11px;color:var(--t2);font-weight:600}
@@ -187,21 +163,17 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 .cfg-hint{font-size:11px;color:var(--t3)}
 .cfg-save{background:linear-gradient(135deg,var(--g),var(--g2));color:#fff;border:none;border-radius:var(--rs);padding:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;width:100%;margin-top:6px;box-shadow:0 2px 8px rgba(29,158,117,.3);letter-spacing:.01em}
 .cfg-saved{font-size:11px;color:var(--g);text-align:center;margin-top:4px;height:14px}
-/* Manufacturer dropdowns */
 .mfr-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .mfr-group{display:flex;flex-direction:column;gap:3px}
 .mfr-lbl{font-size:11px;color:var(--t2);font-weight:600}
 .mfr-select{width:100%;padding:7px 10px;font-size:13px;font-weight:600;font-family:inherit;background:var(--sf2);color:var(--tx);border:.5px solid var(--br);border-radius:var(--rs);appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
 .mfr-hint{font-size:11px;color:var(--t3)}
-/* Notification styles */
 .notif-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:var(--rs);font-size:13px;font-weight:500;margin-bottom:10px;gap:10px;flex-wrap:wrap}
 .notif-ok{background:var(--gl);color:#0F6E56}
 .notif-req{background:var(--bll);color:#185FA5}
 .notif-off{background:var(--sf2);color:var(--t2)}
 .notif-btn{background:none;border:1.5px solid currentColor;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:inherit;white-space:nowrap}
-/* Smart schedule */
 .sched-surplus{font-size:11px;color:var(--t2);margin-bottom:6px}
-/* Grid export panel */
 .grid-panel{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
 .grid-stat{text-align:center;padding:12px 8px;border-radius:var(--rs);background:var(--sf2);border:.5px solid var(--br2)}
 .gs-lbl{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
@@ -271,7 +243,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     </div>
     <div id="cfgBody" style="display:none">
 
-    <!-- Brand dropdowns -->
     <div class="mfr-grid">
       <div class="mfr-group">
         <div class="mfr-lbl">☀️ Panel brand</div>
@@ -326,7 +297,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
       </div>
     </div>
 
-    <!-- Capacity inputs -->
     <div class="cfg-grid">
       <div class="cfg-group">
         <div class="cfg-lbl">☀️ Panel capacity</div>
@@ -365,7 +335,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
       </div>
     </div>
 
-    <!-- Consumption profile -->
     <div class="cfg-group" style="margin-top:14px">
       <div class="cfg-lbl">🏠 Daily consumption profile</div>
       <div style="font-size:11px;color:var(--t2);margin-bottom:8px">Set once — the app uses this to auto-fill home load by time of day</div>
@@ -417,19 +386,10 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     </div><!-- /cfgBody -->
   </div>
 
-
-  <!-- COMPACT BATTERY STRIP -->
-
-
-  
-
 <div class="card">
     <div class="ct">Energy flow <span id="fTs" style="font-size:10px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--t3)"></span></div>
     <div id="flowG" style="display:block"><div style="grid-column:span 3;text-align:center;padding:20px;color:var(--t2);font-size:11px">Awaiting GPS and irradiance data...</div></div>
   </div>
-
-  <!-- GRID EXPORT / IMPORT PANEL -->
-  
 
 <div class="card" style="padding:10px 14px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -442,7 +402,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
             <span style="font-size:11px;color:var(--t2)" id="battKwhLbl">-- kWh</span>
             <button onclick="openSocEdit()" style="font-size:10px;background:none;border:.5px solid var(--t3);border-radius:4px;padding:1px 5px;color:var(--t2);cursor:pointer;font-family:inherit;margin-left:4px">Edit SOC</button>
           </div>
-          <!-- Inline SOC editor — hidden until Edit SOC tapped -->
           <div id="socEditRow" style="display:none;align-items:center;gap:6px;margin-top:6px">
             <input type="number" id="socEditInput" inputmode="numeric" min="10" max="90" step="1"
               style="width:70px;padding:4px 8px;font-size:14px;font-weight:700;border:.5px solid var(--g);border-radius:6px;background:var(--sf2);color:var(--tx);font-family:inherit;text-align:right">
@@ -457,7 +416,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
         <span style="font-size:10px;color:var(--t2)" id="battBackupLbl">-- h backup</span>
       </div>
     </div>
-    <!-- SOC progress bar -->
     <div style="margin-top:8px;height:5px;border-radius:3px;background:var(--sf2);overflow:hidden">
       <div id="bFill" style="height:100%;border-radius:3px;transition:width 1.2s ease,background .4s ease"></div>
     </div>
@@ -466,13 +424,11 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
       <span id="battTimeLabel">--</span>
       <span id="battMaxLabel">-- kWh usable</span>
     </div>
-    <!-- Charge / discharge flow rate bar -->
     <div style="margin-top:6px;height:4px;border-radius:2px;background:var(--sf2);overflow:hidden">
       <div id="bFlowFill" style="height:100%;border-radius:2px;width:0%;transition:width 1s ease,background .4s ease"></div>
     </div>
     <div style="font-size:9px;color:var(--t3);margin-top:2px;text-align:center;height:11px" id="bFlowLabel"></div>
   </div>
-
 
 <div class="card">
     <div class="ct">Solar irradiance <span id="irrPill" class="pill p-info">Awaiting GPS</span></div>
@@ -482,9 +438,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     <div class="irr-bar"><div class="irr-fill" id="irrFill" style="width:0%"></div></div>
     <div style="font-size:10px;color:var(--t2);margin-top:4px" id="irrSub">Direct + diffuse radiation · Open-Meteo · waiting for GPS fix</div>
   </div>
-
-  <!-- SMART APPLIANCE SCHEDULE -->
-  
 
 <div class="card" id="schedCard">
     <div class="ct" style="margin-bottom:0;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px" onclick="toggleSection('schedBody','schedChevron')">
@@ -497,4 +450,1971 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     <div id="smartSched"></div>
     </div>
   </div>
+</div><!-- /pgDash -->
+
+<div id="pgForecast" class="page" style="padding:14px;padding-bottom:90px">
+  <div class="card">
+    <div class="ct">5-day yield forecast <span class="pill p-ok">Live · Open-Meteo</span></div>
+    <div class="wstrip" id="ws"><div class="empty-log" style="width:100%">Awaiting GPS...</div></div>
+    <div class="chart-sm"><canvas id="fC"></canvas></div>
+    <div class="leg" style="margin-top:8px">
+      <span class="li"><span class="lbr" style="background:rgba(29,158,117,.4);border:1px solid #1D9E75"></span>Surplus day</span>
+      <span class="li"><span class="lbr" style="background:rgba(186,117,23,.4);border:1px solid #BA7517"></span>Deficit day</span>
+      <span class="li"><span class="lln" style="background:#D85A30"></span>Daily need</span>
+    </div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <div class="ct">Today's generation curve <span class="pill p-info">from live irradiance</span></div>
+    <div class="chart-wrap"><canvas id="dayC"></canvas></div>
+    <div class="leg" style="margin-top:8px">
+      <span class="li"><span class="lln" style="background:#1D9E75"></span>Solar kW (from API)</span>
+      <span class="li"><span class="lln" style="background:#D85A30;opacity:.7"></span>Consumption kW</span>
+      <span class="li"><span class="lbr" style="background:rgba(55,138,221,.3);border:1px solid #378ADD"></span>Battery charge kW</span>
+    </div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <div class="ct">Alerts</div>
+    <div id="altsHidden"><div class="empty-log">Loading...</div></div>
+  </div>
 </div>
+
+<div id="pgSched" class="page" style="padding:14px;padding-bottom:90px">
+  <div class="card" id="schedCardFull">
+    <div class="ct">Smart appliance schedule <span class="pill" id="surplusPillFull">calculating...</span></div>
+    <div id="surplusBarFull" style="margin:10px 0 8px"></div>
+    <div id="smartSchedFull"></div>
+  </div>
+</div>
+
+<div id="pgLog" class="page" style="padding:14px;padding-bottom:90px">
+  <div class="card" style="margin-bottom:10px">
+    <div class="ct">Energy summary <span style="font-size:10px;font-weight:400;color:var(--t2)" id="logDaysLbl"></span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+      <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Produced</div>
+        <div style="font-size:16px;font-weight:700;color:#1D9E75" id="statProduced">— kWh</div>
+      </div>
+      <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Consumed</div>
+        <div style="font-size:16px;font-weight:700;color:var(--tx)" id="statConsumed">— kWh</div>
+      </div>
+      <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Daily avg</div>
+        <div style="font-size:16px;font-weight:700;color:#BA7517" id="statDailyAvg">— kWh</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="background:#E1F5EE;border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:#0F6E56;margin-bottom:2px">From solar</div>
+        <div style="font-size:13px;font-weight:700;color:#085041" id="statFromSolar">— kWh</div>
+      </div>
+      <div style="background:var(--bll);border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:#185FA5;margin-bottom:2px">From grid</div>
+        <div style="font-size:13px;font-weight:700;color:#0C447C" id="statFromGrid">— kWh</div>
+      </div>
+      <div style="background:#FAEEDA;border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:#854F0B;margin-bottom:2px">Fed to grid</div>
+        <div style="font-size:13px;font-weight:700;color:#633806" id="statToGrid">— kWh</div>
+      </div>
+      <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Self-sufficiency</div>
+        <div style="font-size:13px;font-weight:700;color:var(--tx)" id="statSelfSuff">—%</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="ct" style="margin-bottom:0;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px" onclick="toggleSection('logBody','logChevron')">
+      <span>Reading log <span class="pill p-info" id="logPill">0 entries</span></span>
+      <span id="logChevron" style="font-size:14px;transition:transform .25s;color:var(--t2)">▼</span>
+    </div>
+    <div id="logBody" style="display:none">
+    <p style="font-size:12px;color:var(--t2);margin:8px 0 10px">Automatic snapshots every 30 seconds.</p>
+    <div id="logBodyInner"><div class="empty-log">No readings yet.<br>The app logs automatically every 30 seconds when solar is active.</div></div>
+  </div>
+</div>
+</div><!-- /pgLog -->
+
+</div><!-- /body -->
+
+<nav class="nav">
+  <button class="nb on"  onclick="showPage('Dash',this)"><span class="ni">⚡</span>Dashboard</button>
+  <button class="nb"     onclick="showPage('Forecast',this)"><span class="ni">📅</span>Forecast</button>
+  <button class="nb"     onclick="showPage('Sched',this)"><span class="ni">🗓️</span>Schedule</button>
+  <button class="nb"     onclick="showPage('Log',this)"><span class="ni">📋</span>Log</button>
+  <button class="nb"     onclick="showPage('Faq',this)"><span class="ni">❓</span>FAQ</button>
+</nav>
+<script>
+window.notifTimers = {};
+const notifTimers = window.notifTimers;
+
+const CFG_KEY = 'solarSysConfig';
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem(CFG_KEY)) || {}; } catch(e) { return {}; }
+}
+function saveCfg(obj) {
+  try { localStorage.setItem(CFG_KEY, JSON.stringify(obj)); } catch(e) {}
+}
+const savedCfg = loadCfg();
+
+function isSysConfigured() {
+  const cfg = loadCfg();
+  return !!(cfg.panelKw && cfg.battGross);
+}
+
+const SYS = (() => {
+  const c = loadCfg();
+  return {
+    panelKw:     c.panelKw     || 5,
+    battGross:   c.battGross   || 10,
+    battRes:     c.battRes     || 0.10,
+    battUse:     c.battGross   ? +(c.battGross*(1-(c.battRes||0.10))).toFixed(2) : 9,
+    battMaxC:    c.battMaxC    || 2.5,
+    battMaxD:    c.battMaxD    || 2.5,
+    invEff:      c.invEff      || 0.984,
+    tempCoeff:   c.tempCoeff   || 0.0037,
+    noct:        c.noct        || 45,
+    tiltDeg:     c.tiltDeg     || 30,
+    panelAzimuth:c.panelAzimuth|| 180,
+    acMax:       c.acMax       || (c.panelKw||5)*0.984,
+    profile:     c.profile     || null,
+    brandName:   c.brandName   || 'Solar System',
+  };
+})();
+
+const ST = {
+  lat:null,lon:null,locName:'Locating...',gpsOk:false,
+  pvKw:0,pvKwhToday:0,
+  consKw:0,
+  battSoc:50,
+  wxTempC:15,wxCond:'',wxIcon:'☁️',
+  cloudCover:50,
+  irrWm2:0,irrDNI:0,irrDif:0,poaWm2:0,
+  cfGHI:1,tempFactor:1,cellTempC:25,
+  apiOk:false,lastFetch:null,
+  todayH:[],
+  gridExportKwh:0,gridImportKwh:0,
+  pvKwhToday:0,
+  _lastDate:null,
+  _fetchInProgress:false,
+  _satLastMs:0,
+  _socEvolvedMs:0,
+  _pvWasOn:false,
+  _pvHistory:[],
+  _prevPvHigh:false,
+  _utcOffsetSec:0,
+};
+
+(function(){
+  const today = new Date().toDateString();
+  try {
+    const saved = JSON.parse(localStorage.getItem('solarDayKwh') || 'null');
+    if (saved && saved.date === today) {
+      ST.gridExportKwh = saved.exp || 0;
+      ST.gridImportKwh = saved.imp || 0;
+      ST._lastDate = today;
+    }
+  } catch(e) {}
+})();
+
+let FORECAST = [];
+const rlog = JSON.parse(localStorage.getItem('solarLog4') || '[]');
+let dchart, fchart, lastFlowT = Date.now();
+let geoWatchId = null;
+
+function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) {
+  if (panelKw > 0)  { SYS.panelKw   = panelKw; }
+  if (battGross > 0){ SYS.battGross  = battGross; SYS.battRes = battRes || 0.10; }
+  const socAge = Date.now() - (ST._socEvolvedMs || 0);
+  if (soc >= 0 && socAge > 90000) { ST.battSoc = soc; }
+  if (consKw > 0)   { ST.consKw      = consKw; }
+  if (typeof bgPvKw === 'number' && bgPvKw > 0 && !ST.apiOk) { ST.pvKw = bgPvKw; }
+  SYS.battUse  = +(SYS.battGross * (1 - SYS.battRes)).toFixed(2);
+  SYS.acMax    = SYS.panelKw * SYS.invEff;
+  lastFlowT    = Date.now();
+  renderAll();
+}
+
+function socToInternal(displayPct) {
+  const floor = (SYS.battRes || 0.10) * 100;
+  const ceil  = 90;
+  const usable = ceil - floor;
+  return Math.max(0, Math.min(100, ((displayPct - floor) / usable) * 100));
+}
+function socToDisplay(internalPct) {
+  const floor = (SYS.battRes || 0.10) * 100;
+  const ceil  = 90;
+  const usable = ceil - floor;
+  return Math.max(floor, Math.min(ceil, floor + (internalPct / 100) * usable));
+}
+
+function solarPosition(lat, lon) {
+  const now   = new Date();
+  const doy   = Math.floor((now - new Date(now.getFullYear(),0,0))/86400000);
+  const hour  = now.getUTCHours() + now.getUTCMinutes()/60 + lon/15;
+  const dec   = -23.45 * Math.cos(2*Math.PI*(doy+10)/365) * Math.PI/180;
+  const ha    = (hour - 12) * 15 * Math.PI/180;
+  const latR  = lat * Math.PI/180;
+  const sinAlt= Math.sin(latR)*Math.sin(dec)+Math.cos(latR)*Math.cos(dec)*Math.cos(ha);
+  const alt   = Math.asin(Math.max(-1,Math.min(1,sinAlt)))*180/Math.PI;
+  const cosAz = (Math.sin(dec)-Math.sin(latR)*sinAlt)/(Math.cos(latR)*Math.cos(Math.asin(sinAlt))||0.001);
+  let az = Math.acos(Math.max(-1,Math.min(1,cosAz)))*180/Math.PI;
+  if (Math.sin(ha)>0) az=360-az;
+  return {altitude:alt, azimuth:az, cosZenith:sinAlt};
+}
+
+function wxLabel(code){
+  if(code===0)return'Clear sky';if(code<=2)return'Partly cloudy';if(code===3)return'Overcast';
+  if(code<=49)return'Foggy';if(code<=59)return'Drizzle';if(code<=69)return'Rain';
+  if(code<=79)return'Snow';if(code<=82)return'Rain showers';if(code<=86)return'Snow showers';
+  if(code<=99)return'Thunderstorm';return'Unknown';
+}
+function wxIcon(code,t){
+  if(code===0)return t>20?'☀️':'🌞';if(code<=2)return'🌤️';if(code===3)return'☁️';
+  if(code<=49)return'🌫️';if(code<=59)return'🌦️';if(code<=69)return'🌧️';
+  if(code<=79)return'❄️';if(code<=82)return'🌧️';if(code<=86)return'🌨️';
+  if(code<=99)return'⛈️';return'🌡️';
+}
+
+function setGps(state, msg) {
+  const bar = document.getElementById('gpsBar');
+  const msgEl = document.getElementById('gpsMsg');
+  const btn = document.getElementById('gpsBtnEl');
+  if (!bar) return;
+  bar.className = 'gps-bar gps-' + state;
+  bar.style.display = 'flex';
+  if (msgEl) msgEl.textContent = msg;
+  if (btn) {
+    if (state === 'ok') { bar.style.display = 'none'; }
+    else if (state === 'req') { btn.textContent = 'Allow GPS'; btn.style.display = ''; }
+    else { btn.textContent = 'Retry'; btn.style.display = ''; }
+  }
+}
+function setApi(state, html) {
+  const bar = document.getElementById('apiBar');
+  const msg = document.getElementById('apiMsg');
+  if (!bar || !msg) return;
+  bar.className = 'api-bar api-' + state;
+  msg.innerHTML = html;
+}
+
+function requestLocation() {
+  if (!('geolocation' in navigator)) {
+    setGps('err','⚠️ Geolocation not supported');
+    return;
+  }
+  setGps('req','📍 Requesting your location...');
+  navigator.geolocation.getCurrentPosition(
+    pos => applyPosition(pos),
+    err => {
+      const msgs = {1:'Permission denied',2:'Position unavailable',3:'Timeout'};
+      setGps('err','⚠️ ' + (msgs[err.code]||'Location error') + ' — ensure GPS/Location is enabled.');
+    },
+    {enableHighAccuracy:true, timeout:20000, maximumAge:60000}
+  );
+}
+
+function applyPosition(pos) {
+  ST.lat    = +pos.coords.latitude.toFixed(5);
+  ST.lon    = +pos.coords.longitude.toFixed(5);
+  ST.gpsOk  = true;
+  const latD = Math.abs(ST.lat).toFixed(2)+(ST.lat>=0?'°N':'°S');
+  const lonD = Math.abs(ST.lon).toFixed(2)+(ST.lon>=0?'°E':'°W');
+  ST.locName = latD+' '+lonD;
+  try {
+    const savedGps = JSON.parse(localStorage.getItem('solarGps')||'null');
+    if (savedGps && savedGps.name && !savedGps.name.includes('°')) ST.locName = savedGps.name;
+  } catch(e){}
+  try { localStorage.setItem('solarGps', JSON.stringify({lat:ST.lat,lon:ST.lon,name:ST.locName})); } catch(e){}
+  setGps('ok','✅ ' + ST.locName);
+  fetchWeather();
+  reverseGeocode(ST.lat, ST.lon);
+}
+
+async function reverseGeocode(lat, lon) {
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/reverse?lat='+lat+'&lon='+lon+'&format=json',
+      {headers:{'User-Agent':'SolarDashboard/1.0'}});
+    const d = await r.json();
+    const name = d.address ? (d.address.city||d.address.town||d.address.village||d.address.county||'') : '';
+    if (name) {
+      ST.locName = name;
+      try { localStorage.setItem('solarGps', JSON.stringify({lat,lon,name})); } catch(e){}
+      setGps('ok','✅ ' + name);
+    }
+  } catch(e){}
+}
+
+function onGpsBtnClick() {
+  const btn = document.getElementById('gpsBtnEl');
+  if (btn && btn.textContent === 'Allow GPS') requestLocation();
+  else requestLocation();
+}
+
+async function fetchSatelliteRadiation(lat, lon) {
+  try {
+    const url = 'https://satellite-api.open-meteo.com/v1/archive?'
+      + 'latitude=' + lat + '&longitude=' + lon
+      + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation'
+      + '&models=satellite_radiation_seamless'
+      + '&temporal_resolution=native'
+      + '&timezone=UTC&forecast_days=1';
+    const r = await fetch(url, { headers: { 'User-Agent': 'SolarDashboard/1.0' } });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const hr = d.hourly;
+    if (!hr || !hr.time) return null;
+    const times = hr.time;
+    const swr   = hr.shortwave_radiation   || [];
+    const dir   = hr.direct_radiation      || [];
+    const dif   = hr.diffuse_radiation     || [];
+    const nowMs = Date.now();
+    let lastIdx = -1;
+    for (let i = times.length - 1; i >= 0; i--) {
+      if (new Date(times[i] + 'Z').getTime() <= nowMs && swr[i] !== null && swr[i] !== undefined) {
+        lastIdx = i; break;
+      }
+    }
+    if (lastIdx < 0) return null;
+    return { swr: swr[lastIdx] || 0, direct: dir[lastIdx] || 0, diffuse: dif[lastIdx] || 0 };
+  } catch(e) { return null; }
+}
+
+function applySatelliteRadiation(sat) {
+  if (!sat) return;
+  const directRad  = sat.direct;
+  const diffuseRad = sat.diffuse;
+  if (directRad + diffuseRad <= 0 && sat.swr <= 0) return;
+  const ghi = sat.swr > 0 ? sat.swr : (directRad + diffuseRad);
+  let poa;
+  if ((directRad > 0 || diffuseRad > 0) && ST.lat && ST.lon) {
+    const pos    = solarPosition(ST.lat, ST.lon);
+    const cosZen = Math.max(0.017, Math.cos((90 - pos.altitude) * Math.PI / 180));
+    const dni    = directRad > 0 ? directRad / cosZen : 0;
+    poa = calcPOA(dni, diffuseRad > 0 ? diffuseRad : ghi * 0.15,
+                  ghi, SYS.tiltDeg || 30, SYS.panelAzimuth || 180);
+  } else {
+    poa = ghi * 1.05;
+  }
+  const panelKw = SYS.panelKw || 5;
+  const tempC   = ST.wxTempC || 20;
+  const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(0, poa);
+  const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
+  const acMax   = SYS.acMax || panelKw * 0.984;
+  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * panelKw * 0.75 * tFac)).toFixed(3);
+  ST.pvKw      = pvKw;
+  ST._satLastMs = Date.now();
+  ST.irrWm2    = sat.swr;
+  ST.poaWm2    = +poa.toFixed(1);
+}
+
+async function fetchWeather() {
+  if (!ST.lat || !ST.lon) {
+    setApi('load', '⏳ Waiting for GPS location...'); return;
+  }
+  if (ST._fetchInProgress) return;
+  ST._fetchInProgress = true;
+  setApi('load', '⏳ Fetching weather...');
+  try {
+    const u = 'https://api.open-meteo.com/v1/forecast?'
+      + 'latitude='  + f(ST.lat,4)
+      + '&longitude=' + f(ST.lon,4)
+      + '&current=temperature_2m,cloud_cover,weathercode,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance'
+      + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,cloud_cover,temperature_2m,precipitation_probability,weathercode'
+      + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
+      + '&timezone=auto&forecast_days=7';
+
+    let raw;
+    if (window.AppBridge && window.AppBridge.fetchWeather) {
+      raw = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('timeout')), 30000);
+        window.__nativeWeatherResult = function(b64) {
+          clearTimeout(timer);
+          delete window.__nativeWeatherResult;
+          try { resolve(atob(b64)); }
+          catch(e) { reject(e); }
+        };
+        try { AppBridge.fetchWeather(u); }
+        catch(e) { clearTimeout(timer); reject(e); }
+      });
+    } else {
+      const r = await fetch(u);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      raw = await r.text();
+    }
+
+    const d = JSON.parse(raw);
+    processOpenMeteo(d);
+    ST.apiOk = true; ST.lastFetch = new Date(); ST._fetchInProgress = false;
+    if (ST.lat && ST.lon) {
+      fetchSatelliteRadiation(ST.lat, ST.lon).then(sat => {
+        if (sat) { applySatelliteRadiation(sat); renderBattery(); renderFlow(); renderMetrics(); renderGridPanel(); }
+      }).catch(() => {});
+    }
+    setApi('ok', '✅ ' + ST.locName + ' · '
+      + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+      + ' · ↻ 1min');
+    scheduleAllNotifications(); notifyRealtime();
+    checkMissedDailyNotifications();
+    storeNotifPayloads();
+  } catch(e) {
+    ST.apiOk = false; ST._fetchInProgress = false;
+    setApi('err', '⚠️ ' + e.message
+      + ' <button class="api-refresh" onclick="fetchWeather()">Retry</button>');
+  }
+  renderAll();
+}
+
+function processOpenMeteo(d) {
+  const cur = d.current || {};
+  const hr  = d.hourly  || {};
+  if (!ST.lat || !ST.lon) return;
+
+  ST.wxTempC   = +(cur.temperature_2m || 15);
+  ST.wxCond    = wxLabel(cur.weathercode || 0);
+  ST.wxIcon    = wxIcon(cur.weathercode  || 0, ST.wxTempC);
+
+  const directRad  = +(cur.direct_radiation  || 0);
+  const diffuseRad = +(cur.diffuse_radiation || 0);
+  const swr        = +(cur.shortwave_radiation || directRad + diffuseRad || 0);
+  ST.cloudCover = +(cur.cloud_cover || 0);
+  const pos = solarPosition(ST.lat, ST.lon);
+  const cosZen = Math.max(0.001, Math.cos((90 - pos.altitude) * Math.PI / 180));
+
+  const cs = clearSkyIrradiance(ST.lat, ST.lon);
+
+  let ghi, dni, dhi;
+  if (pos.altitude > 2 && swr > 0) {
+    ghi = Math.min(swr, cs.ghi);
+    dhi = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
+    dni = Math.min(directRad > 0 ? directRad / Math.max(0.001, cosZen) : (ghi - dhi) / Math.max(0.001, cosZen), 950);
+  } else if (pos.altitude > 2) {
+    const cf = Math.max(0, 1 - 0.75 * Math.pow(ST.cloudCover / 100, 3.4));
+    ghi = cs.ghi * cf;
+    dni = cs.dni * cf;
+    dhi = cs.dhi * Math.max(0.2, 1 - cf * 0.5);
+  } else {
+    ghi = 0; dni = 0; dhi = 0;
+  }
+
+  ST.irrWm2 = ghi;
+  ST.cfGHI  = swr > 0 ? swr / Math.max(1, ghi) : 1;
+  const utcOffsetSec = d.utc_offset_seconds || 0;
+  ST._utcOffsetSec = utcOffsetSec;
+
+  const dniCur = (cur.direct_normal_irradiance || 0) > 0
+    ? +(cur.direct_normal_irradiance)
+    : directRad > 0 ? directRad / cosZen : 0;
+  const dhiCur = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
+  const satAge = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
+  if (satAge > 20 * 60 * 1000) {
+    let poaCur = 0;
+    if (pos.altitude > 0 && (dniCur > 0 || dhiCur > 0)) {
+      poaCur = calcPOA(dniCur, dhiCur, ghi, SYS.tiltDeg || 30, SYS.panelAzimuth || 180);
+    }
+    const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
+    const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
+    const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
+    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * (SYS.panelKw || 5) * 0.75 * tFac_nwp)).toFixed(3);
+    ST.poaWm2 = +poaCur.toFixed(1);
+  }
+
+  const now   = new Date();
+  const tzOff = utcOffsetSec;
+  const times = hr.time || [];
+  ST.todayH   = [];
+
+  for (let i = 0; i < times.length; i++) {
+    const localMs   = new Date(times[i] + 'Z').getTime() + tzOff * 1000;
+    const localDate = new Date(localMs);
+    const nowLocal  = new Date(now.getTime() + tzOff * 1000);
+    if (localDate.toDateString() !== nowLocal.toDateString()) continue;
+    const localHour = localDate.getUTCHours();
+    const swr_h = hr.shortwave_radiation?.[i]          || 0;
+    const dir_h = hr.direct_radiation?.[i]             || 0;
+    const dif_h = hr.diffuse_radiation?.[i]            || 0;
+    const dni_h = hr.direct_normal_irradiance?.[i]     || 0;
+    const cc_h  = hr.cloud_cover?.[i]                  || 0;
+    if (swr_h === 0 && dir_h === 0) {
+      ST.todayH.push({ hour: localHour, pvKw: 0, ghi: 0, dni: 0, dhi: 0 });
+      continue;
+    }
+    const pos_h = null;
+    const poa_h = dni_h > 0 || dif_h > 0
+      ? calcPOA(dni_h, dif_h, swr_h, SYS.tiltDeg || 30, SYS.panelAzimuth || 180, pos_h)
+      : swr_h * 1.05;
+    const acMax_h = SYS.acMax || (SYS.panelKw || 5) * 0.984;
+    const tAmbH   = hr.temperature_2m?.[i] || ST.wxTempC || 20;
+    const cellT_h = tAmbH + (SYS.noct - 20) / 800 * Math.max(0, poa_h);
+    const tFac_h  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_h - 25));
+    const pvKw    = +Math.max(0, Math.min(
+      acMax_h, (poa_h / 1000) * (SYS.panelKw || 5) * 0.75 * tFac_h
+    )).toFixed(3);
+    ST.todayH.push({ hour: localHour, pvKw, ghi: swr_h, dni: dni_h, dhi: dif_h });
+  }
+
+  let yieldKwh = 0;
+  if (ST.todayH.length > 0) {
+    yieldKwh = +ST.todayH.reduce((s, h) => s + h.pvKw, 0).toFixed(2);
+  }
+
+  FORECAST = [];
+  const daily = d.daily || {};
+  const dCodes = daily.weathercode || [];
+  const dTemps = daily.temperature_2m_max || [];
+  const dRain  = daily.precipitation_probability_max || [];
+  const dTimes = daily.time || [];
+
+  for (let dd = 0; dd < Math.min(7, dTimes.length); dd++) {
+    const dayDate = new Date(dTimes[dd] + 'T12:00:00Z');
+    let s = 0;
+    for (let i = 0; i < times.length; i++) {
+      const tMs = new Date(times[i] + 'Z').getTime() + tzOff * 1000;
+      const tD  = new Date(tMs);
+      if (tD.toDateString() !== dayDate.toDateString()) continue;
+      const swr_f = hr.shortwave_radiation?.[i] || 0;
+      const dni_f = hr.direct_normal_irradiance?.[i] || 0;
+      const dif_f = hr.diffuse_radiation?.[i] || 0;
+      if (swr_f === 0) continue;
+      const poa_f   = dni_f > 0 || dif_f > 0
+        ? calcPOA(dni_f, dif_f, swr_f, SYS.tiltDeg||30, SYS.panelAzimuth||180)
+        : swr_f * 1.05;
+      const acMax_f = SYS.acMax || (SYS.panelKw||5) * 0.984;
+      const tAmb_f  = hr.temperature_2m?.[i] || 20;
+      const cellT_f = tAmb_f + (SYS.noct-20)/800 * Math.max(0,poa_f);
+      const tFac_f  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0,cellT_f-25));
+      s += Math.max(0, Math.min(acMax_f, (poa_f/1000)*(SYS.panelKw||5)*0.75*tFac_f));
+    }
+    const dt = dayDate;
+    FORECAST.push({
+      d: dd === 0 ? 'Today' : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dt.getUTCDay()],
+      yieldKwh: +s.toFixed(2),
+      tempC: +(dTemps[dd]||15).toFixed(1),
+      rain:  dRain[dd] || 0,
+      icon:  wxIcon(dCodes[dd]||0, dTemps[dd]||15),
+    });
+  }
+}
+
+function fallbackEstimate() {
+  if (!ST.lat) return;
+  const pos = solarPosition(ST.lat, ST.lon);
+  if (pos.altitude <= 0) { ST.pvKw=0; ST.irrWm2=0; ST.poaWm2=0; return; }
+  const clearSky = Math.sin(pos.altitude * Math.PI/180) * 1000;
+  const ghi = clearSky * 0.20;
+  const dhi = ghi * 0.45; const dni = (ghi * 0.55) / Math.max(0.05, pos.cosZenith);
+  ST.irrWm2  = +ghi.toFixed(0); ST.irrDNI = +dni.toFixed(0); ST.irrDif = +dhi.toFixed(0);
+  ST.pvKw    = irrToKw(ghi, dni, dhi);
+  ST.wxCond  = 'Offline estimate'; ST.wxIcon = '🌤️';
+}
+
+function calcFlow() {
+  const pv   = ST.pvKw  || 0;
+  const cons = ST.consKw || 0;
+  const soc  = ST.battSoc || 50;
+  const hardFlr = 0;
+  const rampTop = 2;
+
+  const s2h = Math.min(pv, cons);
+  const pvS = pv - s2h;
+  const hD  = cons - s2h;
+
+  let battCharge = 0, battDischarge = 0;
+  const maxC = SYS.battMaxC || 2.5;
+  const maxD = SYS.battMaxD || 2.5;
+
+  if (pvS > 0 && soc < 100) {
+    battCharge = Math.min(pvS, maxC);
+  }
+  const gridExport = Math.max(0, pvS - battCharge);
+
+  if (hD > 0 && soc > hardFlr) {
+    const rampF = soc <= rampTop ? soc / rampTop : 1;
+    battDischarge = Math.min(hD, maxD * rampF, (soc / 100) * (SYS.battUse || 4.5) * 2);
+  }
+  const gridImport = Math.max(0, hD - battDischarge);
+  const battFlow = battCharge - battDischarge;
+
+  return {
+    solar: pv, home: cons,
+    s2h, pvSurplus: pvS, homeDef: hD,
+    battCharge, battDischarge, battFlow,
+    gridExport, gridImport,
+  };
+}
+
+function evolveSoc() {
+  if (!isSysConfigured()) return;
+  const now = Date.now();
+  const dtH = (now - lastFlowT) / 3600000;
+  lastFlowT = now;
+  if (dtH <= 0 || dtH > 1) return;
+
+  const fl  = calcFlow();
+  const eff = 0.95;
+  const effFlow = fl.battFlow > 0 ? fl.battFlow * eff : fl.battFlow;
+  const dSoc = (effFlow / (SYS.battUse || 4.5)) * dtH * 100;
+
+  const hardFlr = Math.round((SYS.battRes || 0.1) * 50);
+  ST.battSoc = Math.max(hardFlr, Math.min(100, ST.battSoc + dSoc));
+  ST._socEvolvedMs = now;
+
+  const today = new Date().toDateString();
+  if (ST._lastDate !== today) {
+    ST.gridExportKwh = 0; ST.gridImportKwh = 0; ST.pvKwhToday = 0;
+    ST._lastDate = today;
+  }
+  if (ST.apiOk) {
+    ST.pvKwhToday    = +(ST.pvKwhToday    + (ST.pvKw||0)  * dtH).toFixed(4);
+    ST.gridExportKwh = +(ST.gridExportKwh + fl.gridExport * dtH).toFixed(4);
+    ST.gridImportKwh = +(ST.gridImportKwh + fl.gridImport * dtH).toFixed(4);
+    try { localStorage.setItem('solarDayKwh', JSON.stringify({date:today,exp:ST.gridExportKwh,imp:ST.gridImportKwh})); } catch(e){}
+  }
+
+  if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
+    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
+  }
+}
+
+function snap() {
+  if (!ST.lat || !isSysConfigured()) return;
+  const fl = calcFlow();
+  rlog.push({
+    t:   new Date().toISOString(),
+    pvKw: ST.pvKw,
+    batt: fl.battFlow,
+    soc:  ST.battSoc,
+    irr:  ST.irrWm2,
+    grd:  fl.gridExport > 0 ? fl.gridExport : -fl.gridImport,
+    lat:  ST.lat, lon: ST.lon, loc: ST.locName,
+  });
+  if (rlog.length > 288) rlog.splice(0, rlog.length - 288);
+  try { localStorage.setItem('solarLog4', JSON.stringify(rlog)); } catch(e) {}
+  const lp = document.getElementById('logPill');
+  if (lp) lp.textContent = rlog.length + ' entries';
+}
+
+function renderMetrics() {
+  const fl = calcFlow();
+  const el = id => document.getElementById(id);
+
+  const hdrPv = el('hdrPv');
+  if (hdrPv) hdrPv.textContent = '☀️ ' + f(ST.pvKw,2) + ' kW';
+  const hdrBatt = el('hdrBatt');
+  if (hdrBatt) hdrBatt.textContent = '🔋 ' + Math.round(socToDisplay(ST.battSoc)) + '%';
+  const hdrWx = el('hdrWx');
+  if (hdrWx) hdrWx.textContent = '🌡️ ' + f(ST.wxTempC,1) + '°C';
+  const hdrGrid = el('hdrGrid');
+  if (hdrGrid) {
+    if (fl.gridExport > 0.05) hdrGrid.textContent = '⚡ ↑' + f(fl.gridExport,2) + ' kW';
+    else if (fl.gridImport > 0.05) hdrGrid.textContent = '⚡ ↓' + f(fl.gridImport,2) + ' kW';
+    else hdrGrid.textContent = '⚡ Grid OK';
+  }
+
+  const sysName = el('hdrSysName');
+  if (sysName) {
+    const name = SYS.brandName || '';
+    sysName.textContent = name ? name + ' · ' : '';
+  }
+}
+
+function renderIrr() {
+  const poa = ST.poaWm2 || ST.irrWm2 || 0;
+  const pct = Math.min(100, poa / 10);
+  const fill = document.getElementById('irrFill');
+  if (fill) fill.style.width = pct + '%';
+  const val = document.getElementById('irrVal');
+  if (val) val.textContent = Math.round(poa) + ' W/m²';
+  const pill = document.getElementById('irrPill');
+  if (pill) {
+    pill.textContent = ST.apiOk ? (ST.wxIcon + ' ' + ST.wxCond) : 'Awaiting GPS';
+    pill.className = 'pill ' + (ST.apiOk ? 'p-ok' : 'p-info');
+  }
+  const sub = document.getElementById('irrSub');
+  if (sub) {
+    sub.textContent = ST.apiOk
+      ? 'GHI ' + Math.round(ST.irrWm2) + ' W/m²'
+        + (ST.poaWm2 ? ' → POA ' + Math.round(ST.poaWm2) + ' W/m²' : '')
+        + ' · ☁️ ' + Math.round(ST.cloudCover) + '%'
+        + ' · 🌡️ ' + f(ST.wxTempC,1) + '°C'
+      : 'Direct + diffuse radiation · Open-Meteo · waiting for GPS fix';
+  }
+}
+
+function renderBattery() {
+  const disp   = socToDisplay(ST.battSoc);
+  const dispR  = Math.round(disp);
+  const stored = SYS.battUse ? +((ST.battSoc/100)*SYS.battUse).toFixed(2) : 0;
+  const fl     = calcFlow();
+
+  const pct = document.getElementById('bPct');
+  if (pct) pct.textContent = dispR + '%';
+  const kwh = document.getElementById('battKwhLbl');
+  if (kwh) kwh.textContent = f(stored,2) + ' kWh';
+
+  const fill = document.getElementById('bFill');
+  if (fill) {
+    const pctW = Math.max(0, Math.min(100, ((disp-10)/80)*100));
+    fill.style.width = pctW + '%';
+    fill.style.background = disp >= 70 ? '#1D9E75' : disp >= 30 ? '#BA7517' : '#C0392B';
+  }
+
+  const pill = document.getElementById('bPill');
+  if (pill) {
+    if (fl.battCharge > 0.05)      { pill.textContent='⚡ Charging +'+f(fl.battCharge,2)+' kW'; pill.style.background='var(--gl)'; pill.style.color='#0F6E56'; }
+    else if (fl.battDischarge>0.05){ pill.textContent='🔋 Discharging −'+f(fl.battDischarge,2)+' kW'; pill.style.background='var(--aml)'; pill.style.color='#854F0B'; }
+    else                           { pill.textContent='⏸ Standby'; pill.style.background='var(--sf2)'; pill.style.color='var(--t2)'; }
+  }
+
+  const maxLbl = document.getElementById('battMaxLabel');
+  if (maxLbl) maxLbl.textContent = f(SYS.battUse,1) + ' kWh usable';
+
+  const timeLbl = document.getElementById('battTimeLabel');
+  if (timeLbl) {
+    if (fl.battDischarge > 0.05) {
+      const h = stored / fl.battDischarge;
+      timeLbl.textContent = h < 1 ? Math.round(h*60)+'m left' : f(h,1)+'h left';
+    } else if (fl.battCharge > 0.05) {
+      const toFull = SYS.battUse - stored;
+      const h = toFull / fl.battCharge;
+      timeLbl.textContent = h < 1 ? Math.round(h*60)+'m to full' : f(h,1)+'h to full';
+    } else {
+      timeLbl.textContent = '--';
+    }
+  }
+
+  const flowFill = document.getElementById('bFlowFill');
+  const flowLbl  = document.getElementById('bFlowLabel');
+  if (flowFill && flowLbl) {
+    const rate = Math.max(fl.battCharge, fl.battDischarge);
+    const maxRate = Math.max(SYS.battMaxC, SYS.battMaxD, 2.5);
+    const pctF = Math.min(100, (rate / maxRate) * 100);
+    flowFill.style.width = pctF + '%';
+    if (fl.battCharge > 0.05) {
+      flowFill.style.background = '#1D9E75';
+      flowLbl.textContent = 'Charging at ' + f(fl.battCharge,2) + ' kW';
+    } else if (fl.battDischarge > 0.05) {
+      flowFill.style.background = '#BA7517';
+      flowLbl.textContent = 'Discharging at ' + f(fl.battDischarge,2) + ' kW';
+    } else {
+      flowFill.style.width = '0%';
+      flowLbl.textContent = '';
+    }
+  }
+
+  const brandLbl = document.getElementById('battBrandLabel');
+  if (brandLbl) brandLbl.textContent = SYS.brandName || 'Battery';
+
+  const backupLbl = document.getElementById('battBackupLbl');
+  if (backupLbl) {
+    if (fl.battDischarge > 0.05 || ST.consKw > 0) {
+      const load = ST.consKw || fl.battDischarge || 0.001;
+      const h = stored / load;
+      backupLbl.textContent = h < 1 ? Math.round(h*60)+'m backup' : f(h,1)+'h backup';
+    } else {
+      backupLbl.textContent = f(SYS.battUse,1) + ' kWh cap';
+    }
+  }
+}
+
+function renderFlow() {
+  const fl  = document.getElementById('flowG');
+  if (!fl) return;
+  const d   = calcFlow();
+  const ts  = document.getElementById('fTs');
+  if (ts) ts.textContent = ST.lastFetch
+    ? ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '';
+
+  const arrowSvg = (kw, color, animated) => {
+    const w = kw > 0.05 ? Math.min(1, kw / (SYS.panelKw||5)) : 0;
+    const stroke = w > 0 ? color : 'var(--br)';
+    const cls = animated && w > 0 ? 'fa' : '';
+    return `<svg width="40" height="24" viewBox="0 0 40 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <line x1="2" y1="12" x2="32" y2="12" stroke="${stroke}" stroke-width="${1+w*2}" class="${cls}" stroke-linecap="round"/>
+      <polyline points="26,6 34,12 26,18" stroke="${stroke}" stroke-width="${1+w*2}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  };
+
+  const node = (icon, label, val, sub, color) =>
+    `<div class="ef-node"><div class="fic">${icon}</div><div class="flb">${label}</div>
+     <div class="fvl" style="color:${color||'var(--tx)'}">${val}</div>
+     <div class="fsub">${sub||''}</div></div>`;
+
+  const gridColor = d.gridExport > 0.05 ? 'var(--g)' : d.gridImport > 0.05 ? 'var(--rd)' : 'var(--t2)';
+  const gridVal   = d.gridExport > 0.05 ? '↑ '+f(d.gridExport,2)+' kW'
+                  : d.gridImport > 0.05 ? '↓ '+f(d.gridImport,2)+' kW' : '0 kW';
+  const gridSub   = d.gridExport > 0.05 ? 'Exporting' : d.gridImport > 0.05 ? 'Importing' : 'Balanced';
+
+  fl.innerHTML = `
+  <div class="ef">
+    <div class="ef-sol">
+      <div class="fic">☀️</div>
+      <div class="flb">Solar</div>
+      <div class="fvl" style="color:var(--g)">${f(d.solar,2)} kW</div>
+      <div class="fsub">${Math.round(ST.poaWm2||ST.irrWm2)} W/m²</div>
+    </div>
+    <div class="arr">
+      ${arrowSvg(d.s2h,'#1D9E75',true)}
+      <div class="arr-val" style="color:var(--g)">${f(d.s2h,2)}</div>
+      <div class="arr-head">kW</div>
+    </div>
+    <div class="ef-nodes">
+      ${node('🏠','Home',f(d.home,2)+' kW',ST.wxCond,'var(--tx)')}
+      ${node('🔋','Battery',
+        (d.battCharge>0.05?'+':d.battDischarge>0.05?'−':'')+f(Math.max(d.battCharge,d.battDischarge),2)+' kW',
+        Math.round(socToDisplay(ST.battSoc))+'% · '+f(stored(),2)+' kWh',
+        d.battCharge>0.05?'var(--g)':d.battDischarge>0.05?'var(--am)':'var(--t2)')}
+      ${node('⚡','Grid',gridVal,gridSub,gridColor)}
+    </div>
+  </div>`;
+}
+
+function renderGridPanel() { /* grid panel removed */ }
+
+function renderSmartSched() {
+  ['surplusBar','surplusBarFull'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const fl = calcFlow();
+    const surplus = +(ST.pvKw - (ST.consKw||0)).toFixed(2);
+    const pct = Math.min(100, Math.max(0, (surplus / Math.max(SYS.panelKw||5, 1)) * 100));
+    const col = surplus >= 1 ? '#1D9E75' : surplus >= 0 ? '#BA7517' : '#C0392B';
+    el.innerHTML = `<div style="height:6px;border-radius:3px;background:var(--sf2);overflow:hidden;margin-bottom:4px">
+      <div style="height:100%;width:${pct}%;background:${col};border-radius:3px;transition:width .8s ease"></div></div>
+      <div style="font-size:11px;color:var(--t2)">
+        Solar ${f(ST.pvKw,2)} kW · Home ${f(ST.consKw||0,2)} kW · Surplus <strong style="color:${col}">${surplus>=0?'+':''}${f(surplus,2)} kW</strong>
+      </div>`;
+  });
+
+  ['smartSched','smartSchedFull'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = renderSchedItems();
+  });
+
+  ['surplusPill','surplusPillFull'].forEach(id => {
+    const pill = document.getElementById(id);
+    if (!pill) return;
+    const fl = calcFlow();
+    const surplus = +(ST.pvKw - (ST.consKw||0)).toFixed(2);
+    if (surplus >= 1) { pill.textContent='✅ '+f(surplus,2)+' kW surplus'; pill.className='pill p-ok'; }
+    else if (surplus >= 0) { pill.textContent='⚡ Low surplus'; pill.className='pill p-warn'; }
+    else { pill.textContent='⚠️ Deficit '+f(-surplus,2)+' kW'; pill.className='pill p-err'; }
+  });
+}
+
+function renderSchedItems() {
+  if (!ST.apiOk) return '<div class="empty-log">Awaiting solar data...</div>';
+  const surplus = +(ST.pvKw - (ST.consKw||0)).toFixed(2);
+  const items = APPLIANCES.map(a => {
+    const canRun = surplus >= a.kw;
+    const offPeak = ST.todayH.length > 0
+      ? ST.todayH.reduce((best,h) => h.pvKw>best.pvKw?h:best,{pvKw:0,hour:12})
+      : {pvKw:0,hour:12};
+    const runTime = canRun ? 'Now' : (offPeak.pvKw - (ST.consKw||0)) >= a.kw
+      ? 'Best at '+offPeak.hour+':00'
+      : 'Insufficient solar today';
+    const badge = canRun ? 'sb-b' : surplus >= 0 ? 'sb-o' : 'sb-a';
+    const badgeTxt = canRun ? '▶ Run now' : surplus >= 0 ? '⏳ Later' : '✗ Grid only';
+    return `<div class="si">
+      <span class="sic">${a.icon}</span>
+      <div class="sinf">
+        <div class="snm">${a.name}</div>
+        <div class="stm">${a.kw} kW · ${a.min} min · ${runTime}</div>
+      </div>
+      <span class="sbg ${badge}">${badgeTxt}</span>
+    </div>`;
+  });
+  return items.length ? '<div class="sched">'+items.join('')+'</div>'
+    : '<div class="empty-log">No appliances configured</div>';
+}
+
+function renderSched() { renderSmartSched(); }
+
+function renderForecastProduction() {
+  const el = document.getElementById('altsHidden');
+  if (!el) return;
+  if (!ST.apiOk || !FORECAST.length) {
+    el.innerHTML = '<div class="empty-log">Awaiting weather data...</div>'; return;
+  }
+  const alerts = buildAlerts();
+  el.innerHTML = alerts.length
+    ? alerts.map(a => `<div class="alert ${a.cls}">${a.msg}</div>`).join('')
+    : '<div class="empty-log">No alerts — system looks good ✅</div>';
+}
+
+function renderAlerts() { renderForecastProduction(); }
+
+function buildAlerts() {
+  const alerts = [];
+  const fl = calcFlow();
+  const surplus = +(ST.pvKw - (ST.consKw||0)).toFixed(2);
+
+  if (ST.pvKw > 0.1 && surplus >= 1.0) {
+    const runnable = APPLIANCES.filter(a => a.kw <= surplus).map(a=>a.icon+' '+a.name).slice(0,3).join(', ');
+    alerts.push({cls:'al-s', msg:`☀️ <strong>Run appliances now</strong> — ${f(surplus,2)} kW surplus. ${runnable ? 'Can run: '+runnable+'.' : ''}`});
+  }
+
+  if (FORECAST.length > 0) {
+    const today = FORECAST[0];
+    if (today.yieldKwh >= (SYS.panelKw||5) * 3) {
+      alerts.push({cls:'al-s', msg:`📅 <strong>Excellent solar day</strong> — ${f(today.yieldKwh,1)} kWh forecast. ${today.icon}`});
+    } else if (today.yieldKwh < (SYS.panelKw||5) * 1) {
+      alerts.push({cls:'al-w', msg:`☁️ <strong>Low solar today</strong> — only ${f(today.yieldKwh,1)} kWh expected. ${today.icon} Defer large loads.`});
+    }
+  }
+
+  if (socToDisplay(ST.battSoc) < 20 && fl.gridImport > 0.1) {
+    alerts.push({cls:'al-d', msg:`🪫 <strong>Battery low</strong> — ${Math.round(socToDisplay(ST.battSoc))}% · importing ${f(fl.gridImport,2)} kW from grid.`});
+  }
+  if (socToDisplay(ST.battSoc) >= 95 && surplus > 0.5) {
+    alerts.push({cls:'al-i', msg:`🔋 <strong>Battery full</strong> — exporting ${f(fl.gridExport,2)} kW. Consider running appliances.`});
+  }
+
+  return alerts;
+}
+
+function renderStrip() {
+  const ws = document.getElementById('ws');
+  if (!ws) return;
+  if (!FORECAST.length) { ws.innerHTML='<div class="empty-log" style="width:100%">Awaiting GPS...</div>'; return; }
+  ws.innerHTML = FORECAST.slice(0,7).map((f,i) => {
+    const cls = i===0 ? 'wd today' : 'wd';
+    const col = f.yieldKwh >= (SYS.panelKw||5)*3 ? '#1D9E75' : f.yieldKwh >= (SYS.panelKw||5)*1.5 ? '#BA7517' : '#C0392B';
+    return `<div class="${cls}">
+      <div class="wi">${f.icon}</div>
+      <div class="wn">${f.d}</div>
+      <div class="wkwh" style="color:${col}">${f.yieldKwh.toFixed(1)}</div>
+      <div class="wt">kWh</div>
+      <div class="wr">💧${f.rain}%</div>
+    </div>`;
+  }).join('');
+}
+
+function buildForecastChart() {
+  const canvas = document.getElementById('fC');
+  if (!canvas || !FORECAST.length) return;
+  const ctx = canvas.getContext('2d');
+  if (fchart) { fchart.destroy(); fchart = null; }
+  const labels = FORECAST.map(f => f.d);
+  const daily  = FORECAST.map(f => f.yieldKwh);
+  const need   = FORECAST.map(() => (ST.consKw||0) * 24);
+  const colors = daily.map(k => k >= (need[0]||0) ? 'rgba(29,158,117,.5)' : 'rgba(186,117,23,.5)');
+  fchart = new Chart(ctx, {
+    type:'bar',
+    data:{ labels, datasets:[
+      {label:'Yield kWh', data:daily, backgroundColor:colors, borderColor:colors.map(c=>c.replace('.5','.9')), borderWidth:1, borderRadius:4},
+      {label:'Daily need', data:need, type:'line', borderColor:'#D85A30', borderWidth:1.5, pointRadius:0, fill:false, tension:0.3},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:10}}}}}
+  });
+}
+
+function buildDayChart() {
+  const canvas = document.getElementById('dayC');
+  if (!canvas || !ST.todayH.length) return;
+  const ctx = canvas.getContext('2d');
+  if (dchart) { dchart.destroy(); dchart = null; }
+  const labels = ST.todayH.map(h => h.hour+':00');
+  const solar  = ST.todayH.map(h => h.pvKw);
+  const cons   = ST.todayH.map(() => ST.consKw || 0);
+  const batt   = ST.todayH.map(h => Math.max(0, h.pvKw - (ST.consKw||0)));
+  dchart = new Chart(ctx, {
+    type:'line',
+    data:{ labels, datasets:[
+      {label:'Solar kW', data:solar, borderColor:'#1D9E75', backgroundColor:'rgba(29,158,117,.1)', borderWidth:2, pointRadius:0, fill:true, tension:0.4},
+      {label:'Consumption kW', data:cons, borderColor:'rgba(216,90,48,.7)', borderWidth:1.5, pointRadius:0, fill:false, tension:0, borderDash:[4,3]},
+      {label:'Battery charge kW', data:batt, backgroundColor:'rgba(55,138,221,.25)', borderColor:'#378ADD', borderWidth:0, fill:true, tension:0.4},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false},ticks:{font:{size:9},maxTicksLimit:8}},y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:10}},min:0}}}
+  });
+}
+
+function renderLogTable() {
+  const inner = document.getElementById('logBodyInner');
+  const daysLbl = document.getElementById('logDaysLbl');
+  if (!inner) return;
+  if (!rlog.length) {
+    inner.innerHTML='<div class="empty-log">No readings yet.<br>The app logs automatically every 30 seconds when solar is active.</div>';
+    return;
+  }
+  const recent = [...rlog].reverse().slice(0,50);
+  inner.innerHTML = '<table class="log-table"><thead><tr>'
+    +'<th>Time</th><th>Solar kW</th><th>Batt kW</th><th>SOC%</th><th>Grid kW</th>'
+    +'</tr></thead><tbody>'
+    + recent.map(r=>{
+      const t=new Date(r.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      return `<tr><td>${t}</td><td style="color:#1D9E75">${f(r.pvKw,2)}</td>`
+        +`<td style="color:${r.batt>=0?'#1D9E75':'#BA7517'}">${r.batt>=0?'+':''}${f(r.batt,2)}</td>`
+        +`<td>${Math.round(r.soc)}%</td>`
+        +`<td style="color:${r.grd>=0?'#1D9E75':'#C0392B'}">${r.grd>=0?'↑':'↓'}${f(Math.abs(r.grd),2)}</td></tr>`;
+    }).join('')
+    +'</tbody></table>';
+
+  if (daysLbl && rlog.length > 1) {
+    const first = new Date(rlog[0].t);
+    const last  = new Date(rlog[rlog.length-1].t);
+    const days  = Math.max(1, Math.round((last-first)/86400000));
+    daysLbl.textContent = days + ' day' + (days>1?'s':'') + ' · ' + rlog.length + ' entries';
+  }
+
+  const produced  = rlog.reduce((s,r)=>s+(r.pvKw||0),0) * (30/3600);
+  const consumed  = rlog.reduce((s,r)=>s+(r.pvKw||0)+(Math.min(0,r.batt||0))+(Math.min(0,r.grd||0)),0) * (30/3600);
+  const fromSolar = rlog.reduce((s,r)=>s+Math.min(r.pvKw||0, (ST.consKw||r.pvKw||0)),0) * (30/3600);
+  const fromGrid  = rlog.reduce((s,r)=>s+Math.max(0,-(r.grd||0)),0) * (30/3600);
+  const toGrid    = rlog.reduce((s,r)=>s+Math.max(0,r.grd||0),0) * (30/3600);
+
+  const sp = id => { const e=document.getElementById(id); if(e) e.textContent=f(produced,2)+' kWh'; };
+  sp('statProduced');
+  const sc = document.getElementById('statConsumed'); if(sc) sc.textContent=f(Math.abs(consumed),2)+' kWh';
+  const ss = document.getElementById('statFromSolar'); if(ss) ss.textContent=f(fromSolar,2)+' kWh';
+  const sg = document.getElementById('statFromGrid');  if(sg) sg.textContent=f(fromGrid,2)+' kWh';
+  const stg = document.getElementById('statToGrid');   if(stg) stg.textContent=f(toGrid,2)+' kWh';
+  const suf = document.getElementById('statSelfSuff');
+  if(suf) suf.textContent = produced>0 ? Math.round(Math.min(100,fromSolar/Math.max(0.001,Math.abs(consumed))*100))+'%' : '—%';
+
+  const first2 = rlog.length>1?new Date(rlog[0].t):null;
+  const last2  = rlog.length>1?new Date(rlog[rlog.length-1].t):null;
+  if(first2&&last2) {
+    const days2=Math.max(1,Math.round((last2-first2)/86400000));
+    const da=document.getElementById('statDailyAvg');
+    if(da) da.textContent=f(produced/days2,2)+' kWh';
+  }
+}
+
+function notifAllowed() {
+  return typeof Notification !== 'undefined' && Notification.permission === 'granted';
+}
+
+function initNotifBar() {
+  const bar  = document.getElementById('notifBar');
+  const msg  = document.getElementById('notifMsg');
+  const btn  = document.getElementById('notifBtn');
+  if (!bar) return;
+  if (typeof Notification === 'undefined') {
+    bar.style.display = 'none'; return;
+  }
+  if (Notification.permission === 'granted') {
+    bar.className = 'notif-bar notif-ok';
+    if (msg) msg.textContent = '🔔 Notifications enabled — alerts will fire automatically';
+    if (btn) btn.style.display = 'none';
+  } else if (Notification.permission === 'denied') {
+    bar.className = 'notif-bar notif-req';
+    if (msg) msg.textContent = '🔕 Notifications blocked — enable in browser settings';
+    if (btn) { btn.textContent = 'How?'; btn.onclick = () => alert('Go to Settings → Site Settings → Notifications and allow this site.'); }
+  } else {
+    bar.className = 'notif-bar notif-off';
+    if (msg) msg.textContent = '🔔 Enable notifications to get alerts when it\'s best to run large appliances';
+    if (btn) { btn.textContent = 'Enable'; btn.onclick = requestNotifPermission; }
+  }
+}
+
+async function requestNotifPermission() {
+  if (typeof Notification === 'undefined') return;
+  const result = await Notification.requestPermission();
+  initNotifBar();
+  if (result === 'granted') scheduleAllNotifications();
+}
+
+function showNotification(title, body, tag) {
+  if (!notifAllowed()) return;
+  if (window.AppBridge && typeof AppBridge.showNotification === 'function') {
+    try { AppBridge.showNotification(title, body, tag||'solar'); return; } catch(e) {}
+  }
+  try {
+    navigator.serviceWorker.ready.then(reg => {
+      reg.showNotification(title, {
+        body, tag: tag||'solar',
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-72.png',
+        vibrate: [200,100,200],
+        data: { url: '/' },
+      });
+    });
+  } catch(e) {
+    new Notification(title, { body, tag: tag||'solar' });
+  }
+}
+
+function showLocalPill(msg) {
+  let pill = document.getElementById('notifToast');
+  if (!pill) {
+    pill = document.createElement('div');
+    pill.id = 'notifToast';
+    pill.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#1D9E75;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;z-index:9998;box-shadow:0 4px 16px rgba(0,0,0,.2);max-width:90vw;text-align:center';
+    document.body.appendChild(pill);
+  }
+  pill.textContent = msg;
+  pill.style.display = 'block';
+  setTimeout(() => { pill.style.display = 'none'; }, 3000);
+}
+
+const HIGH_KW = 1.0;
+
+function notifyRealtime() {
+  if (!notifAllowed() || !isSysConfigured()) return;
+  const fl = calcFlow();
+  const now = Date.now();
+
+  const pvOld = ST._pvHistory.length > 0 ? ST._pvHistory[0] : ST.pvKw;
+  if (!ST._pvHistory) ST._pvHistory = [];
+  ST._pvHistory.push(ST.pvKw);
+  if (ST._pvHistory.length > 360) ST._pvHistory.shift();
+
+  const surplusWasHigh = ST._prevPvHigh;
+  ST._prevPvHigh = ST.pvKw >= 1.5;
+  const pvDrop = pvOld - ST.pvKw;
+
+  if (surplusWasHigh && pvDrop > 1.0 && ST.pvKw < 1.5 &&
+      fl.gridImport > 0.1 && (now - (notifTimers._lastDropMs||0)) > 30*60*1000) {
+    notifTimers._lastDropMs = now;
+    showNotification(
+      '⛅ Solar production dropped',
+      'Production fell from ' + f(pvOld,2) + ' kW to ' + f(ST.pvKw,2) +
+      ' kW. Grid covering ' + f(fl.gridImport,2) + ' kW.',
+      'pv-drop'
+    );
+  }
+
+  if (ST.pvKw >= HIGH_KW) {
+    const surplus = +(ST.pvKw - (ST.consKw||0)).toFixed(2);
+    if (surplus >= 1.0) {
+      const runnable = APPLIANCES.filter(a => a.kw <= surplus && a.kw >= HIGH_KW).map(a=>a.icon+' '+a.name).slice(0,3).join(', ');
+      if (runnable && (now-(notifTimers._lastSurplusMs||0)) > 15*60*1000) {
+        notifTimers._lastSurplusMs = now;
+        showNotification(
+          '🌞 Run appliances now — +' + f(surplus,2) + ' kW surplus',
+          'Best solar window. Can run: ' + runnable + '. Battery: ' + Math.round(socToDisplay(ST.battSoc)) + '%.',
+          'surplus-alert'
+        );
+      }
+    }
+  }
+
+  if (socToDisplay(ST.battSoc) >= 99 && fl.gridExport > 0.5 &&
+      (now-(notifTimers._lastFullMs||0)) > 60*60*1000) {
+    notifTimers._lastFullMs = now;
+    const surplus = +(ST.pvKw - (ST.consKw||0)).toFixed(2);
+    const runnable = APPLIANCES.filter(a => a.kw <= surplus).map(a=>a.icon+' '+a.name).slice(0,3).join(', ');
+    showNotification(
+      '🌞 Battery full — use free solar!',
+      'Battery 100%. Exporting ' + f(fl.gridExport,2) + ' kW to grid.' +
+      (runnable ? ' Run: ' + runnable + '.' : ''),
+      'batt-full'
+    );
+  }
+}
+
+function applyTheme(theme) {
+  const html = document.documentElement;
+  if (theme === 'system') { html.removeAttribute('data-theme'); }
+  else { html.setAttribute('data-theme', theme); }
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = theme === 'dark' ? '☀️' : theme === 'light' ? '🌙' : '🌓';
+  try { localStorage.setItem('solarTheme', theme); } catch(e) {}
+}
+function toggleTheme() {
+  const current = localStorage.getItem('solarTheme') || 'system';
+  const next = current === 'system' ? 'dark' : current === 'dark' ? 'light' : 'system';
+  applyTheme(next);
+}
+(function() {
+  const saved = localStorage.getItem('solarTheme');
+  if (saved && saved !== 'system') applyTheme(saved);
+})();
+
+function toggleSection(bodyId, chevronId) {
+  const body = document.getElementById(bodyId);
+  const chev = document.getElementById(chevronId);
+  if (!body) return;
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
+}
+
+const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
+
+async function checkForUpdate() {
+  try {
+    const res = await fetch('https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now());
+    if (!res.ok) return;
+    const data = await res.json();
+    const lastDismissed = parseInt(localStorage.getItem('updDismissed') || '0');
+    if (data.versionCode <= lastDismissed) return;
+    if (window.AppBridge && typeof AppBridge.getVersionCode === 'function') {
+      const installed = AppBridge.getVersionCode();
+      if (installed && data.versionCode <= installed) return;
+    }
+    showUpdateDialog(data.versionName, data.storeUrl, data.versionCode);
+  } catch(e) {}
+}
+
+function showUpdateDialog(versionName, storeUrl, versionCode) {
+  const overlay = document.createElement('div');
+  overlay.className = 'upd-overlay';
+  const card = document.createElement('div');
+  card.className = 'upd-card';
+  card.innerHTML =
+    '<div style="font-size:40px;margin-bottom:12px">🚀</div>' +
+    '<div class="upd-title">Update available</div>' +
+    '<div class="upd-body">Version ' + versionName + ' is available on the Play Store with the latest improvements and fixes.</div>';
+  const btns = document.createElement('div');
+  btns.className = 'upd-btns';
+  const later = document.createElement('button');
+  later.className = 'upd-later';
+  later.textContent = 'Not now';
+  later.onclick = () => { try { localStorage.setItem('updDismissed', versionCode); } catch(e) {} overlay.remove(); };
+  const now = document.createElement('button');
+  now.className = 'upd-now';
+  now.textContent = 'Update ↗';
+  now.onclick = () => {
+    if (window.AppBridge && typeof AppBridge.openUrl === 'function') { AppBridge.openUrl(storeUrl); }
+    else { window.open(storeUrl, '_blank'); }
+    overlay.remove();
+  };
+  btns.appendChild(later);
+  btns.appendChild(now);
+  card.appendChild(btns);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
+const stored = () => SYS.battUse ? +((ST.battSoc/100) * SYS.battUse).toFixed(3) : 0;
+
+function openSocEdit() {
+  const row = document.getElementById('socEditRow');
+  const inp = document.getElementById('socEditInput');
+  if (!row || !inp) return;
+  inp.value = Math.round(socToDisplay(ST.battSoc));
+  row.style.display = 'flex';
+  inp.focus(); inp.select();
+}
+function applySocEdit() {
+  const inp = document.getElementById('socEditInput');
+  if (!inp) return;
+  const raw = parseFloat(inp.value);
+  if (isNaN(raw)) return;
+  const userPct = Math.min(90, Math.max(10, raw));
+  ST.battSoc = socToInternal(userPct);
+  lastFlowT  = Date.now();
+  saveCfg({ ...loadCfg(), battSoc: userPct });
+  closeSocEdit();
+  renderAll();
+}
+function closeSocEdit() {
+  const row = document.getElementById('socEditRow');
+  if (row) row.style.display = 'none';
+}
+
+function updateClock() {
+  const el = document.getElementById('clk');
+  if (el) el.textContent = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function calcPV(poaWm2) {
+  if (!poaWm2 || isNaN(poaWm2) || poaWm2 <= 0) return 0;
+  const pkw     = SYS.panelKw || 5;
+  const tempC   = ST.wxTempC  || 25;
+  const tCell   = tempC + (SYS.noct - 20) / 800 * poaWm2;
+  const tFactor = 1 - SYS.tempCoeff * Math.max(0, tCell - 25);
+  const dcKw    = pkw * (poaWm2 / 1000) * tFactor;
+  return +Math.min(dcKw * SYS.invEff, SYS.acMax || pkw * SYS.invEff).toFixed(3);
+}
+
+function clearSkyIrradiance(lat, lon) {
+  const pos = solarPosition(lat, lon);
+  if (!pos || pos.altitude <= 0) return { ghi:0, dni:0, dhi:0 };
+  const now  = new Date();
+  const doy  = Math.floor((now - new Date(now.getFullYear(),0,0)) / 86400000);
+  const alt  = pos.altitude;
+  const E0   = 1 + 0.033 * Math.cos(2 * Math.PI * doy / 365);
+  const I0   = 1367 * E0;
+  const zenR = (90 - alt) * Math.PI / 180;
+  const AM   = 1 / (Math.cos(zenR) + 0.50572 * Math.pow(96.07995 - alt, -1.6364));
+  const tau_b = 0.98 * Math.exp(-0.103 * AM);
+  const tau_d = 0.271 - 0.294 * tau_b;
+  const sinAlt = Math.sin(alt * Math.PI / 180);
+  const ghi_beam = I0 * sinAlt * tau_b;
+  const ghi_diff = I0 * sinAlt * tau_d;
+  const ghi = ghi_beam + ghi_diff;
+  const dni = ghi_beam / Math.max(0.001, sinAlt);
+  return { ghi: +ghi.toFixed(1), dni: +dni.toFixed(1), dhi: +ghi_diff.toFixed(1) };
+}
+
+function calcPOA(dni, dhi, ghi, tiltDeg, panelAz, pos) {
+  const lat = ST.lat || 0;
+  const lon = ST.lon || 0;
+  if (!lat || !lon || (!ghi && !dni)) return 0;
+  const p = pos || solarPosition(lat, lon);
+  if (p.altitude <= 0) return dhi > 0 ? dhi * (1 + Math.cos(tiltDeg * Math.PI/180)) / 2 : 0;
+  const tiltR   = tiltDeg * Math.PI/180;
+  const altR    = p.altitude * Math.PI/180;
+  const solAzR  = p.azimuth  * Math.PI/180;
+  const pnlAzR  = panelAz    * Math.PI/180;
+  const cosAOI  = Math.sin(altR)*Math.cos(tiltR) +
+                  Math.cos(altR)*Math.sin(tiltR)*Math.cos(solAzR - pnlAzR);
+  const poaBeam   = Math.max(0, cosAOI) * dni;
+  const poaSky    = dhi * (1 + Math.cos(tiltR)) / 2;
+  const poaGround = ghi * 0.20 * (1 - Math.cos(tiltR)) / 2;
+  return poaBeam + poaSky + poaGround;
+}
+
+function irrToKw(ghi, dni, dhi, cloudCover) {
+  const cc       = Math.min(100, Math.max(0, cloudCover || ST.cloudCover || 0)) / 100;
+  const cfGHI    = Math.max(0, 1 - 0.75 * Math.pow(cc, 3.4));
+  const cfDNI    = Math.max(0, cfGHI - 0.15);
+  const corrGHI  = ghi * cfGHI;
+  const corrDHI  = dhi * cfGHI;
+  const corrDNI  = (dni || 0) * cfDNI;
+  const ambient  = ST.wxTempC || 15;
+  const cellT    = ambient + (45 - 20) * (Math.max(0, corrGHI) / 800);
+  const tempF    = Math.max(0.80, 1 - Math.max(0, cellT - 25) * 0.004);
+  ST.tempFactor  = +tempF.toFixed(4);
+  ST.cellTempC   = +cellT.toFixed(1);
+  ST.poaWm2      = +corrGHI.toFixed(1);
+  ST.cfGHI       = +cfGHI.toFixed(3);
+  const acMax    = SYS.acMax;
+  const raw      = (corrGHI / 1000) * acMax * 1.10 * 0.75 * tempF;
+  return +Math.max(0, Math.min(acMax, raw)).toFixed(3);
+}
+
+function scheduleAllNotifications() {
+  if (!notifAllowed()) return;
+  scheduleMorningForecast();
+  scheduleEveningForecast();
+  registerPeriodicSync();
+}
+
+async function registerPeriodicSync() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if ('periodicSync' in reg) {
+      await reg.periodicSync.register('solar-refresh', { minInterval: 15 * 60 * 1000 });
+    }
+  } catch(e) {}
+}
+
+function checkMissedDailyNotifications() {
+  if (!notifAllowed() || !FORECAST.length) return;
+  const now = new Date();
+  const todayKey = now.toDateString();
+  const h = now.getHours() + now.getMinutes() / 60;
+  const peakKw = SYS.panelKw || 5;
+
+  if (h >= 7.5 && h < 20 && localStorage.getItem('lastMorningNotifDay') !== todayKey) {
+    localStorage.setItem('lastMorningNotifDay', todayKey);
+    const today = FORECAST[0];
+    const bestHour = ST.todayH && ST.todayH.length
+      ? ST.todayH.reduce((a, b) => b.pvKw > a.pvKw ? b : a, { pvKw: 0, hour: 12 })
+      : { pvKw: 0, hour: 12 };
+    const runnable = APPLIANCES.filter(a => a.kw >= HIGH_KW && bestHour.pvKw - (ST.consKw||0) >= a.kw);
+    const names = runnable.length ? runnable.slice(0,3).map(a => a.icon+' '+a.name).join(', ') : 'limited surplus today';
+    if (today.yieldKwh >= peakKw * 2) {
+      showNotification('☀️ Good solar day — ' + f(today.yieldKwh,1) + ' kWh forecast',
+        today.icon + ' Peak at ' + bestHour.hour + ':00 (' + f(bestHour.pvKw,2) + ' kW). Best for: ' + names + '. Battery: ' + Math.round(socToDisplay(ST.battSoc)) + '%.',
+        'morning-forecast');
+    } else {
+      showNotification('☁️ Limited solar today — ' + f(today.yieldKwh,1) + ' kWh forecast',
+        today.icon + ' Low production expected. Defer large appliances. Battery: ' + Math.round(socToDisplay(ST.battSoc)) + '%.',
+        'morning-forecast');
+    }
+  }
+
+  if (h >= 20 && FORECAST.length >= 2 && localStorage.getItem('lastEveningNotifDay') !== todayKey) {
+    localStorage.setItem('lastEveningNotifDay', todayKey);
+    const tomorrow = FORECAST[1];
+    const highProd = tomorrow.yieldKwh >= peakKw * 3;
+    if (highProd) {
+      const names = APPLIANCES.filter(a => a.kw >= HIGH_KW).slice(0,3).map(a => a.icon+' '+a.name).join(', ');
+      showNotification('☀️ Good solar day tomorrow — plan ahead',
+        tomorrow.icon + ' ' + tomorrow.d + ': ' + f(tomorrow.yieldKwh,1) + ' kWh forecast. Schedule: ' + names + '.',
+        'evening-forecast');
+    } else {
+      showNotification('☁️ Limited solar tomorrow',
+        tomorrow.icon + ' ' + tomorrow.d + ': only ' + f(tomorrow.yieldKwh,1) + ' kWh forecast. Defer large appliances.',
+        'evening-forecast');
+    }
+  }
+}
+
+async function storeNotifPayloads() {
+  if (!('caches' in window) || !FORECAST.length) return;
+  try {
+    const today = FORECAST[0];
+    const peakKw = SYS.panelKw || 5;
+    const bestHour = ST.todayH && ST.todayH.length
+      ? ST.todayH.reduce((a, b) => b.pvKw > a.pvKw ? b : a, { pvKw: 0, hour: 12 })
+      : { pvKw: 0, hour: 12 };
+    const payload = {
+      date: new Date().toDateString(),
+      soc: Math.round(socToDisplay(ST.battSoc)),
+      morning: {
+        title: today.yieldKwh >= peakKw * 2
+          ? '☀️ Good solar day — ' + f(today.yieldKwh,1) + ' kWh forecast'
+          : '☁️ Limited solar today — ' + f(today.yieldKwh,1) + ' kWh forecast',
+        body: today.icon + ' Peak at ' + bestHour.hour + ':00 (' + f(bestHour.pvKw,2) + ' kW). Battery: ' + Math.round(socToDisplay(ST.battSoc)) + '%.'
+      },
+      evening: FORECAST.length >= 2 ? {
+        title: FORECAST[1].yieldKwh >= peakKw * 3
+          ? '☀️ Good solar day tomorrow — plan ahead'
+          : '☁️ Limited solar tomorrow',
+        body: FORECAST[1].icon + ' ' + FORECAST[1].d + ': ' + f(FORECAST[1].yieldKwh,1) + ' kWh forecast.'
+      } : null
+    };
+    const cache = await caches.open('solar-notif-v1');
+    await cache.put('/solar-notif-payload', new Response(JSON.stringify(payload), {headers:{'Content-Type':'application/json'}}));
+  } catch(e) {}
+}
+
+function catchUpLog(bgStartMs) {
+  if (!ST.todayH || !ST.todayH.length || !ST.lat) return;
+  const bgEndMs = Date.now();
+  if ((bgEndMs - bgStartMs) < 10 * 60 * 1000) return;
+  const utcOff = ST._utcOffsetSec || 0;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const STEP = 30 * 60 * 1000;
+  let t = Math.max(bgStartMs, todayStart.getTime()) + STEP;
+  while (t < bgEndMs - 60000) {
+    const locH   = new Date(t + utcOff * 1000).getUTCHours();
+    const hEntry = ST.todayH.find(h => h.hour === locH) || { pvKw: 0, ghi: 0 };
+    rlog.push({ t: new Date(t).toISOString(), pvKw: +hEntry.pvKw.toFixed(3),
+      batt: 0, soc: ST.battSoc, irr: hEntry.ghi || 0, grd: 0,
+      lat: ST.lat, lon: ST.lon, loc: ST.locName });
+    t += STEP;
+  }
+  if (rlog.length > 288) rlog.splice(0, rlog.length - 288);
+  try { localStorage.setItem('solarLog4', JSON.stringify(rlog)); } catch(e) {}
+  const lp = document.getElementById('logPill');
+  if (lp) lp.textContent = rlog.length + ' entries';
+}
+
+function scheduleMorningForecast() {
+  if (!notifAllowed() || !FORECAST.length) return;
+  const todayKey = new Date().toDateString();
+  if (localStorage.getItem('lastMorningNotifDay') === todayKey) return;
+  const now = new Date();
+  const h = now.getHours() + now.getMinutes() / 60;
+  if (h >= 7.5) { checkMissedDailyNotifications(); return; }
+  const msTo730 = (new Date().setHours(7,30,0,0)) - Date.now();
+  if (msTo730 > 0) {
+    clearTimeout(notifTimers['morning_forecast']);
+    notifTimers['morning_forecast'] = setTimeout(() => {
+      checkMissedDailyNotifications();
+    }, msTo730);
+  }
+}
+
+function scheduleEveningForecast() {
+  if (!notifAllowed() || !FORECAST.length) return;
+  const todayKey = new Date().toDateString();
+  if (localStorage.getItem('lastEveningNotifDay') === todayKey) return;
+  const now = new Date();
+  const h = now.getHours() + now.getMinutes() / 60;
+  if (h >= 20) { checkMissedDailyNotifications(); return; }
+  const msTo20 = (new Date().setHours(20,0,0,0)) - Date.now();
+  if (msTo20 > 0) {
+    clearTimeout(notifTimers['evening_forecast']);
+    notifTimers['evening_forecast'] = setTimeout(() => {
+      checkMissedDailyNotifications();
+    }, msTo20);
+  }
+}
+
+function showPage(n,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
+  document.getElementById('pg'+n).classList.add('on'); el.classList.add('on');
+  if(n==='Forecast'){renderStrip();buildForecastChart();buildDayChart();renderForecastProduction();renderAlerts();}
+  if(n==='Sched')renderSched();
+  if(n==='Log')renderLogTable();
+}
+
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('instBanner').style.display='flex';});
+function installApp(){if(!deferredPrompt)return;deferredPrompt.prompt();deferredPrompt.userChoice.then(()=>{deferredPrompt=null;document.getElementById('instBanner').style.display='none';});}
+window.addEventListener('appinstalled',()=>{document.getElementById('instBanner').style.display='none';});
+if('serviceWorker'in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && e.data.type === 'BACKGROUND_SYNC') {
+      applyAutoConsumption(); renderAll();
+      if (ST.lat && ST.lon) fetchWeather();
+    }
+  });
+}
+
+function renderGridPanel() { /* removed */ }
+
+const APPLIANCES = [
+  {name:'Washing Machine', icon:'🫧', kw:2.0, min:90},
+  {name:'Dishwasher',      icon:'🍽️', kw:1.8, min:60},
+  {name:'Tumble Dryer',    icon:'🌀', kw:2.5, min:60},
+  {name:'EV Charger',      icon:'🚗', kw:3.7, min:240},
+  {name:'Oven',            icon:'🍳', kw:2.2, min:60},
+  {name:'Heat Pump',       icon:'♨️', kw:1.5, min:120},
+  {name:'Pool Pump',       icon:'🏊', kw:1.1, min:180},
+  {name:'Iron',            icon:'👔', kw:2.0, min:30},
+];
+
+function initCfgInputs() {
+  if (savedCfg.panelKw)   document.getElementById('cfgPanel').value = savedCfg.panelKw;
+  if (savedCfg.battGross) document.getElementById('cfgBatt').value  = savedCfg.battGross;
+  if (savedCfg.battRes)   document.getElementById('cfgRes').value   = Math.round(savedCfg.battRes * 100);
+  if (savedCfg.battSoc)   { document.getElementById('cfgSoc').value = Math.round(savedCfg.battSoc); ST.battSoc = socToInternal(savedCfg.battSoc); }
+  if (savedCfg.panelAzimuth) {
+    const azEl = document.getElementById('cfgAzimuth');
+    if (azEl) azEl.value = String(savedCfg.panelAzimuth);
+  }
+  renderConsProfileSlots();
+  applyAutoConsumption();
+  updateUsableDisplay();
+  updateSocDisplay();
+}
+
+function onSocInput() {
+  const raw = parseFloat(document.getElementById('cfgSoc').value);
+  if (isNaN(raw)) return;
+  const userPct = Math.min(100, Math.max(0, raw));
+  ST.battSoc = socToInternal(userPct);
+  lastFlowT  = Date.now();
+  saveCfg({ ...loadCfg(), battSoc: userPct });
+  updateSocDisplay();
+  renderAll();
+}
+
+function updateSocDisplay() {
+  const kwhStored = stored();
+  const el = document.getElementById('cfgSocKwh');
+  if (el) el.value = f(kwhStored, 2) + ' kWh stored';
+  const displayPct = socToDisplay(ST.battSoc);
+  const hint = document.getElementById('cfgSocHint');
+  if (hint) hint.textContent = 'Battery at ' + Math.round(displayPct) + '% usable · ' + f(kwhStored,2) + ' kWh stored · (90%=full, 10%=empty)';
+}
+
+function onCfgChange() { updateUsableDisplay(); }
+
+function updateUsableDisplay() {
+  const gross  = parseFloat(document.getElementById('cfgBatt').value) || SYS.battGross || 0;
+  const res    = (parseFloat(document.getElementById('cfgRes').value) || Math.round((SYS.battRes||0.1)*100)) / 100;
+  const usable = gross ? +(gross * (1 - res)).toFixed(2) : '';
+  const uEl = document.getElementById('cfgUsable'); if (uEl) uEl.value = usable !== '' ? usable : '';
+}
+
+function renderConsProfileSlots() {
+  const c = document.getElementById('consProfileSlots');
+  if (!c) return;
+  const slots = [
+    {label:'🌙 Night (00–06)', key:'night',   def:0.2},
+    {label:'🌅 Morning (06–09)', key:'morning', def:0.8},
+    {label:'☀️ Midday (09–17)', key:'midday',  def:0.4},
+    {label:'🌆 Evening (17–22)', key:'evening', def:1.2},
+    {label:'🌃 Late (22–00)',   key:'late',    def:0.5},
+  ];
+  const saved = (loadCfg().profile) || {};
+  c.innerHTML = slots.map(s => {
+    const val = saved[s.key] !== undefined ? saved[s.key] : s.def;
+    const pct = Math.min(100, (val / 3) * 100);
+    return `<div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:12px;color:var(--tx)">${s.label}</span>
+        <span style="font-size:12px;font-weight:700;color:var(--g)" id="ps_lbl_${s.key}">${val.toFixed(1)} kW</span>
+      </div>
+      <div class="ps-wrap">
+        <div class="ps-track"><div class="ps-fill" id="ps_fill_${s.key}" style="width:${pct}%"></div></div>
+        <div class="ps-thumb" id="ps_thumb_${s.key}" style="left:${pct}%"></div>
+        <input type="range" class="ps-input" min="0" max="3" step="0.1" value="${val}"
+          oninput="onProfileSlider('${s.key}',this.value)">
+      </div>
+    </div>`;
+  }).join('');
+  updateProfileTotal();
+}
+
+function onProfileSlider(key, val) {
+  const v = parseFloat(val);
+  const lbl = document.getElementById('ps_lbl_' + key);
+  const fill = document.getElementById('ps_fill_' + key);
+  const thumb = document.getElementById('ps_thumb_' + key);
+  if (lbl) lbl.textContent = v.toFixed(1) + ' kW';
+  const pct = Math.min(100, (v / 3) * 100);
+  if (fill) fill.style.width = pct + '%';
+  if (thumb) thumb.style.left = pct + '%';
+  updateProfileTotal();
+}
+
+function updateProfileTotal() {
+  const keys = ['night','morning','midday','evening','late'];
+  const hours = [6, 3, 8, 5, 2];
+  let total = 0;
+  keys.forEach((k,i) => {
+    const inp = document.querySelector(`input[oninput="onProfileSlider('${k}',this.value)"]`);
+    if (inp) total += parseFloat(inp.value) * hours[i];
+  });
+  const lbl = document.getElementById('profileTotalLbl');
+  if (lbl) lbl.textContent = total.toFixed(1) + ' kWh/day';
+}
+
+function applyAutoConsumption() {
+  const cfg = loadCfg();
+  if (!cfg.profile) return;
+  const h = new Date().getHours();
+  let kw;
+  if      (h >= 0  && h < 6)  kw = cfg.profile.night   ?? 0.2;
+  else if (h >= 6  && h < 9)  kw = cfg.profile.morning  ?? 0.8;
+  else if (h >= 9  && h < 17) kw = cfg.profile.midday   ?? 0.4;
+  else if (h >= 17 && h < 22) kw = cfg.profile.evening  ?? 1.2;
+  else                         kw = cfg.profile.late     ?? 0.5;
+  ST.consKw = kw;
+}
+
+function saveCfgAndApply() {
+  const panelKw  = parseFloat(document.getElementById('cfgPanel').value);
+  const battGross= parseFloat(document.getElementById('cfgBatt').value);
+  const battResP = parseFloat(document.getElementById('cfgRes').value) || 10;
+  const battRes  = battResP / 100;
+  const socDisp  = parseFloat(document.getElementById('cfgSoc').value);
+  const azEl     = document.getElementById('cfgAzimuth');
+  const azimuth  = azEl ? parseInt(azEl.value) || 180 : 180;
+
+  const keys = ['night','morning','midday','evening','late'];
+  const profile = {};
+  keys.forEach(k => {
+    const inp = document.querySelector(`input[oninput="onProfileSlider('${k}',this.value)"]`);
+    if (inp) profile[k] = parseFloat(inp.value);
+  });
+
+  if (!panelKw || !battGross) {
+    alert('Please enter panel and battery capacity.'); return;
+  }
+
+  const brandEl = document.getElementById('cfgPanelBrand');
+  const brandName = brandEl && brandEl.value ? brandEl.options[brandEl.selectedIndex].text : 'Solar System';
+
+  const cfg = {
+    panelKw, battGross, battRes,
+    battSoc: isNaN(socDisp) ? 50 : socDisp,
+    panelAzimuth: azimuth,
+    battUse: +(battGross * (1 - battRes)).toFixed(2),
+    battMaxC: 2.5, battMaxD: 2.5,
+    invEff: 0.984, tempCoeff: 0.0037, noct: 45, tiltDeg: 30,
+    acMax: panelKw * 0.984,
+    profile: profile,
+    brandName,
+  };
+  saveCfg(cfg);
+
+  Object.assign(SYS, cfg);
+  if (!isNaN(socDisp)) ST.battSoc = socToInternal(socDisp);
+  lastFlowT = Date.now();
+
+  if (window.AppBridge && AppBridge.saveSoc) {
+    try { AppBridge.saveSoc(ST.battSoc, panelKw, battGross, battRes, ST.consKw||0, 2.5, 2.5, azimuth); } catch(e) {}
+  }
+
+  const msg = document.getElementById('cfgSavedMsg');
+  const pill = document.getElementById('cfgSavedPill');
+  if (msg) { msg.textContent = '✅ Configuration saved'; setTimeout(()=>{ if(msg) msg.textContent=''; }, 3000); }
+  if (pill) { pill.style.display=''; setTimeout(()=>{ if(pill) pill.style.display='none'; }, 3000); }
+
+  applyAutoConsumption();
+  renderAll();
+  if (ST.lat && ST.lon) fetchWeather();
+}
+
+const PANEL_BRANDS = {
+  huawei:   {acMax:5,   tempCoeff:0.0034, noct:43, tiltDeg:30},
+  longi:    {acMax:5,   tempCoeff:0.0035, noct:44, tiltDeg:30},
+  jinko:    {acMax:5,   tempCoeff:0.0035, noct:45, tiltDeg:30},
+  ja:       {acMax:5,   tempCoeff:0.0035, noct:44, tiltDeg:30},
+  trina:    {acMax:5,   tempCoeff:0.0035, noct:45, tiltDeg:30},
+  canadian: {acMax:5,   tempCoeff:0.0037, noct:45, tiltDeg:30},
+  sunpower: {acMax:5,   tempCoeff:0.0029, noct:41, tiltDeg:30},
+  rec:      {acMax:5,   tempCoeff:0.0033, noct:42, tiltDeg:30},
+  qcells:   {acMax:5,   tempCoeff:0.0034, noct:43, tiltDeg:30},
+  suntech:  {acMax:5,   tempCoeff:0.0040, noct:46, tiltDeg:30},
+  sharp:    {acMax:5,   tempCoeff:0.0038, noct:46, tiltDeg:30},
+  panasonic:{acMax:5,   tempCoeff:0.0026, noct:41, tiltDeg:30},
+  lg:       {acMax:5,   tempCoeff:0.0030, noct:41, tiltDeg:30},
+  meyer:    {acMax:5,   tempCoeff:0.0027, noct:41, tiltDeg:30},
+  solaria:  {acMax:5,   tempCoeff:0.0028, noct:41, tiltDeg:30},
+};
+const BATT_BRANDS = {
+  huawei_5:      {battGross:5,    battRes:0.10, battMaxC:2.5,  battMaxD:2.5},
+  huawei_10:     {battGross:10,   battRes:0.10, battMaxC:5.0,  battMaxD:5.0},
+  huawei_15:     {battGross:15,   battRes:0.10, battMaxC:5.0,  battMaxD:5.0},
+  tesla_pw2:     {battGross:13.5, battRes:0.05, battMaxC:5.0,  battMaxD:5.0},
+  tesla_pw3:     {battGross:13.5, battRes:0.05, battMaxC:11.5, battMaxD:11.5},
+  byd_hvs5:      {battGross:5.1,  battRes:0.10, battMaxC:3.6,  battMaxD:3.6},
+  byd_hvs10:     {battGross:10.2, battRes:0.10, battMaxC:5.0,  battMaxD:5.0},
+  byd_hvl:       {battGross:11.5, battRes:0.10, battMaxC:6.0,  battMaxD:6.0},
+  pylontech_us2: {battGross:2.4,  battRes:0.10, battMaxC:1.0,  battMaxD:1.0},
+  pylontech_us3: {battGross:3.5,  battRes:0.10, battMaxC:1.5,  battMaxD:1.5},
+  pylontech_us5: {battGross:4.8,  battRes:0.10, battMaxC:2.4,  battMaxD:2.4},
+  sonnen_eco8:   {battGross:8,    battRes:0.05, battMaxC:3.3,  battMaxD:3.3},
+  sonnen_eco10:  {battGross:10,   battRes:0.05, battMaxC:3.3,  battMaxD:3.3},
+  solaredge_10:  {battGross:10,   battRes:0.10, battMaxC:5.0,  battMaxD:5.0},
+  foxess_h:      {battGross:10,   battRes:0.10, battMaxC:6.0,  battMaxD:6.0},
+  'givbatt_9.5': {battGross:9.5,  battRes:0.10, battMaxC:3.6,  battMaxD:3.6},
+  sungrow_shb:   {battGross:9.6,  battRes:0.10, battMaxC:5.0,  battMaxD:5.0},
+  enphase_iq10:  {battGross:10,   battRes:0.04, battMaxC:3.84, battMaxD:3.84},
+  alpha_smile5:  {battGross:5,    battRes:0.10, battMaxC:3.0,  battMaxD:3.0},
+  puredrive_5:   {battGross:5,    battRes:0.10, battMaxC:3.6,  battMaxD:3.6},
+};
+
+function onBrandSelect(type) {
+  if (type === 'panel') {
+    const sel = document.getElementById('cfgPanelBrand').value;
+    const spec = PANEL_BRANDS[sel];
+    const hint = document.getElementById('panelBrandHint');
+    if (spec && hint) hint.textContent = 'NOCT ' + (spec.noct||45) + '°C · Temp coeff −' + ((spec.tempCoeff||0.0037)*100).toFixed(2) + '%/°C';
+    else if (hint) hint.textContent = 'Select to auto-fill typical specs';
+  } else {
+    const sel = document.getElementById('cfgBattBrand').value;
+    const spec = BATT_BRANDS[sel];
+    const hint = document.getElementById('battBrandHint');
+    if (spec) {
+      document.getElementById('cfgBatt').value = spec.battGross;
+      document.getElementById('cfgRes').value  = Math.round(spec.battRes * 100);
+      if (hint) hint.textContent = f(spec.battGross*(1-spec.battRes),1) + ' kWh usable · max ' + spec.battMaxC + ' kW charge';
+      updateUsableDisplay();
+    } else if (hint) hint.textContent = 'Select to auto-fill capacity & reserve';
+  }
+}
+
+function restoreBrandSelects() {
+  const cfg = loadCfg();
+  if (cfg.panelBrand) {
+    const el = document.getElementById('cfgPanelBrand');
+    if (el) { el.value = cfg.panelBrand; onBrandSelect('panel'); }
+  }
+  if (cfg.battBrand) {
+    const el = document.getElementById('cfgBattBrand');
+    if (el) { el.value = cfg.battBrand; }
+  }
+}
+
+let _renderAllTimer = null;
+function renderAll() {
+  if (_renderAllTimer) clearTimeout(_renderAllTimer);
+  _renderAllTimer = setTimeout(() => {
+    _renderAllTimer = null;
+    renderMetrics(); renderIrr(); renderBattery(); renderFlow();
+    renderGridPanel(); renderForecastProduction(); renderSmartSched(); renderAlerts();
+  }, 80);
+}
+
+document.getElementById('logPill').textContent = rlog.length + ' entries';
+initCfgInputs();
+restoreBrandSelects();
+initNotifBar();
+
+(function() {
+  if (window.AppBridge && AppBridge.loadSoc) {
+    try {
+      const s = AppBridge.loadSoc();
+      if (s) {
+        const p = s.split(',');
+        const soc = parseFloat(p[0]), panelKw = parseFloat(p[1]);
+        const battGross = parseFloat(p[2]), battRes = parseFloat(p[3]), consKw = parseFloat(p[4]);
+        if (p.length >= 7) {
+          const gridExp  = parseFloat(p[5]) || 0;
+          const gridImp  = parseFloat(p[6]) || 0;
+          const today2   = new Date().toDateString();
+          if (gridExp > 0 || gridImp > 0) {
+            ST.gridExportKwh = gridExp;
+            ST.gridImportKwh = gridImp;
+            ST._lastDate = today2;
+          }
+        }
+        if (p.length >= 9) {
+          const battMaxC = parseFloat(p[7]) || 2.5;
+          const battMaxD = parseFloat(p[8]) || 2.5;
+          SYS.battMaxC = battMaxC; SYS.battMaxD = battMaxD;
+        }
+        if (p.length >= 10) {
+          const az = parseFloat(p[9]);
+          if (!isNaN(az)) SYS.panelAzimuth = az;
+        }
+        applyStateFromNative(soc, panelKw, battGross, battRes, consKw, 0);
+      }
+    } catch(e) {}
+  }
+
+  try {
+    const savedGps = JSON.parse(localStorage.getItem('solarGps') || 'null');
+    if (savedGps && savedGps.lat && savedGps.lon) {
+      ST.lat = savedGps.lat; ST.lon = savedGps.lon;
+      ST.locName = (savedGps.name && !savedGps.name.includes('°')) ? savedGps.name : ST.locName;
+      ST.gpsOk = true;
+      setGps('ok', '✅ ' + ST.locName + ' (cached)');
+      fetchWeather();
+      setTimeout(checkForUpdate, 5000);
+      setTimeout(() => {
+        if (!('geolocation' in navigator)) return;
+        navigator.geolocation.getCurrentPosition(
+          pos => applyPosition(pos),
+          () => {},
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
+        );
+      }, 3000);
+    } else {
+      setTimeout(requestLocation, 1000);
+    }
+  } catch(e) { setTimeout(requestLocation, 1000); }
+})();
+
+setInterval(() => {
+  if (!ST.lat || !ST.lon) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('solarGps') || 'null');
+      if (saved && saved.lat && saved.lon) {
+        ST.lat = saved.lat; ST.lon = saved.lon;
+        ST.locName = (saved.name && !saved.name.includes('°')) ? saved.name : 'Locating...';
+        ST.gpsOk = true;
+      }
+    } catch(e) {}
+  }
+  fetchWeather();
+}, 60*1000);
+
+setInterval(()=>{
+  applyAutoConsumption();
+  renderAll();
+  const socEl = document.getElementById('cfgSoc');
+  if (socEl && document.activeElement !== socEl && isSysConfigured()) {
+    socEl.value = Math.round(socToDisplay(ST.battSoc));
+    updateSocDisplay();
+  }
+  if (isSysConfigured()) snap();
+}, 30000);
+
+setInterval(()=>{
+  applyAutoConsumption();
+  evolveSoc();
+  renderBattery();
+  renderMetrics();
+  renderFlow();
+  renderGridPanel();
+  const socEl = document.getElementById('cfgSoc');
+  if (socEl && document.activeElement !== socEl && isSysConfigured()) {
+    socEl.value = Math.round(socToDisplay(ST.battSoc));
+    updateSocDisplay();
+  }
+}, 5000);
+
+setInterval(updateClock, 1000);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    if (isSysConfigured()) {
+      const bgGapH = Math.min(6, (Date.now() - lastFlowT) / 3600000);
+      if (bgGapH > 1 / 60) {
+        let avgPvKw = ST.pvKw || 0;
+        if (ST.todayH && ST.todayH.length) {
+          const utcOff = ST._utcOffsetSec || 0;
+          const startH = new Date(lastFlowT + utcOff * 1000).getUTCHours();
+          const endH   = new Date(Date.now() + utcOff * 1000).getUTCHours();
+          const hrs = ST.todayH.filter(h =>
+            startH <= endH ? (h.hour >= startH && h.hour <= endH)
+                           : (h.hour >= startH || h.hour <= endH)
+          );
+          if (hrs.length) avgPvKw = hrs.reduce((s, h) => s + h.pvKw, 0) / hrs.length;
+        }
+        const savedPvKw = ST.pvKw;
+        ST.pvKw = avgPvKw;
+        const fl = calcFlow();
+        ST.pvKw = savedPvKw;
+        const hardFlr = Math.round((SYS.battRes || 0.1) * 50);
+        const battEff = 0.95;
+        const effFlow = fl.battFlow > 0 ? fl.battFlow * battEff : fl.battFlow;
+        ST.battSoc = Math.max(hardFlr, Math.min(100,
+          ST.battSoc + (effFlow / (SYS.battUse || 4.5)) * bgGapH * 100
+        ));
+        if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
+          try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
+        }
+      }
+    }
+    catchUpLog(lastFlowT);
+    lastFlowT = Date.now();
+    applyAutoConsumption();
+    renderAll();
+    fetchWeather();
+    checkForUpdate();
+  }
+});
+
+applyAutoConsumption();
+
+</script>
+
+<div class="page" id="pgFaq" style="padding:14px;padding-bottom:90px">
+  <div class="card">
+    <div class="ct">❓ How this app works</div>
+    <p style="font-size:14px;line-height:1.7;color:var(--tx);margin:0 0 12px">
+      This dashboard estimates your solar panel production in real time using weather data
+      from Open-Meteo and your system configuration. It combines live solar irradiance,
+      panel tilt, temperature derating and your inverter efficiency to calculate AC output.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--g);margin-bottom:6px">⚡ Solar production</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      Calculated from Direct Normal Irradiance (DNI), Diffuse Horizontal Irradiance (DHI)
+      and your panel angle (Plane of Array model). Temperature derating is applied using
+      NOCT 45°C and a −0.37%/°C coefficient. Inverter efficiency is configured in your
+      system settings.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--am);margin-bottom:6px">⚠️ Consumption — fixed daily profile</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 8px">
+      Home consumption uses a fixed daily profile you configure once.
+      The app auto-fills the correct kW value based on the current hour.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--bl);margin-bottom:6px">📋 Log tab</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      The <strong>Log tab</strong> shows your cumulative energy summary — produced, consumed, self-sufficiency
+      and daily average — calculated automatically from all recorded snapshots.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--bl);margin-bottom:6px">🔋 Battery</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      The battery SOC you enter maps to the usable range: 10% = empty (reserve floor),
+      90% = full (charge ceiling). Enter the SOC shown in your solar panel application.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--g);margin-bottom:6px">📅 Forecast</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      7-day hourly forecast uses Open-Meteo weather data. Daily yield is estimated
+      from cloud cover and irradiance forecast.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:6px">🔔 Notifications</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      Smart alerts check every 15 minutes and send one combined notification.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:6px">📡 Data sources</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      Weather &amp; irradiance: <strong style="color:var(--tx)">Open-Meteo</strong> (free, no API key, updates every 5 min).<br>
+      Location: device GPS.<br>
+      All calculations run locally on your device — no data is sent anywhere.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:6px">🚀 App updates</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 10px">
+      The app checks for updates automatically on launch.
+    </p>
+    <button onclick="checkForUpdate().then(()=>{ document.getElementById('faqUpdMsg').textContent='✅ Check complete'; setTimeout(()=>document.getElementById('faqUpdMsg').textContent='',3000); })"
+      style="background:var(--bl);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:6px">
+      🔍 Check for updates
+    </button>
+    <span id="faqUpdMsg" style="font-size:12px;color:var(--g);margin-left:8px"></span>
+    <div style="margin-bottom:80px"></div>
+  </div>
+</div>
+
+</body>
+</html>
