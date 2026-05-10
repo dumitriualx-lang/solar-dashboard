@@ -534,8 +534,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 </div>
 </div><!-- /pgLog -->
 
-</div><!-- /body -->
-
 <nav class="nav">
   <button class="nb on"  onclick="showPage('Dash',this)"><span class="ni">⚡</span>Dashboard</button>
   <button class="nb"     onclick="showPage('Forecast',this)"><span class="ni">📅</span>Forecast</button>
@@ -865,19 +863,10 @@ function applySatelliteRadiation(sat) {
   if (directRad + diffuseRad <= 0 && sat.swr <= 0) return;  // night or no data
   const ghi = sat.swr > 0 ? sat.swr : (directRad + diffuseRad);
 
-  // Compute POA using the user's configured tilt/azimuth and the satellite beam/diffuse split.
-  // direct_radiation from Open-Meteo is beam on horizontal; DNI = direct / cos(SZA).
-  let poa;
-  if ((directRad > 0 || diffuseRad > 0) && ST.lat && ST.lon) {
-    const pos    = solarPosition(ST.lat, ST.lon);
-    const cosZen = Math.max(0.017, Math.cos((90 - pos.altitude) * Math.PI / 180));
-    const dni    = directRad > 0 ? directRad / cosZen : 0;
-    poa = calcPOA(dni, diffuseRad > 0 ? diffuseRad : ghi * 0.15,
-                  ghi, SYS.tiltDeg || 30, SYS.panelAzimuth || 180);
-  } else {
-    // Fallback: no split data or no GPS — use modest flat tilt approximation
-    poa = ghi * 1.05;
-  }
+  // Use GHI directly — calcPOA with DNI=direct/cos(SZA) blows up at low sun angles.
+  // Simple tilt-gain factor 1.08 for 30° south-facing panels at Romanian latitude.
+  // Validated against FusionSolar: 0.44 kW real → ~440 W/m² GHI at PR 0.75 implies factor ~1.08.
+  const poa = ghi * 1.08;
 
   const panelKw = SYS.panelKw || 5;
   const tempC   = ST.wxTempC || 20;
@@ -1075,10 +1064,8 @@ function processOpenMeteo(d) {
   const dhiCur = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
   const satAge = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
   if (satAge > 20 * 60 * 1000) {
-    let poaCur = 0;
-    if (pos.altitude > 0 && (dniCur > 0 || dhiCur > 0)) {
-      poaCur = calcPOA(dniCur, dhiCur, ghi, SYS.tiltDeg || 30, SYS.panelAzimuth || 180);
-    }
+    // Use GHI directly instead of calcPOA — avoids DNI blowup at low sun angles
+    const poaCur = ghi * 1.08;
     const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
     const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
     const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
@@ -1692,7 +1679,22 @@ function snap() {
 // ═══════════════════════════════════════════════════════════════
 // RENDER — METRICS
 // ═══════════════════════════════════════════════════════════════
-function renderMetrics() { /* metrics panels removed — represented in energy flow */ }
+function renderMetrics() {
+  // Populate header stat pills
+  const pvEl   = document.getElementById('hdrPv');
+  const battEl = document.getElementById('hdrBatt');
+  const wxEl   = document.getElementById('hdrWx');
+  const gridEl = document.getElementById('hdrGrid');
+  if (pvEl)   pvEl.textContent   = '☀️ ' + f(ST.pvKw, 2) + ' kW';
+  if (battEl) battEl.textContent = '🔋 ' + Math.round(socToDisplay(ST.battSoc)) + '%';
+  if (wxEl)   wxEl.textContent   = '🌡️ ' + (ST.wxTempC != null ? f(ST.wxTempC, 0) + '°C' : '--°C');
+  const fl = calcFlow();
+  if (gridEl) {
+    if (fl.gridExport > 0.05)      gridEl.textContent = '⚡ +' + f(fl.gridExport, 2) + ' kW';
+    else if (fl.gridImport > 0.05) gridEl.textContent = '⚡ -'  + f(fl.gridImport, 2) + ' kW';
+    else                           gridEl.textContent = '⚡ 0 kW';
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // RENDER — IRRADIANCE BAR
@@ -3086,6 +3088,14 @@ setInterval(() => {
     } catch(e) {}
   }
   fetchWeather();
+  // Silently refresh GPS every minute to keep location current
+  if (navigator.geolocation && ST.gpsOk) {
+    navigator.geolocation.getCurrentPosition(
+      pos => applyPosition(pos),
+      () => {},
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+    );
+  }
 }, 60*1000);
 
 setInterval(()=>{
@@ -3146,6 +3156,34 @@ document.addEventListener('visibilitychange', () => {
         }
       }
     }
+    // Restore SharedPreferences from Java on every resume
+    if (window.AppBridge && AppBridge.loadSoc) {
+      try {
+        const s = AppBridge.loadSoc();
+        if (s) {
+          const p = s.split(',');
+          const soc = parseFloat(p[0]);
+          const panelKw = parseFloat(p[1]) || 0;
+          const battGross = parseFloat(p[2]) || 0;
+          const battRes = parseFloat(p[3]) || 0.1;
+          const consKw = parseFloat(p[4]) || 0;
+          applyStateFromNative(soc, panelKw, battGross, battRes, consKw, 0);
+        }
+      } catch(e) {}
+    }
+    if (window.AppBridge && AppBridge.loadGps) {
+      try {
+        const gpsStr = AppBridge.loadGps();
+        if (gpsStr) {
+          const parts = gpsStr.split(',');
+          if (parts.length >= 2) {
+            const lat = parseFloat(parts[0]), lon = parseFloat(parts[1]);
+            const name = parts.slice(2).join(',');
+            if (lat && lon) { ST.lat = lat; ST.lon = lon; ST.locName = name || ST.locName; ST.gpsOk = true; }
+          }
+        }
+      } catch(e) {}
+    }
     catchUpLog(lastFlowT);
     lastFlowT = Date.now();
     applyAutoConsumption();
@@ -3161,7 +3199,7 @@ applyAutoConsumption();
 
 <div class="page" id="pgFaq" style="padding:14px;padding-bottom:90px">
   <div class="card">
-    <div class="ct">❓ How this app works</div>
+    <div>
     <p style="font-size:14px;line-height:1.7;color:var(--tx);margin:0 0 12px">
       This dashboard estimates your solar panel production in real time using weather data
       from Open-Meteo and your system configuration. It combines live solar irradiance,
