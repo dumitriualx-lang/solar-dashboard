@@ -323,6 +323,21 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void openUrl(String url) {
+            // Open URL using Android Intent — works for Play Store and https URLs
+            try {
+                android.content.Intent intent = new android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(url)
+                );
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                getApplicationContext().startActivity(intent);
+            } catch (Exception e) {
+                android.util.Log.e("AppBridge", "openUrl failed: " + e.getMessage());
+            }
+        }
+
+        @JavascriptInterface
         public String loadSoc() {
             android.content.SharedPreferences p =
                 getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
