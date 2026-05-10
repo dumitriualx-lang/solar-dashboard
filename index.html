@@ -1605,12 +1605,9 @@ function showUpdateDialog(versionName, storeUrl, versionCode) {
   now.className = 'upd-now';
   now.textContent = 'Update ↗';
   now.onclick = () => {
-    if (window.AppBridge && typeof AppBridge.openUrl === 'function') {
-      AppBridge.openUrl(storeUrl);
-    } else {
-      window.open(storeUrl, '_blank');
-    }
-    overlay.remove();
+    // window.location.href is intercepted by the TWA and routed to Play Store app
+    window.location.href = storeUrl;
+    setTimeout(() => overlay.remove(), 300);
   };
   btns.appendChild(later);
   btns.appendChild(now);
