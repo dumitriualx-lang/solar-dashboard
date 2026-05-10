@@ -1612,9 +1612,12 @@ function showUpdateDialog(versionName, storeUrl, versionCode) {
     a.href = storeUrl;
     a.target = '_blank';
     a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // AppBridge.openUrl uses Android Intent
+    if (window.AppBridge && typeof AppBridge.openUrl === 'function') {
+      AppBridge.openUrl(storeUrl);
+    } else {
+      window.open(storeUrl, '_blank');
+    }
   };
   btns.appendChild(later);
   btns.appendChild(now);
@@ -2772,7 +2775,7 @@ function showPage(n,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
   document.getElementById('pg'+n).classList.add('on'); el.classList.add('on');
-  if(n==='Forecast'){renderStrip();buildForecastChart();buildDayChart();renderForecastProduction();renderAlerts();}
+  if(n==='Forecast'){renderStrip();buildForecastChart();selectForecastDay(0);renderForecastProduction();renderAlerts();}
   if(n==='Sched')renderSched();
   if(n==='Log')renderLogTable();
 }
