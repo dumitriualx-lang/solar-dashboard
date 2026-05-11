@@ -664,7 +664,7 @@ let ST = {
 
 let FORECAST = [];
 const rlog = JSON.parse(localStorage.getItem('solarLog4') || '[]');
-let dchart, fchart, lastFlowT = Date.now();
+let dchart, lastFlowT = Date.now();
 let geoWatchId = null;
 
 // ═══════════════════════════════════════════════════════════════
@@ -2862,7 +2862,7 @@ function showPage(n,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
   document.getElementById('pg'+n).classList.add('on'); el.classList.add('on');
-  if(n==='Forecast'){renderStrip();buildForecastChart();selectForecastDay(0);renderForecastProduction();renderAlerts();}
+  if(n==='Forecast'){renderStrip();selectForecastDay(0);renderForecastProduction();renderAlerts();}
   if(n==='Sched')renderSched();
   if(n==='Log')renderLogTable();
 }
