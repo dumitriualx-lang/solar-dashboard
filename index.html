@@ -873,8 +873,9 @@ function applySatelliteRadiation(sat) {
   const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(0, poa);
   const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
   const acMax   = SYS.acMax || panelKw * 0.984;
-  // PR 0.75 covers inverter, DC wiring, soiling and mismatch losses
-  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * panelKw * 0.75 * tFac)).toFixed(3);
+  // acMax = panelKw × invEff × dcLoss already covers inverter + wiring.
+  // Only remaining loss: module mismatch ~0.97. Temperature handled by tFac separately.
+  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac)).toFixed(3);
   ST.pvKw      = pvKw;
   ST._satLastMs = Date.now();  // timestamp so NWP won't overwrite this
   ST.irrWm2    = sat.swr;
@@ -1070,7 +1071,8 @@ function processOpenMeteo(d) {
     const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
     const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
     const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
-    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * (SYS.panelKw || 5) * 0.75 * tFac_nwp)).toFixed(3);
+    // acMax already includes invEff + dcLoss; only mismatch (0.97) is additional
+    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp)).toFixed(3);
     ST.poaWm2 = +poaCur.toFixed(1);
   }
 
@@ -1109,7 +1111,7 @@ function processOpenMeteo(d) {
     const tFac_h  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_h - 25));
     const pvKw    = +Math.max(0, Math.min(
       SYS.acMax || (SYS.panelKw||5) * 0.984,
-      (poa_h / 1000) * (SYS.panelKw || 5) * 0.75 * tFac_h
+      (poa_h / 1000) * (SYS.acMax || (SYS.panelKw||5) * 0.984) * 0.97 * tFac_h
     )).toFixed(3);
 
     ST.todayH.push({ hour: localHour, pvKw, ghi: swr_h, dni: dni_h, dhi: dhi_h });
@@ -1284,7 +1286,9 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
   ST.cfGHI       = +cfGHI.toFixed(3);
 
   const acMax    = SYS.acMax;
-  const raw      = (corrGHI / 1000) * acMax * 1.10 * 0.75 * tempF;
+  // acMax = panelKw × invEff × dcLoss. Mismatch 0.97 is the only additional loss.
+  // Temperature is handled by tempF. So effective PR ≈ 0.984×0.97×0.97×tempF ≈ 0.926×tempF.
+  const raw      = (corrGHI / 1000) * acMax * 1.10 * 0.97 * tempF;
   return +Math.max(0, Math.min(acMax, raw)).toFixed(3);
 }
 
