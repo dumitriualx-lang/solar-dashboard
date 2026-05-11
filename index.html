@@ -923,6 +923,7 @@ async function fetchWeather() {
     const d = JSON.parse(raw);
     processOpenMeteo(d);
     ST.apiOk = true; ST.lastFetch = new Date(); ST._fetchInProgress = false;
+    refreshForecastIfOpen(); // auto-update today's curve if Forecast tab is open
     // Launch satellite fetch in parallel — updates pvKw if measured data available
     // Does not block the UI; falls back silently if satellite API is unreachable
     if (ST.lat && ST.lon) {
@@ -1885,9 +1886,13 @@ function selectForecastDay(idx) {
       '<span class="pill p-info">'+d.icon+' '+f(d.tempC,0)+'°C · '+f(d.yieldKwh,1)+' kWh · '+d.rain+'% rain</span>';
   }
 
-  // Rebuild day chart for selected day
+  // Rebuild day chart — use real hourly data if available, bell curve fallback otherwise
   if (idx === 0) {
-    buildDayChart();
+    if (ST.todayH && ST.todayH.length) {
+      buildDayChart();
+    } else {
+      buildDayChartForDay(0);   // bell-curve fallback until weather data loads
+    }
   } else {
     buildDayChartForDay(idx);
   }
@@ -1936,8 +1941,18 @@ function buildDayChartForDay(dayIdx) {
 // ═══════════════════════════════════════════════════════════════
 // RENDER — CHARTS
 // ═══════════════════════════════════════════════════════════════
+function refreshForecastIfOpen() {
+  // Called after weather data loads — refreshes today's curve if Forecast tab is active
+  if (document.getElementById('pgForecast') &&
+      document.getElementById('pgForecast').classList.contains('on')) {
+    renderStrip();         // rebuild day cards with fresh FORECAST data
+    selectForecastDay(0);  // highlight today and draw the curve
+  }
+}
+
 function buildDayChart() {
-  if(!ST.todayH)return;
+  // Fall back to forecast hourly data if live today-hours not ready yet
+  if(!ST.todayH || !ST.todayH.length) { if(FORECAST.length) buildDayChartForDay(0); return; }
   if(dchart)dchart.destroy();
   const nowH=new Date().getHours(), lbls=ST.todayH.map(h=>h.hour+':00');
   const genD=ST.todayH.map(h=>+h.pvKw.toFixed(3)), conD=ST.todayH.map(()=>ST.consKw);
