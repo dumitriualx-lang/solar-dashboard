@@ -3086,20 +3086,22 @@ function renderSmartSched() {
       : 'Need ' + f(needed,2) + ' kW more solar · wait for peak';
     const reminded = applianceReminders.has(app.id);
     const remindLbl = reminded ? ('🔔 ' + _reminderLabel(app.id)) : '🔕';
-    // Show remind button only when appliance can't run right now
-    const remindBtn = canRun
-      ? ''
-      : '<button class="sr-btn' + (reminded ? ' sr-on' : '') + '" ' +
+    // Bell only on Queue (solar covers it but another appliance goes first)
+    // and Partial (not quite enough solar but close) — not on Batt only or Wait
+    const showBell = (canRun && !isFirst) || partial;
+    const remindBtn = showBell
+      ? '<button class="sr-btn' + (reminded ? ' sr-on' : '') + '" ' +
         'onclick="toggleApplianceReminder(\'' + app.id + '\')" ' +
         'title="' + (reminded ? 'Cancel reminder (fires in ' + _reminderLabel(app.id) + ')' : 'Remind me in 1 hour') + '">' +
         remindLbl +
-        '</button>';
+        '</button>'
+      : '';
     return '<div class="si">' +
       '<div style="width:8px;height:8px;border-radius:50%;background:' + statusDot + ';flex-shrink:0;margin-top:2px"></div>' +
       '<div class="sic">' + app.icon + '</div>' +
       '<div class="sinf">' +
         '<div class="snm">' + app.name + ' <span style="font-size:9px;color:var(--t3);font-weight:400">' + app.kw + ' kW</span></div>' +
-        '<div class="stm">' + extraInfo + (reminded ? ' · <span style="color:#BA7517;font-weight:600">🔔 reminder in ' + _reminderLabel(app.id) + '</span>' : '') + '</div>' +
+        '<div class="stm">' + extraInfo + (reminded && showBell ? ' · <span style="color:#BA7517;font-weight:600">🔔 reminder in ' + _reminderLabel(app.id) + '</span>' : '') + '</div>' +
       '</div>' +
       '<div class="sbg ' + statusCls + '">' + statusTxt + '</div>' +
       remindBtn +
