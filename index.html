@@ -2990,76 +2990,106 @@ function getStackingCombos(surplus) {
 
 const applianceState = {};
 
-// ── Appliance reminders ─────────────────────────────────────────────────────
-// Persisted Set of appliance IDs the user wants notified when surplus is ready.
-const applianceReminders = new Set(
-  (() => { try { return JSON.parse(localStorage.getItem('applianceReminders') || '[]'); } catch(e) { return []; } })()
+// ── Appliance reminders — 1-hour timed ──────────────────────────────────────
+// Map of reminderKey → fireAtMs (epoch ms). Keys: app.id or 'id1+id2' for stacks.
+// Stored in localStorage so restarts can recover pending timers.
+const _REMINDER_LS = 'solarReminderTimers';
+const applianceReminders = new Map(
+  (() => {
+    try {
+      const obj = JSON.parse(localStorage.getItem(_REMINDER_LS) || '{}');
+      // Discard stale entries (already overdue by > 5 min — would confuse user)
+      const now = Date.now();
+      return Object.entries(obj).filter(([,t]) => t > now - 300000);
+    } catch(e) { return []; }
+  })()
 );
+// Active setTimeout handles keyed by reminderKey
+const _reminderTimers = {};
 
 function saveReminders() {
-  try { localStorage.setItem('applianceReminders', JSON.stringify([...applianceReminders])); } catch(e) {}
+  try {
+    const obj = {};
+    applianceReminders.forEach((fireAt, key) => { obj[key] = fireAt; });
+    localStorage.setItem(_REMINDER_LS, JSON.stringify(obj));
+  } catch(e) {}
 }
 
-function fireApplianceReminder(app, surplus) {
-  if (!notifAllowed()) return;
+function fireReminderNotif(key) {
+  // Build the appliance label from the key (single id or 'id1+id2')
+  const ids   = key.split('+');
+  const apps  = ids.map(id => APPLIANCES.find(a => a.id === id)).filter(Boolean);
+  if (!apps.length) return;
+  const label = apps.map(a => a.name).join(' and ');
   showNotification(
-    app.icon + ' ' + app.name + ' — solar surplus ready',
-    'Production is now +' + f(surplus, 2) + ' kW above consumption. ' +
-    app.name + ' (' + app.kw + ' kW) can run fully on solar now. ' +
-    'Battery: ' + socToDisplay(ST.battSoc) + '%.',
-    'reminder-' + app.id
+    '🔔 Reminder — ' + apps.map(a => a.icon).join('') + ' ' + label,
+    'As you requested, I am reminding you to use: ' + label + '.',
+    'reminder-' + key
   );
 }
 
-function toggleApplianceReminder(id) {
-  if (applianceReminders.has(id)) {
-    applianceReminders.delete(id);
+function scheduleReminderTimer(key, fireAt) {
+  // Clear any existing timer for this key
+  if (_reminderTimers[key]) { clearTimeout(_reminderTimers[key]); delete _reminderTimers[key]; }
+  const msLeft = fireAt - Date.now();
+  if (msLeft <= 0) {
+    // Overdue — fire immediately then clean up
+    fireReminderNotif(key);
+    applianceReminders.delete(key);
     saveReminders();
     renderSmartSched();
     return;
   }
-  applianceReminders.add(id);
-  saveReminders();
-  // Check immediately in case surplus already covers it
-  const app = APPLIANCES.find(a => a.id === id);
-  if (app) {
-    const fl = calcFlow();
-    const surplus = +(fl.gridExport > 0.05 ? fl.gridExport : fl.pv - fl.cons);
-    if (surplus >= app.kw) {
-      fireApplianceReminder(app, surplus);
-      applianceReminders.delete(id);
-      saveReminders();
-    }
+  _reminderTimers[key] = setTimeout(() => {
+    delete _reminderTimers[key];
+    fireReminderNotif(key);
+    applianceReminders.delete(key);
+    saveReminders();
+    renderSmartSched();
+  }, msLeft);
+}
+
+// Restore timers for any reminders that survived a restart
+applianceReminders.forEach((fireAt, key) => scheduleReminderTimer(key, fireAt));
+
+function toggleApplianceReminder(id) {
+  if (applianceReminders.has(id)) {
+    // Cancel
+    if (_reminderTimers[id]) { clearTimeout(_reminderTimers[id]); delete _reminderTimers[id]; }
+    applianceReminders.delete(id);
+  } else {
+    // Set 1-hour reminder
+    const fireAt = Date.now() + 3600000;
+    applianceReminders.set(id, fireAt);
+    scheduleReminderTimer(id, fireAt);
   }
+  saveReminders();
   renderSmartSched();
 }
 
-// Set/cancel reminder for an entire stacking combo (all appliance IDs)
+// Set/cancel reminder for an entire stacking combo
 function toggleStackReminder(ids) {
   const key = ids.join('+');
-  const allSet = ids.every(id => applianceReminders.has(id));
-  if (allSet) {
-    ids.forEach(id => applianceReminders.delete(id));
+  if (applianceReminders.has(key)) {
+    // Cancel
+    if (_reminderTimers[key]) { clearTimeout(_reminderTimers[key]); delete _reminderTimers[key]; }
+    applianceReminders.delete(key);
   } else {
-    ids.forEach(id => applianceReminders.add(id));
-    // Fire immediately if combo avg load already fits
-    const fl = calcFlow();
-    const surplus = +(fl.gridExport > 0.05 ? fl.gridExport : fl.pv - fl.cons);
-    const combo = APPLIANCES.filter(a => ids.includes(a.id));
-    const avgLoad = combo.reduce((s, a) => s + a.avgKw, 0);
-    if (avgLoad <= surplus) {
-      const names = combo.map(a => a.icon + ' ' + a.name).join(' + ');
-      showNotification(
-        '⚡ Stack ready — ' + names,
-        'Combined avg draw ' + f(avgLoad, 1) + ' kW fits in current +' + f(surplus, 2) +
-        ' kW surplus. Start both now. Battery: ' + socToDisplay(ST.battSoc) + '%.',
-        'stack-' + key
-      );
-      ids.forEach(id => applianceReminders.delete(id));
-    }
+    // Set 1-hour reminder
+    const fireAt = Date.now() + 3600000;
+    applianceReminders.set(key, fireAt);
+    scheduleReminderTimer(key, fireAt);
   }
   saveReminders();
   renderSmartSched();
+}
+
+// Helper: remaining minutes label for a reminder key
+function _reminderLabel(key) {
+  const fireAt = applianceReminders.get(key);
+  if (!fireAt) return '';
+  const min = Math.max(1, Math.round((fireAt - Date.now()) / 60000));
+  return min + 'm';
 }
 
 function renderSmartSched() {
@@ -3071,21 +3101,6 @@ function renderSmartSched() {
     ? fl.gridExport
     : fl.pv - fl.cons;
 
-  // ── Check pending reminders ─────────────────────────────────────────────
-  // Fire and clear any reminder whose appliance is now covered by surplus.
-  if (applianceReminders.size > 0) {
-    let changed = false;
-    applianceReminders.forEach(id => {
-      const app = APPLIANCES.find(a => a.id === id);
-      if (!app) { applianceReminders.delete(id); changed = true; return; }
-      if (surplus >= app.kw) {
-        fireApplianceReminder(app, surplus);
-        applianceReminders.delete(id);
-        changed = true;
-      }
-    });
-    if (changed) saveReminders();
-  }
   const pill = document.getElementById('surplusPill');
   if (surplus >= SURPLUS_TRIGGER && !battDischarging && !lowSolar) {
     pill.textContent = '+' + f(surplus,2) + ' kW surplus';
@@ -3138,20 +3153,21 @@ function renderSmartSched() {
       ? 'Need ' + f(needed,2) + ' kW more solar · battery makes up rest'
       : 'Need ' + f(needed,2) + ' kW more solar · wait for peak';
     const reminded = applianceReminders.has(app.id);
+    const remindLbl = reminded ? ('🔔 ' + _reminderLabel(app.id)) : '🔕';
     // Show remind button only when appliance can't run right now
     const remindBtn = canRun
       ? ''
       : '<button class="sr-btn' + (reminded ? ' sr-on' : '') + '" ' +
         'onclick="toggleApplianceReminder(\'' + app.id + '\')" ' +
-        'title="' + (reminded ? 'Cancel reminder' : 'Remind me when solar covers this') + '">' +
-        (reminded ? '🔔' : '🔕') +
+        'title="' + (reminded ? 'Cancel reminder (fires in ' + _reminderLabel(app.id) + ')' : 'Remind me in 1 hour') + '">' +
+        remindLbl +
         '</button>';
     return '<div class="si">' +
       '<div style="width:8px;height:8px;border-radius:50%;background:' + statusDot + ';flex-shrink:0;margin-top:2px"></div>' +
       '<div class="sic">' + app.icon + '</div>' +
       '<div class="sinf">' +
         '<div class="snm">' + app.name + ' <span style="font-size:9px;color:var(--t3);font-weight:400">' + app.kw + ' kW</span></div>' +
-        '<div class="stm">' + extraInfo + (reminded ? ' · <span style="color:#BA7517;font-weight:600">reminder set</span>' : '') + '</div>' +
+        '<div class="stm">' + extraInfo + (reminded ? ' · <span style="color:#BA7517;font-weight:600">🔔 reminder in ' + _reminderLabel(app.id) + '</span>' : '') + '</div>' +
       '</div>' +
       '<div class="sbg ' + statusCls + '">' + statusTxt + '</div>' +
       remindBtn +
@@ -3165,7 +3181,8 @@ function renderSmartSched() {
   if (combos.length > 0) {
     const comboCards = combos.map(c => {
       const ids     = c.apps.map(a => a.id);
-      const allSet  = ids.every(id => applianceReminders.has(id));
+      const key     = ids.join('+');
+      const isSet   = applianceReminders.has(key);
       const label   = c.apps.map(a => a.icon + ' ' + a.name).join(' + ');
       const idsJson = JSON.stringify(ids).replace(/"/g, "'");
       return '<div class="stack-combo">' +
@@ -3174,11 +3191,12 @@ function renderSmartSched() {
           '<div class="stack-combo-info">' +
             '~' + f(c.avgLoad,1) + ' kW avg draw · ' + f(c.peakLoad,1) + ' kW peak · ' +
             f(surplus - c.avgLoad, 1) + ' kW headroom' +
+            (isSet ? ' · <span style="color:#BA7517;font-weight:600">🔔 ' + _reminderLabel(key) + '</span>' : '') +
           '</div>' +
         '</div>' +
-        '<button class="stack-remind-btn' + (allSet ? ' active' : '') + '" ' +
+        '<button class="stack-remind-btn' + (isSet ? ' active' : '') + '" ' +
           'onclick="toggleStackReminder(' + idsJson + ')">' +
-          (allSet ? '🔔 Set' : '🔕 Remind') +
+          (isSet ? '🔔 ' + _reminderLabel(key) : '🔕 Remind') +
         '</button>' +
       '</div>';
     }).join('');
