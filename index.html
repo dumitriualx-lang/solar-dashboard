@@ -898,9 +898,17 @@ async function fetchWeather() {
   if (!ST.lat || !ST.lon) {
     setApi('load', '⏳ Waiting for GPS location...'); return;
   }
-  // Prevent concurrent fetches — AppBridge uses a single callback slot
-  if (ST._fetchInProgress) return;
+  // Prevent concurrent fetches — but auto-clear if stuck > 45s.
+  // Android suspends JS timers when backgrounded so the 30s timeout may never fire.
+  if (ST._fetchInProgress) {
+    const stuckMs = Date.now() - (ST._fetchStartMs || 0);
+    if (stuckMs < 45000) return;   // still within normal window — wait
+    // Force-clear stuck fetch: timer was suspended, timeout never fired
+    ST._fetchInProgress = false;
+    if (window.__nativeWeatherResult) delete window.__nativeWeatherResult;
+  }
   ST._fetchInProgress = true;
+  ST._fetchStartMs = Date.now();
   setApi('load', '⏳ Fetching weather...');
   try {
     const u = 'https://api.open-meteo.com/v1/forecast?'
@@ -915,7 +923,11 @@ async function fetchWeather() {
     if (window.AppBridge && window.AppBridge.fetchWeather) {
       // Android native fetch via AppBridge
       raw = await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('timeout')), 30000);
+        const timer = setTimeout(() => {
+          // Clean up callback so a late Java response doesn't corrupt a future fetch
+          delete window.__nativeWeatherResult;
+          reject(new Error('timeout'));
+        }, 30000);
         window.__nativeWeatherResult = function(b64) {
           clearTimeout(timer);
           delete window.__nativeWeatherResult;
@@ -3141,6 +3153,9 @@ initNotifBar();
       });
     }
     fetchWeather();
+    // Startup retry: if the first fetch fails silently (AppBridge flaky, GPS just acquired),
+    // retry once after 12 seconds before the 60s interval kicks in.
+    setTimeout(() => { if (!ST.apiOk && !ST._fetchInProgress && ST.lat && ST.lon) fetchWeather(); }, 12000);
     setTimeout(checkForUpdate, 5000);
     setTimeout(() => {
       if (!('geolocation' in navigator)) return;
@@ -3267,6 +3282,14 @@ document.addEventListener('visibilitychange', () => {
     lastFlowT = Date.now();
     applyAutoConsumption();
     renderAll();
+    // Force-clear _fetchInProgress on resume — Android suspends JS timers when
+    // backgrounded, so the 30s timeout may never have fired while the app was hidden.
+    // Any in-flight AppBridge request is now stale; discard it and re-fetch fresh data.
+    if (ST._fetchInProgress) {
+      ST._fetchInProgress = false;
+      ST._fetchStartMs = 0;
+      if (window.__nativeWeatherResult) delete window.__nativeWeatherResult;
+    }
     fetchWeather();
     checkForUpdate();
   }
