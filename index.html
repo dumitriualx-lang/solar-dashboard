@@ -604,10 +604,10 @@ const SYS = {
   noct:      45,       // Nominal Operating Cell Temperature °C
 };
 
-// SOC display mapping: battery physically operates 10–90% (user sees 0–100% of usable)
-// User input 90% = battery full (ceiling), 10% = battery empty (reserve floor)
-const SOC_FLOOR = 10;   // reserve floor % (hardware locked)
-const SOC_CEIL  = 90;   // charge ceiling % (safety threshold)
+// SOC display mapping: physical range 10–100% → internal 0–100 scale
+// 10% physical = 0 internal (reserve floor / empty), 100% physical = 100 internal (full)
+const SOC_FLOOR = 10;   // reserve floor % — discharge stops here (hardware enforced)
+const SOC_CEIL  = 100;  // charge ceiling % — users can charge to 100%
 const socToInternal = (userPct) =>
   Math.max(0, Math.min(100,
     ((+userPct - SOC_FLOOR) / (SOC_CEIL - SOC_FLOOR)) * 100
@@ -634,7 +634,7 @@ let ST = {
   apiOk: false, lastFetch: null,
 
   // Battery — derived from energy balance, SOC evolves over time
-  battSoc: savedCfg.battSoc ? Math.max(0,Math.min(100,((savedCfg.battSoc-10)/80)*100)) : 50,
+  battSoc: savedCfg.battSoc ? Math.max(0,Math.min(100,((savedCfg.battSoc-10)/90)*100)) : 50,
 
   // Consumption — only manual input
   consKw: savedCfg.consKw || 0,
@@ -1388,8 +1388,8 @@ function calcFlow() {
   const pv      = ST.pvKw  || 0;
   const cons    = ST.consKw || 0;
   const soc     = ST.battSoc || 50;
-  // ST.battSoc is on the INTERNAL scale: 0% = display floor (10%), 100% = display ceiling (90%)
-  // hardFlr = 0 internal = display 10% — the true reserve floor where discharge stops
+  // ST.battSoc is on the INTERNAL scale: 0 = physical 10% (empty), 100 = physical 100% (full)
+  // hardFlr = 0 internal = physical 10% — the true reserve floor where discharge stops
   // Soft ramp zone: internal 0–2% (display 10–11.6%) — reduce discharge near floor
   // to prevent a hard cliff and match Huawei inverter behaviour at reserve boundary
   const hardFlr = 0;   // internal SOC: discharge blocked only at/below this
@@ -1431,7 +1431,7 @@ function evolveSoc() {
   const now = Date.now();
   const dtH = (now - lastFlowT) / 3600000;   // hours elapsed
   lastFlowT = now;
-  const hardFlr = Math.round(SYS.battRes * 50);
+  const hardFlr = 0;   // internal 0 = physical 10% — discharge stops here
   const prevSoc = ST.battSoc;
   // Huawei Luna 2000: 96% charge × 96% discharge = 92% round-trip efficiency
   // Efficiency model:
