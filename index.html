@@ -276,21 +276,33 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
           <option value="huawei_15">Huawei Luna 2000 (15 kWh)</option>
           <option value="tesla_pw2">Tesla Powerwall 2 (13.5 kWh)</option>
           <option value="tesla_pw3">Tesla Powerwall 3 (13.5 kWh)</option>
-          <option value="byd_hvs5">BYD Battery-Box HVS (5.1 kWh)</option>
-          <option value="byd_hvs10">BYD Battery-Box HVS (10.2 kWh)</option>
-          <option value="byd_hvl">BYD Battery-Box HVL (11.5 kWh)</option>
-          <option value="pylontech_us2">Pylontech US2000 (2.4 kWh)</option>
-          <option value="pylontech_us3">Pylontech US3000 (3.5 kWh)</option>
+          <option value="byd_hvs5">BYD Battery-Box HVS (5.12 kWh)</option>
+          <option value="byd_hvs10">BYD Battery-Box HVS (10.24 kWh)</option>
+          <option value="byd_hvl">BYD Battery-Box HVL (11.04 kWh)</option>
+          <option value="pylontech_us2">Pylontech US2000C (2.4 kWh)</option>
+          <option value="pylontech_us3">Pylontech US3000C (3.55 kWh)</option>
           <option value="pylontech_us5">Pylontech US5000 (4.8 kWh)</option>
           <option value="sonnen_eco8">Sonnen Eco (8 kWh)</option>
           <option value="sonnen_eco10">Sonnen Eco (10 kWh)</option>
           <option value="solaredge_10">SolarEdge Home Battery (10 kWh)</option>
-          <option value="foxess_h">FoxESS H Series (10 kWh)</option>
-          <option value="givbatt_9.5">GivEnergy (9.5 kWh)</option>
+          <option value="foxess_h">FoxESS H Series (10.24 kWh)</option>
+          <option value="givbatt_9_5">GivEnergy (9.5 kWh)</option>
           <option value="sungrow_shb">Sungrow SBR (9.6 kWh)</option>
-          <option value="enphase_iq10">Enphase IQ Battery 10 (10 kWh)</option>
+          <option value="enphase_iq10">Enphase IQ Battery 10T (10.08 kWh)</option>
           <option value="alpha_smile5">AlphaESS SMILE5 (5 kWh)</option>
           <option value="puredrive_5">PureDrive Energy (5 kWh)</option>
+          <optgroup label="─── Deye ───────────────────">
+          <option value="deye_sg5">Deye SE-G5.1 Pro-B (5.12 kWh)</option>
+          <option value="deye_rw16">Deye RW-F16 (16 kWh)</option>
+          </optgroup>
+          <optgroup label="─── GoodWe Lynx ────────────">
+          <option value="goodwe_lynx_u5">GoodWe Lynx Home U (5.4 kWh)</option>
+          <option value="goodwe_lynx_d10">GoodWe Lynx Home D (10 kWh)</option>
+          </optgroup>
+          <optgroup label="─── Livoltek ───────────────">
+          <option value="livoltek_blf5">Livoltek BLF51-5 (5 kWh)</option>
+          <option value="livoltek_bhf10">Livoltek BHF-S10 (10 kWh)</option>
+          </optgroup>
           <option value="other">Other / Custom</option>
         </select>
         <div class="mfr-hint" id="battBrandHint">Select to auto-fill capacity &amp; reserve</div>
@@ -1076,12 +1088,17 @@ function processOpenMeteo(d) {
     ST.poaWm2 = +poaCur.toFixed(1);
   }
 
-  // Build todayH from hourly — using location's timezone (utc_offset_seconds)
-  // so "today" matches the panels' local date, not the device's local date.
+  // Build todayH using phone's local clock — phone and panels are co-located.
+  // getTimezoneOffset() returns minutes WEST of UTC (negative for UTC+), so negate it.
+  const phoneOffsetSec = -new Date().getTimezoneOffset() * 60;
   const pad = n => String(n).padStart(2,'0');
-  const locNow   = new Date(Date.now() + utcOffsetSec * 1000);
-  const todayStr = locNow.getUTCFullYear() + '-' + pad(locNow.getUTCMonth()+1) + '-' + pad(locNow.getUTCDate());
-  const [todayYr, todayMo, todayDy] = todayStr.split('-').map(Number);
+  const locNow   = new Date();                             // phone local time
+  const todayStr = locNow.getFullYear()    + '-'
+                 + pad(locNow.getMonth()+1) + '-'
+                 + pad(locNow.getDate());
+  const todayYr  = locNow.getFullYear();
+  const todayMo  = locNow.getMonth() + 1;
+  const todayDy  = locNow.getDate();
 
   ST.todayH = [];
   (hr.time || []).forEach((t, i) => {
@@ -1097,9 +1114,9 @@ function processOpenMeteo(d) {
       return;
     }
 
-    // Build a UTC Date for the midpoint of this local hour so solarPosition()
-    // computes the correct sun angle for THAT hour, not the current moment.
-    const utcHourFrac = localHour + 0.5 - utcOffsetSec / 3600;
+    // Convert local hour midpoint → UTC for solarPosition().
+    // Use phone timezone offset so sun angles match the phone clock exactly.
+    const utcHourFrac = localHour + 0.5 - phoneOffsetSec / 3600;
     const hDate = new Date(Date.UTC(todayYr, todayMo - 1, todayDy) + utcHourFrac * 3600000);
     const pos_h = solarPosition(ST.lat, ST.lon, hDate);
 
@@ -1149,7 +1166,9 @@ function processForecastSolar(data) {
 
   const now    = new Date();
   const nowH   = now.getHours();
-  const today  = now.toISOString().slice(0,10);
+  // Use phone local date — toISOString() gives UTC date which breaks after ~21:00 local in UTC+3
+  const pad2   = n => String(n).padStart(2,'0');
+  const today  = now.getFullYear() + '-' + pad2(now.getMonth()+1) + '-' + pad2(now.getDate());
 
   // Build todayH from hourly watts
   ST.todayH = [];
@@ -1307,7 +1326,10 @@ function processData(data) {
   ST.wxCond  = wmoText(cur.weathercode);
   ST.wxIcon  = wmoIcon(cur.weathercode);
 
-  const now = new Date(), ts = now.toISOString().slice(0,10), h = data.hourly;
+  const now = new Date();
+  const _p2 = n => String(n).padStart(2,'0');
+  const ts = now.getFullYear() + '-' + _p2(now.getMonth()+1) + '-' + _p2(now.getDate());
+  const h = data.hourly;
   const si = h.time.findIndex(t => t.startsWith(ts));
   ST.todayH = [];
   for (let i = 0; i < 24; i++) {
@@ -2118,26 +2140,50 @@ const PANEL_BRANDS = {
 };
 
 const BATT_BRANDS = {
-  huawei_5:     { name:'Huawei Luna 2000',   gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW max · IP66 · modular' },
-  huawei_10:    { name:'Huawei Luna 2000',   gross:10.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW max · 2× 5 kWh modules' },
-  huawei_15:    { name:'Huawei Luna 2000',   gross:15.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW max · 3× 5 kWh modules' },
-  tesla_pw2:    { name:'Tesla Powerwall 2',  gross:13.5, res:5,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW cont / 7 kW peak · liquid cooled' },
-  tesla_pw3:    { name:'Tesla Powerwall 3',  gross:13.5, res:5,  maxC:11.5,maxD:11.5,hint:'LFP · 11.5 kW cont · built-in inverter' },
-  byd_hvs5:     { name:'BYD HVS',           gross:5.1,  res:10, maxC:3.6, maxD:3.6, hint:'LFP · 3.6 kW max · stackable' },
-  byd_hvs10:    { name:'BYD HVS',           gross:10.2, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW max · 2× stackable' },
-  byd_hvl:      { name:'BYD HVL',           gross:11.5, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW max · high voltage' },
-  pylontech_us2:{ name:'Pylontech US2000',   gross:2.4,  res:10, maxC:1.0, maxD:1.0, hint:'LFP · 1 kW · popular budget choice' },
-  pylontech_us3:{ name:'Pylontech US3000',   gross:3.5,  res:10, maxC:1.5, maxD:1.5, hint:'LFP · 1.5 kW · stackable to 12 kWh' },
-  pylontech_us5:{ name:'Pylontech US5000',   gross:4.8,  res:10, maxC:2.4, maxD:2.4, hint:'LFP · 2.4 kW · 48V system' },
-  sonnen_eco8:  { name:'Sonnen Eco',         gross:8.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · AI managed' },
-  sonnen_eco10: { name:'Sonnen Eco',         gross:10.0, res:10, maxC:3.3, maxD:3.3, hint:'LFP · German quality · VPP capable' },
-  solaredge_10: { name:'SolarEdge Home',     gross:10.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · DC-coupled' },
-  foxess_h:     { name:'FoxESS H Series',    gross:10.0, res:10, maxC:6.0, maxD:6.0, hint:'LFP · 6 kW · competitive pricing' },
-  givbatt_9_5:  { name:'GivEnergy',          gross:9.5,  res:10, maxC:3.6, maxD:3.6, hint:'LFP · 3.6 kW · popular in UK' },
-  sungrow_shb:  { name:'Sungrow SBR',        gross:9.6,  res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · modular 3.2 kWh bricks' },
-  enphase_iq10: { name:'Enphase IQ 10',      gross:10.0, res:5,  maxC:3.84,maxD:3.84,hint:'LFP · 3.84 kW · AC-coupled microinverter' },
-  alpha_smile5: { name:'AlphaESS SMILE5',    gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · compact wall unit' },
-  puredrive_5:  { name:'PureDrive Energy',   gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · UK-designed' },
+  // Huawei Luna 2000 S0: 90% DoD (10% reserve), 2.5 kW per 5 kWh module, capped at 5 kW by SUN2000 inverter
+  huawei_5:     { name:'Huawei Luna 2000',   gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · IP66 · 1× module' },
+  huawei_10:    { name:'Huawei Luna 2000',   gross:10.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 90% DoD · IP66 · 2× modules' },
+  huawei_15:    { name:'Huawei Luna 2000',   gross:15.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW (inverter limited) · 90% DoD · 3× modules' },
+  // Tesla Powerwall 2: 13.5 kWh IS the usable capacity (DoD 100% user-accessible), 5 kW continuous
+  tesla_pw2:    { name:'Tesla Powerwall 2',  gross:13.5, res:0,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW cont / 7 kW peak · 100% DoD · liquid cooled' },
+  // Tesla Powerwall 3: 13.5 kWh usable, charge up to 5 kW AC, discharge up to 11.5 kW
+  tesla_pw3:    { name:'Tesla Powerwall 3',  gross:13.5, res:0,  maxC:5.0, maxD:11.5, hint:'LFP · 11.5 kW discharge / 5 kW charge · 100% DoD · built-in inverter' },
+  // BYD HVS: 100% DoD (BMS managed internally), stackable high-voltage
+  byd_hvs5:     { name:'BYD Battery-Box HVS',gross:5.12, res:0,  maxC:3.6, maxD:3.6, hint:'LFP · 3.6 kW · 100% DoD · high-voltage stackable' },
+  byd_hvs10:    { name:'BYD Battery-Box HVS',gross:10.24,res:0,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 100% DoD · 2× 5.12 kWh modules' },
+  // BYD HVL: smallest tower is 11.04 kWh, 100% DoD
+  byd_hvl:      { name:'BYD Battery-Box HVL',gross:11.04,res:0,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 100% DoD · high-voltage tower' },
+  // Pylontech US series: 95% DoD (res=5%), 48V nominal
+  // US2000C: 25A × 48V = 1.2 kW
+  pylontech_us2:{ name:'Pylontech US2000C',  gross:2.4,  res:5,  maxC:1.2, maxD:1.2, hint:'LFP · 1.2 kW · 95% DoD · 48V stackable' },
+  // US3000C: 3.55 kWh, 37A × 48V = 1.78 kW
+  pylontech_us3:{ name:'Pylontech US3000C',  gross:3.55, res:5,  maxC:1.8, maxD:1.8, hint:'LFP · 1.8 kW · 95% DoD · 48V stackable to 57 kWh' },
+  // US5000: 4.8 kWh, 80A recommended × 48V = 3.84 kW
+  pylontech_us5:{ name:'Pylontech US5000',   gross:4.8,  res:5,  maxC:3.8, maxD:3.8, hint:'LFP · 3.8 kW · 95% DoD · 48V stackable to 77 kWh' },
+  // Sonnen eco: 90% DoD, eco 8 has 3.3 kW inverter, eco 10 has 3.3 kW inverter
+  sonnen_eco8:  { name:'Sonnen Eco',         gross:8.0,  res:10, maxC:3.3, maxD:3.3, hint:'LFP · 3.3 kW · 90% DoD · AI energy management' },
+  sonnen_eco10: { name:'Sonnen Eco',         gross:10.0, res:10, maxC:3.3, maxD:3.3, hint:'LFP · 3.3 kW · 90% DoD · VPP capable · 10,000 cycles' },
+  // SolarEdge Home Battery: 9.7 kWh usable from 10 kWh = 97% DoD (res=3%)
+  solaredge_10: { name:'SolarEdge Home',     gross:10.0, res:3,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 97% DoD · DC-coupled' },
+  // FoxESS H Series: H10.24 = 10.24 kWh gross, 6 kW max
+  foxess_h:     { name:'FoxESS H Series',    gross:10.24,res:10, maxC:6.0, maxD:6.0, hint:'LFP · 6 kW · 90% DoD · H10.24 model' },
+  // GivEnergy: 9.5 kWh, 3.6 kW, 80% DoD (20% reserve)
+  givbatt_9_5:  { name:'GivEnergy',          gross:9.5,  res:20, maxC:3.6, maxD:3.6, hint:'LFP · 3.6 kW · 80% DoD · popular in UK' },
+  // Sungrow SBR096: 9.6 kWh (3× 3.2 kWh), 100% DoD per spec, ~5 kW via SH inverter
+  sungrow_shb:  { name:'Sungrow SBR',        gross:9.6,  res:0,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 100% DoD · modular 3.2 kWh bricks' },
+  // Enphase IQ Battery 10T: 10.08 kWh usable (100%), 3.84 kW charge & discharge
+  enphase_iq10: { name:'Enphase IQ 10T',     gross:10.08,res:0,  maxC:3.84,maxD:3.84,hint:'LFP · 3.84 kW · 100% DoD · AC-coupled microinverter' },
+  alpha_smile5: { name:'AlphaESS SMILE5',    gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · compact wall unit' },
+  puredrive_5:  { name:'PureDrive Energy',   gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · UK-designed' },
+  // Deye: LFP, 90% DoD; SE-G5.1 Pro-B is 5.12 kWh 51.2V LV (50A rec = 2.56 kW); RW-F16 is 16 kWh LV 8 kW
+  deye_sg5:     { name:'Deye SE-G5.1 Pro-B', gross:5.12, res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · LV 51.2V · wall-mounted' },
+  deye_rw16:    { name:'Deye RW-F16',        gross:16.0, res:10, maxC:8.0, maxD:8.0, hint:'LFP · 8 kW · 90% DoD (14.4 kWh usable) · LV · built-in breaker' },
+  // GoodWe Lynx: LFP, 90% DoD; U series LV 5.4 kWh module (2.5 kW); D series HV 5 kWh module (5 kW per 2-module stack)
+  goodwe_lynx_u5: { name:'GoodWe Lynx Home U', gross:5.4, res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · LV 51.2V · plug & play' },
+  goodwe_lynx_d10:{ name:'GoodWe Lynx Home D',gross:10.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 90% DoD · HV stackable · 2× 5 kWh modules' },
+  // Livoltek: LFP, 90% DoD; BLF51-5 is 5 kWh LV (100A×51.2V but inverter-limited to 2.5 kW); BHF-S10 is 10 kWh HV IP65
+  livoltek_blf5:  { name:'Livoltek BLF51-5',  gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · LV 51.2V · IP21/IP65' },
+  livoltek_bhf10: { name:'Livoltek BHF-S10',  gross:10.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 90% DoD · HV modular · IP65 indoor/outdoor' },
   other:        { name:'Custom',             gross:null, res:10, maxC:null,maxD:null, hint:'Enter your battery gross capacity below' },
 };
 
@@ -2355,7 +2401,9 @@ function showNotification(title, body, tag) {
   }
 }
 
-// High consumption threshold: appliances ≥ 2 kW
+// Surplus trigger threshold: notify when production exceeds consumption by this margin
+const SURPLUS_TRIGGER = 1.0;  // kW above consumption to fire appliance notification
+// High consumption threshold: used only to flag heavy loads in schedules
 const HIGH_KW = 2.0;
 
 function notifAllowed() {
@@ -2376,34 +2424,39 @@ function notifyRealtime() {
   if (ST._lastRealtimeNotif && nowMin - ST._lastRealtimeNotif < 30) return;
 
   const surplus = +(ST.pvKw - (ST.consKw || 0)).toFixed(2);
-  const large = APPLIANCES.filter(a => a.kw >= HIGH_KW);
-  const runnable = large.filter(a => surplus >= a.kw);
 
-  if (runnable.length > 0) {
+  if (surplus >= SURPLUS_TRIGGER) {
+    // Fire when production exceeds consumption by at least 1 kW
     ST._lastRealtimeNotif = nowMin;
     try { localStorage.setItem('lastRealtimeNotif', nowMin); } catch(e) {}
-    const names = runnable.map(a => a.icon + ' ' + a.name).join(', ');
-    ST._lastSurplusNotif = nowMin;
+    // List every appliance that fits within the current surplus
+    const runnable = APPLIANCES.filter(a => a.kw <= surplus);
+    const names = runnable.length
+      ? runnable.map(a => a.icon + ' ' + a.name).join(', ')
+      : 'small loads';
     showNotification(
-      '☀️ Solar surplus — run large appliances',
-      '+' + f(surplus,2) + ' kW surplus. Good time to run: ' + names +
+      '☀️ Solar surplus +' + f(surplus, 2) + ' kW — good time for appliances',
+      'Production ' + f(ST.pvKw, 2) + ' kW · consumption ' + f(ST.consKw || 0, 2) +
+      ' kW · surplus +' + f(surplus, 2) + ' kW. Run: ' + names +
       '. Battery: ' + socToDisplay(ST.battSoc) + '%.',
       'realtime-high'
     );
   } else {
+    // Surplus too low — look ahead for the next hour where surplus ≥ 1 kW
     const now = new Date();
-    const nowH = now.getHours() + now.getMinutes()/60;
+    const nowH = now.getHours() + now.getMinutes() / 60;
     const nextWindow = ST.todayH && ST.todayH.find(
-      h => h.hour > nowH && (h.pvKw - (ST.consKw||0)) >= HIGH_KW
+      h => h.hour > nowH && (h.pvKw - (ST.consKw || 0)) >= SURPLUS_TRIGGER
     );
     if (nextWindow) {
       ST._lastRealtimeNotif = nowMin;
       try { localStorage.setItem('lastRealtimeNotif', nowMin); } catch(e) {}
+      const winSurplus = +(nextWindow.pvKw - (ST.consKw || 0)).toFixed(2);
       showNotification(
-        '⏰ Next solar window at ' + nextWindow.hour + ':00',
-        'Production too low now (' + f(ST.pvKw,2) + ' kW). ' +
-        'Solar will reach ' + f(nextWindow.pvKw,2) + ' kW at ' + nextWindow.hour +
-        ':00 — schedule large appliances then.',
+        '⏰ Solar surplus expected at ' + nextWindow.hour + ':00',
+        'Now: ' + f(ST.pvKw, 2) + ' kW production, only +' + f(Math.max(0, surplus), 2) +
+        ' kW surplus. Forecast +' + f(winSurplus, 2) + ' kW at ' + nextWindow.hour +
+        ':00 — schedule appliances then.',
         'realtime-low'
       );
     }
@@ -2474,7 +2527,7 @@ function scheduleMorningForecast() {
       ? ST.todayH.reduce((a, b) => b.pvKw > a.pvKw ? b : a, { pvKw: 0, hour: 12 })
       : { pvKw: 0, hour: 12 };
     const large = APPLIANCES.filter(a => a.kw >= HIGH_KW);
-    const runnable = large.filter(a => bestHour.pvKw - (ST.consKw || 0) >= a.kw);
+    const runnable = large.filter(a => bestHour.pvKw - (ST.consKw || 0) >= a.kw && bestHour.pvKw - (ST.consKw||0) >= SURPLUS_TRIGGER);
     const names = runnable.length
       ? runnable.slice(0, 3).map(a => a.icon + ' ' + a.name).join(', ')
       : 'limited surplus today';
@@ -2526,7 +2579,7 @@ function checkMissedDailyNotifications() {
     const bestHour = ST.todayH && ST.todayH.length
       ? ST.todayH.reduce((a, b) => b.pvKw > a.pvKw ? b : a, { pvKw: 0, hour: 12 })
       : { pvKw: 0, hour: 12 };
-    const runnable = APPLIANCES.filter(a => a.kw >= HIGH_KW && bestHour.pvKw - (ST.consKw||0) >= a.kw);
+    const runnable = APPLIANCES.filter(a => a.kw >= HIGH_KW && bestHour.pvKw - (ST.consKw||0) >= Math.max(a.kw, SURPLUS_TRIGGER));
     const names = runnable.length ? runnable.slice(0,3).map(a => a.icon+' '+a.name).join(', ') : 'limited surplus today';
     if (today.yieldKwh >= peakKw * 2) {
       showNotification('☀️ Good solar day — ' + f(today.yieldKwh,1) + ' kWh forecast',
@@ -2873,7 +2926,7 @@ function renderSmartSched() {
     ? fl.gridExport
     : fl.pv - fl.cons;
   const pill = document.getElementById('surplusPill');
-  if (surplus >= 1.5 && !battDischarging && !lowSolar) {
+  if (surplus >= SURPLUS_TRIGGER && !battDischarging && !lowSolar) {
     pill.textContent = '+' + f(surplus,2) + ' kW surplus';
     pill.className   = 'pill p-ok';
   } else if (battDischarging || lowSolar) {
