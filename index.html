@@ -129,6 +129,9 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 .snm{font-size:13px;font-weight:600;color:var(--tx)}.stm{font-size:11px;color:var(--t2);line-height:1.35;margin-top:1px}
 .sbg{font-size:11px;padding:2px 8px;border-radius:8px;flex-shrink:0;font-weight:600}
 .sb-b{background:var(--gl);color:#0F6E56}.sb-o{background:var(--bll);color:#185FA5}.sb-a{background:var(--rdl);color:var(--rd)}
+.sr-btn{font-size:14px;padding:3px 6px;border-radius:8px;border:none;background:none;cursor:pointer;flex-shrink:0;line-height:1;opacity:.55;transition:opacity .15s,background .15s}
+.sr-btn:active{opacity:.8}
+.sr-btn.sr-on{opacity:1;background:rgba(186,117,23,.15)}
 .alert{padding:10px 12px;border-radius:var(--rs);font-size:12px;margin-bottom:6px;line-height:1.55;border-left:3px solid}
 .alert:last-child{margin-bottom:0}
 .al-s{background:var(--gl);border-color:var(--g);color:#0F6E56}.al-w{background:var(--aml);border-color:var(--am);color:#854F0B}
@@ -2929,6 +2932,50 @@ const APPLIANCES = [
 
 const applianceState = {};
 
+// ── Appliance reminders ─────────────────────────────────────────────────────
+// Persisted Set of appliance IDs the user wants notified when surplus is ready.
+const applianceReminders = new Set(
+  (() => { try { return JSON.parse(localStorage.getItem('applianceReminders') || '[]'); } catch(e) { return []; } })()
+);
+
+function saveReminders() {
+  try { localStorage.setItem('applianceReminders', JSON.stringify([...applianceReminders])); } catch(e) {}
+}
+
+function fireApplianceReminder(app, surplus) {
+  if (!notifAllowed()) return;
+  showNotification(
+    app.icon + ' ' + app.name + ' — solar surplus ready',
+    'Production is now +' + f(surplus, 2) + ' kW above consumption. ' +
+    app.name + ' (' + app.kw + ' kW) can run fully on solar now. ' +
+    'Battery: ' + socToDisplay(ST.battSoc) + '%.',
+    'reminder-' + app.id
+  );
+}
+
+function toggleApplianceReminder(id) {
+  if (applianceReminders.has(id)) {
+    applianceReminders.delete(id);
+    saveReminders();
+    renderSmartSched();
+    return;
+  }
+  applianceReminders.add(id);
+  saveReminders();
+  // Check immediately in case surplus already covers it
+  const app = APPLIANCES.find(a => a.id === id);
+  if (app) {
+    const fl = calcFlow();
+    const surplus = +(fl.gridExport > 0.05 ? fl.gridExport : fl.pv - fl.cons);
+    if (surplus >= app.kw) {
+      fireApplianceReminder(app, surplus);
+      applianceReminders.delete(id);
+      saveReminders();
+    }
+  }
+  renderSmartSched();
+}
+
 function renderSmartSched() {
   const fl      = calcFlow();
   const acMax   = SYS.acMax;
@@ -2937,6 +2984,22 @@ function renderSmartSched() {
   const surplus = fl.gridExport > 0.05
     ? fl.gridExport
     : fl.pv - fl.cons;
+
+  // ── Check pending reminders ─────────────────────────────────────────────
+  // Fire and clear any reminder whose appliance is now covered by surplus.
+  if (applianceReminders.size > 0) {
+    let changed = false;
+    applianceReminders.forEach(id => {
+      const app = APPLIANCES.find(a => a.id === id);
+      if (!app) { applianceReminders.delete(id); changed = true; return; }
+      if (surplus >= app.kw) {
+        fireApplianceReminder(app, surplus);
+        applianceReminders.delete(id);
+        changed = true;
+      }
+    });
+    if (changed) saveReminders();
+  }
   const pill = document.getElementById('surplusPill');
   if (surplus >= SURPLUS_TRIGGER && !battDischarging && !lowSolar) {
     pill.textContent = '+' + f(surplus,2) + ' kW surplus';
@@ -2959,9 +3022,9 @@ function renderSmartSched() {
     '<div style="height:6px;border-radius:3px;background:var(--sf2);overflow:hidden">' +
     '<div style="height:100%;width:' + barPct + '%;background:' + barCol + ';border-radius:3px;transition:width .6s ease"></div>' +
     '</div>';
-  const firstRunnable = APPLIANCES.find(app => surplus >= 1.5 && surplus >= app.kw);
+  const firstRunnable = APPLIANCES.find(app => surplus >= SURPLUS_TRIGGER && surplus >= app.kw);
   const rows = APPLIANCES.map(app => {
-    const canRun    = surplus >= 1.5 && surplus >= app.kw && !battDischarging && !lowSolar;
+    const canRun    = surplus >= SURPLUS_TRIGGER && surplus >= app.kw && !battDischarging && !lowSolar;
     const partial   = !canRun && surplus > 0 && surplus >= app.kw * 0.4;
     const battCovers= !canRun && !partial && stored() > app.kw * 0.5;
     const deficit   = !canRun && !partial && !battCovers;
@@ -2972,11 +3035,7 @@ function renderSmartSched() {
     else if (partial)     { statusCls='sb-o'; statusTxt='Partial';   statusDot='#BA7517'; }
     else if (battCovers)  { statusCls='sb-o'; statusTxt='Batt only'; statusDot='#378ADD'; }
     else                  { statusCls='sb-a'; statusTxt='Wait';      statusDot='#D85A30'; }
-    if (applianceState[app.id] === undefined) {
-      applianceState[app.id] = canRun;
-    } else {
-      applianceState[app.id] = canRun;
-    }
+    applianceState[app.id] = canRun;
     const needed = app.kw - Math.max(0, surplus);
     const extraInfo = canRun && isFirst
       ? 'Solar covers it · ' + f(surplus - app.kw, 2) + ' kW left after'
@@ -2985,14 +3044,24 @@ function renderSmartSched() {
       : partial
       ? 'Need ' + f(needed,2) + ' kW more solar · battery makes up rest'
       : 'Need ' + f(needed,2) + ' kW more solar · wait for peak';
+    const reminded = applianceReminders.has(app.id);
+    // Show remind button only when appliance can't run right now
+    const remindBtn = canRun
+      ? ''
+      : '<button class="sr-btn' + (reminded ? ' sr-on' : '') + '" ' +
+        'onclick="toggleApplianceReminder(\'' + app.id + '\')" ' +
+        'title="' + (reminded ? 'Cancel reminder' : 'Remind me when solar covers this') + '">' +
+        (reminded ? '🔔' : '🔕') +
+        '</button>';
     return '<div class="si">' +
       '<div style="width:8px;height:8px;border-radius:50%;background:' + statusDot + ';flex-shrink:0;margin-top:2px"></div>' +
       '<div class="sic">' + app.icon + '</div>' +
       '<div class="sinf">' +
         '<div class="snm">' + app.name + ' <span style="font-size:9px;color:var(--t3);font-weight:400">' + app.kw + ' kW</span></div>' +
-        '<div class="stm">' + extraInfo + '</div>' +
+        '<div class="stm">' + extraInfo + (reminded ? ' · <span style="color:#BA7517;font-weight:600">reminder set</span>' : '') + '</div>' +
       '</div>' +
       '<div class="sbg ' + statusCls + '">' + statusTxt + '</div>' +
+      remindBtn +
     '</div>';
   }).join('');
   document.getElementById('smartSched').innerHTML = '<div class="sched">' + rows + '</div>';
