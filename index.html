@@ -132,6 +132,14 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 .sr-btn{font-size:14px;padding:3px 6px;border-radius:8px;border:none;background:none;cursor:pointer;flex-shrink:0;line-height:1;opacity:.55;transition:opacity .15s,background .15s}
 .sr-btn:active{opacity:.8}
 .sr-btn.sr-on{opacity:1;background:rgba(186,117,23,.15)}
+.stack-sect{margin-top:10px;border-top:1px solid var(--sf2);padding-top:10px}
+.stack-hdr{font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px}
+.stack-combo{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--rs);background:var(--sf2);margin-bottom:5px}
+.stack-combo-body{flex:1;min-width:0}
+.stack-combo-apps{font-size:13px;font-weight:600;color:var(--tx)}
+.stack-combo-info{font-size:10px;color:var(--t2);margin-top:1px}
+.stack-remind-btn{font-size:11px;padding:3px 9px;border-radius:8px;border:1.5px solid var(--g);background:none;color:var(--g);font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.stack-remind-btn.active{background:rgba(29,158,117,.12);border-color:#BA7517;color:#BA7517}
 .alert{padding:10px 12px;border-radius:var(--rs);font-size:12px;margin-bottom:6px;line-height:1.55;border-left:3px solid}
 .alert:last-child{margin-bottom:0}
 .al-s{background:var(--gl);border-color:var(--g);color:#0F6E56}.al-w{background:var(--aml);border-color:var(--am);color:#854F0B}
@@ -2919,16 +2927,66 @@ function renderForecastProduction() {
     '</div>';
 }
 
+// Stacking: when surplus ≥ 2 kW, multiple cycling appliances can run simultaneously
+// because their average draw (avgKw) is well below rated peak (kw).
+const STACK_SURPLUS = 2.0;
+
 const APPLIANCES = [
-  { id:'washer',  icon:'🫧', name:'Washing machine', kw:2.0, priority:1 },
-  { id:'dish',    icon:'🍽️', name:'Dishwasher',       kw:1.8, priority:2 },
-  { id:'heater',  icon:'🌡️', name:'Water heater',     kw:2.0, priority:3 },
-  { id:'oven',    icon:'🍳', name:'Oven / cooking',   kw:2.2, priority:4 },
-  { id:'ac',      icon:'❄️', name:'Air conditioner',  kw:1.5, priority:5 },
-  { id:'dryer',   icon:'👕', name:'Tumble dryer',     kw:2.5, priority:6 },
-  { id:'ev',      icon:'🚗', name:'EV charging',      kw:3.2, priority:7 },
-  { id:'pc',      icon:'🖥️', name:'PC / workstation', kw:0.3, priority:8 },
+  // kw = peak/rated power   avgKw = realistic duty-cycle average over a full cycle
+  // Washer: heats water ~25% of cycle, rinse/spin much lower → avg ~0.7 kW
+  { id:'washer',  icon:'🫧', name:'Washing machine', kw:2.0, avgKw:0.7, priority:1 },
+  // Dishwasher: heats at start, then pump only (~0.2 kW) most of cycle → avg ~0.7 kW
+  { id:'dish',    icon:'🍽️', name:'Dishwasher',       kw:1.8, avgKw:0.7, priority:2 },
+  // Water heater: thermostat cycling once water is hot → avg ~0.6 kW
+  { id:'heater',  icon:'🌡️', name:'Water heater',     kw:2.0, avgKw:0.6, priority:3 },
+  // Oven: thermostat cycles to maintain temperature → avg ~1.1 kW
+  { id:'oven',    icon:'🍳', name:'Oven / cooking',   kw:2.2, avgKw:1.1, priority:4 },
+  // AC: inverter-driven, modulates with load → avg ~0.9 kW
+  { id:'ac',      icon:'❄️', name:'Air conditioner',  kw:1.5, avgKw:0.9, priority:5 },
+  // Dryer: mostly continuous heating → avg ~2.0 kW
+  { id:'dryer',   icon:'👕', name:'Tumble dryer',     kw:2.5, avgKw:2.0, priority:6 },
+  // EV: constant current charging → avg ~3.0 kW
+  { id:'ev',      icon:'🚗', name:'EV charging',      kw:3.2, avgKw:3.0, priority:7 },
+  // PC: load-dependent, idle/work mixed → avg ~0.25 kW
+  { id:'pc',      icon:'🖥️', name:'PC / workstation', kw:0.3, avgKw:0.25, priority:8 },
 ];
+
+// getStackingCombos: finds pairs (and triples) of appliances whose combined
+// average draw fits within the current surplus. EV excluded — nearly constant draw.
+function getStackingCombos(surplus) {
+  if (surplus < STACK_SURPLUS) return [];
+  const candidates = APPLIANCES.filter(a => a.id !== 'ev');
+  const combos = [];
+
+  // Pairs
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const a = candidates[i], b = candidates[j];
+      const avgLoad  = +(a.avgKw + b.avgKw).toFixed(2);
+      const peakLoad = +(a.kw    + b.kw   ).toFixed(1);
+      if (avgLoad <= surplus)
+        combos.push({ apps:[a,b], avgLoad, peakLoad });
+    }
+  }
+
+  // Triples — only when surplus gives enough headroom
+  if (surplus >= 3.0) {
+    for (let i = 0; i < candidates.length; i++) {
+      for (let j = i + 1; j < candidates.length; j++) {
+        for (let k = j + 1; k < candidates.length; k++) {
+          const a = candidates[i], b = candidates[j], c = candidates[k];
+          const avgLoad  = +(a.avgKw + b.avgKw + c.avgKw).toFixed(2);
+          const peakLoad = +(a.kw    + b.kw    + c.kw   ).toFixed(1);
+          if (avgLoad <= surplus)
+            combos.push({ apps:[a,b,c], avgLoad, peakLoad });
+        }
+      }
+    }
+  }
+
+  combos.sort((x, y) => y.avgLoad - x.avgLoad);
+  return combos.slice(0, 4);
+}
 
 const applianceState = {};
 
@@ -2973,6 +3031,34 @@ function toggleApplianceReminder(id) {
       saveReminders();
     }
   }
+  renderSmartSched();
+}
+
+// Set/cancel reminder for an entire stacking combo (all appliance IDs)
+function toggleStackReminder(ids) {
+  const key = ids.join('+');
+  const allSet = ids.every(id => applianceReminders.has(id));
+  if (allSet) {
+    ids.forEach(id => applianceReminders.delete(id));
+  } else {
+    ids.forEach(id => applianceReminders.add(id));
+    // Fire immediately if combo avg load already fits
+    const fl = calcFlow();
+    const surplus = +(fl.gridExport > 0.05 ? fl.gridExport : fl.pv - fl.cons);
+    const combo = APPLIANCES.filter(a => ids.includes(a.id));
+    const avgLoad = combo.reduce((s, a) => s + a.avgKw, 0);
+    if (avgLoad <= surplus) {
+      const names = combo.map(a => a.icon + ' ' + a.name).join(' + ');
+      showNotification(
+        '⚡ Stack ready — ' + names,
+        'Combined avg draw ' + f(avgLoad, 1) + ' kW fits in current +' + f(surplus, 2) +
+        ' kW surplus. Start both now. Battery: ' + socToDisplay(ST.battSoc) + '%.',
+        'stack-' + key
+      );
+      ids.forEach(id => applianceReminders.delete(id));
+    }
+  }
+  saveReminders();
   renderSmartSched();
 }
 
@@ -3037,10 +3123,17 @@ function renderSmartSched() {
     else                  { statusCls='sb-a'; statusTxt='Wait';      statusDot='#D85A30'; }
     applianceState[app.id] = canRun;
     const needed = app.kw - Math.max(0, surplus);
+    // Find a stacking partner for this appliance (best fit by avgKw)
+    const partner = surplus >= STACK_SURPLUS
+      ? APPLIANCES.filter(b => b.id !== app.id && b.id !== 'ev' &&
+          (app.avgKw + b.avgKw) <= surplus)
+          .sort((x, y) => y.avgKw - x.avgKw)[0]
+      : null;
+    const stackHint = partner ? ' · stacks with ' + partner.icon + ' ' + partner.name : '';
     const extraInfo = canRun && isFirst
-      ? 'Solar covers it · ' + f(surplus - app.kw, 2) + ' kW left after'
+      ? 'Solar covers it · ' + f(surplus - app.kw, 2) + ' kW left after' + stackHint
       : canRun && !isFirst
-      ? 'Finish current appliance first · surplus ' + f(surplus,2) + ' kW'
+      ? 'Queue after current · surplus ' + f(surplus,2) + ' kW' + stackHint
       : partial
       ? 'Need ' + f(needed,2) + ' kW more solar · battery makes up rest'
       : 'Need ' + f(needed,2) + ' kW more solar · wait for peak';
@@ -3065,8 +3158,41 @@ function renderSmartSched() {
     '</div>';
   }).join('');
   document.getElementById('smartSched').innerHTML = '<div class="sched">' + rows + '</div>';
+
+  // ── Stacking section (full Schedule page only) ──────────────────────────
+  const combos = getStackingCombos(surplus);
+  let stackHTML = '';
+  if (combos.length > 0) {
+    const comboCards = combos.map(c => {
+      const ids     = c.apps.map(a => a.id);
+      const allSet  = ids.every(id => applianceReminders.has(id));
+      const label   = c.apps.map(a => a.icon + ' ' + a.name).join(' + ');
+      const idsJson = JSON.stringify(ids).replace(/"/g, "'");
+      return '<div class="stack-combo">' +
+        '<div class="stack-combo-body">' +
+          '<div class="stack-combo-apps">' + label + '</div>' +
+          '<div class="stack-combo-info">' +
+            '~' + f(c.avgLoad,1) + ' kW avg draw · ' + f(c.peakLoad,1) + ' kW peak · ' +
+            f(surplus - c.avgLoad, 1) + ' kW headroom' +
+          '</div>' +
+        '</div>' +
+        '<button class="stack-remind-btn' + (allSet ? ' active' : '') + '" ' +
+          'onclick="toggleStackReminder(' + idsJson + ')">' +
+          (allSet ? '🔔 Set' : '🔕 Remind') +
+        '</button>' +
+      '</div>';
+    }).join('');
+    stackHTML = '<div class="stack-sect">' +
+      '<div class="stack-hdr">⚡ Stack multiple appliances — cycling loads share the surplus</div>' +
+      comboCards +
+      '<div style="font-size:10px;color:var(--t3);margin-top:4px">' +
+        'Avg draw accounts for heating cycles. Peak spikes are short — inverter handles them.' +
+      '</div>' +
+    '</div>';
+  }
+
   const fullSched = document.getElementById('smartSchedFull');
-  if (fullSched) fullSched.innerHTML = '<div class="sched">' + rows + '</div>';
+  if (fullSched) fullSched.innerHTML = '<div class="sched">' + rows + '</div>' + stackHTML;
   const fullBar = document.getElementById('surplusBarFull');
   if (fullBar) fullBar.innerHTML = document.getElementById('surplusBar').innerHTML;
   const fullPill = document.getElementById('surplusPillFull');
