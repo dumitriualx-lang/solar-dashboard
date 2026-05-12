@@ -878,10 +878,15 @@ function applySatelliteRadiation(sat) {
   if (directRad + diffuseRad <= 0 && sat.swr <= 0) return;  // night or no data
   const ghi = sat.swr > 0 ? sat.swr : (directRad + diffuseRad);
 
-  // Use GHI directly — calcPOA with DNI=direct/cos(SZA) blows up at low sun angles.
-  // Simple tilt-gain factor 1.08 for 30° south-facing panels at Romanian latitude.
-  // Validated against FusionSolar: 0.44 kW real → ~440 W/m² GHI at PR 0.75 implies factor ~1.08.
-  const poa = ghi * 1.08;
+  // Compute actual Plane-of-Array irradiance using real sun geometry.
+  // Uses DNI from Open-Meteo current conditions (ST.irrDNI) — no derivation,
+  // so no blowup at low sun angles. Falls back to diffuse-only estimate.
+  const tiltDeg  = SYS.tiltDeg || 30;
+  const pnlAz    = SYS.panelAzimuth || 180;
+  const sunPos   = solarPosition(ST.lat, ST.lon, new Date());
+  const dni      = ST.irrDNI || 0;
+  const dhi      = sat.diffuse > 0 ? sat.diffuse : (ST.irrDif || ghi * 0.15);
+  const poa      = calcPOA(dni, dhi, ghi, tiltDeg, pnlAz, sunPos);
 
   const panelKw = SYS.panelKw || 5;
   const tempC   = ST.wxTempC || 20;
@@ -1093,8 +1098,9 @@ function processOpenMeteo(d) {
   const dhiCur = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
   const satAge = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
   if (satAge > 20 * 60 * 1000) {
-    // Use GHI directly instead of calcPOA — avoids DNI blowup at low sun angles
-    const poaCur = ghi * 1.08;
+    // Compute actual POA using real sun geometry and API-provided DNI/DHI
+    const nwpPos  = solarPosition(ST.lat, ST.lon, new Date());
+    const poaCur  = calcPOA(dniCur, dhiCur, ghi, SYS.tiltDeg||30, SYS.panelAzimuth||180, nwpPos);
     const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
     const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
     const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
@@ -1316,13 +1322,15 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
 
   ST.tempFactor  = +tempF.toFixed(4);
   ST.cellTempC   = +cellT.toFixed(1);
-  ST.poaWm2      = +corrGHI.toFixed(1);
   ST.cfGHI       = +cfGHI.toFixed(3);
 
-  const acMax    = SYS.acMax;
-  // acMax = panelKw × invEff × dcLoss. Mismatch 0.97 is the only additional loss.
-  // Temperature is handled by tempF. So effective PR ≈ 0.984×0.97×0.97×tempF ≈ 0.926×tempF.
-  const raw      = (corrGHI / 1000) * acMax * 1.10 * 0.97 * tempF;
+  // Compute actual POA using real sun geometry — corrected DNI/DHI
+  const pos    = solarPosition(ST.lat||0, ST.lon||0, new Date());
+  const poa    = calcPOA(corrDNI, corrDHI, corrGHI, SYS.tiltDeg||30, SYS.panelAzimuth||180, pos);
+  ST.poaWm2    = +poa.toFixed(1);
+
+  const acMax  = SYS.acMax;
+  const raw    = (poa / 1000) * acMax * 0.97 * tempF;
   return +Math.max(0, Math.min(acMax, raw)).toFixed(3);
 }
 
@@ -1504,9 +1512,9 @@ function evolveSoc() {
     );
   }
 
-  // Solar production ended — now running on battery
+  // Solar production ended — fire when production drops to ≤ 0.20 kW
   const prevPvOn = ST._pvWasOn;
-  ST._pvWasOn = ST.pvKw > 0.1;
+  ST._pvWasOn = ST.pvKw > 0.20;
   if (prevPvOn && !ST._pvWasOn &&
       fl.battFlow < -0.05 &&
       (!ST._lastSolarEndNotif || nowMin - ST._lastSolarEndNotif > 120)) {
