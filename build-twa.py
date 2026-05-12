@@ -10,7 +10,7 @@ VERSION_NAME = "1.2.0"
 if os.path.exists(_vfile):
     with open(_vfile) as _vf: VERSION_CODE = int(_vf.read().strip()) + 1
 else:
-    VERSION_CODE = 7
+    VERSION_CODE = 6
 with open(_vfile, "w") as _vf: _vf.write(str(VERSION_CODE))
 print(f"Build: versionCode={VERSION_CODE}  versionName={VERSION_NAME}")
 
@@ -993,7 +993,10 @@ public class SolarForegroundService extends Service {
                 long now12H   = 12L * 60 * 60 * 1000;
                 double surplus   = pvKw - (double) consKw;
                 double storedKwh = battUse * (newSoc / 100.0);
-                double dispSoc   = 10.0 + (newSoc / 100.0) * 80.0;
+                // Use the JS-saved SOC for display — JS has real Open-Meteo data,
+                // more accurate than the Java simulation's newSoc.
+                float  jsSoc     = prefs.getFloat("soc", (float) newSoc);
+                double dispSoc   = 10.0 + (jsSoc / 100.0) * 90.0;
 
                 // Rule 1: Solar surplus ≥ 2kW — run appliances
                 if (surplus >= 2.0 && (nowMs - lHigh) > now1H) {
@@ -1001,24 +1004,17 @@ public class SolarForegroundService extends Service {
                         String.format("+%.1f kW surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.", surplus, dispSoc));
                     prefs.edit().putLong("notif_last_high", nowMs).commit();
 
-                // Rule 2: No solar, running on battery
-                } else if (pvKw < 0.2 && consKw > 0.1 && (nowMs - lLow) > now2H) {
-                    // Fire from 18:00 — production stops ~19:00 in Romania spring/summer
-                    if (hourNow >= 18 || hourNow < 8) {
-                        double bkp = storedKwh / Math.max(0.01, (double) consKw);
-                        sendAlert("Running on battery",
-                            String.format("Solar stopped. Battery %.0f%% — ~%.1fh backup remaining.", dispSoc, bkp));
-                        prefs.edit().putLong("notif_last_low", nowMs).commit();
-                    }
+                // Rule 2: Solar ended — pvKw dropped to ≤ 0.20 kW after 16:00
+                } else if (pvKw <= 0.20 && consKw > 0.1 && hourNow >= 16 && (nowMs - lLow) > now2H) {
+                    double bkp = storedKwh / Math.max(0.01, (double) consKw);
+                    sendAlert("Solar ended for today",
+                        String.format("Production ended. Battery at %.0f%%. ~%.1fh backup remaining.", dispSoc, bkp));
+                    prefs.edit().putLong("notif_last_low", nowMs).commit();
 
-                // Rule 3: Evening summary at 20:00
-                } else if (hourNow == 20 && (nowMs - lEve) > now2H) {
-                    if (surplus > 0.5)
-                        sendAlert("Good solar today",
-                            String.format("Still producing %.1f kW. Battery %.0f%%. Plan appliances for tomorrow mid-day.", pvKw, dispSoc));
-                    else
-                        sendAlert("Solar ended for today",
-                            String.format("Production ended. Battery at %.0f%%. Check tomorrow's forecast in the app.", dispSoc));
+                // Rule 3: Evening summary at 20:00 if solar still running
+                } else if (hourNow == 20 && pvKw > 0.20 && (nowMs - lEve) > now2H) {
+                    sendAlert("Good solar today",
+                        String.format("Still producing %.1f kW. Battery %.0f%%. Plan appliances for tomorrow mid-day.", pvKw, dispSoc));
                     prefs.edit().putLong("notif_last_eve", nowMs).commit();
                 }
 
@@ -1365,19 +1361,19 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
                 long now30M   = 30L * 60 * 1000, now1H = 60L * 60 * 1000, now2H = 2L * 60 * 60 * 1000, now12H = 12L * 60 * 60 * 1000;
                 double surplus   = pvKw - (double) consKw;
                 double storedKwh = battUse * (newSoc / 100.0);
-                double dispSoc   = 10.0 + (newSoc / 100.0) * 80.0;
+                float  jsSoc2    = prefs.getFloat("soc", (float) newSoc);
+                double dispSoc   = 10.0 + (jsSoc2 / 100.0) * 90.0;
                 if (surplus >= 2.0 && (nowMs - lHigh) > now1H) {
                     sendNotif(ctx, "Solar surplus — run large appliances",
                         String.format("+%.1f kW surplus. Battery: %.0f%%.", surplus, dispSoc));
                     prefs.edit().putLong("notif_last_high", nowMs).commit();
-                } else if (pvKw < 0.2 && consKw > 0.1 && hourNow >= 18 && (nowMs - lLow) > now2H) {
-                    sendNotif(ctx, "Running on battery",
-                        String.format("Solar stopped. Battery %.0f%% — ~%.1fh backup.", dispSoc, storedKwh / Math.max(0.01, consKw)));
+                } else if (pvKw <= 0.20 && consKw > 0.1 && hourNow >= 16 && (nowMs - lLow) > now2H) {
+                    sendNotif(ctx, "Solar ended for today",
+                        String.format("Production ended. Battery at %.0f%%. ~%.1fh backup remaining.", dispSoc, storedKwh / Math.max(0.01, consKw)));
                     prefs.edit().putLong("notif_last_low", nowMs).commit();
-                } else if (hourNow == 20 && (nowMs - lEve) > now2H) {
-                    sendNotif(ctx, surplus > 0.5 ? "Good solar today" : "Solar ended for today",
-                        surplus > 0.5 ? String.format("Still %.1f kW. Battery %.0f%%.", pvKw, dispSoc)
-                                      : String.format("Production ended. Battery at %.0f%%.", dispSoc));
+                } else if (hourNow == 20 && pvKw > 0.20 && (nowMs - lEve) > now2H) {
+                    sendNotif(ctx, "Good solar today",
+                        String.format("Still %.1f kW. Battery %.0f%%.", pvKw, dispSoc));
                     prefs.edit().putLong("notif_last_eve", nowMs).commit();
                 }
                 if (storedKwh < battUse * 0.15 && dispSoc < 20.0 && (nowMs - lBattLo) > now2H) {
@@ -1734,7 +1730,8 @@ public class SolarWorker extends Worker {
                 long now12H   = 12L * 60 * 60 * 1000;
                 double surplus   = pvKw - (double) consKw;
                 double storedKwh = battUse * (newSoc / 100.0);
-                double dispSoc   = 10.0 + (newSoc / 100.0) * 80.0;
+                float  jsSoc3    = prefs.getFloat("soc", (float) newSoc);
+                double dispSoc   = 10.0 + (jsSoc3 / 100.0) * 90.0;
 
                 // Rule 1: Solar surplus ≥ 2kW — run appliances
                 if (surplus >= 2.0 && (nowMs - lHigh) > now1H) {
@@ -1742,24 +1739,17 @@ public class SolarWorker extends Worker {
                         String.format("+%.1f kW surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.", surplus, dispSoc));
                     prefs.edit().putLong("notif_last_high", nowMs).commit();
 
-                // Rule 2: No solar, running on battery
-                } else if (pvKw < 0.2 && consKw > 0.1 && (nowMs - lLow) > now2H) {
-                    // Fire from 18:00 — production stops ~19:00 in Romania spring/summer
-                    if (hourNow >= 18 || hourNow < 8) {
-                        double bkp = storedKwh / Math.max(0.01, (double) consKw);
-                        sendNotif(ctx, "Running on battery",
-                            String.format("Solar stopped. Battery %.0f%% — ~%.1fh backup remaining.", dispSoc, bkp));
-                        prefs.edit().putLong("notif_last_low", nowMs).commit();
-                    }
+                // Rule 2: Solar ended — pvKw dropped to ≤ 0.20 kW after 16:00
+                } else if (pvKw <= 0.20 && consKw > 0.1 && hourNow >= 16 && (nowMs - lLow) > now2H) {
+                    double bkp = storedKwh / Math.max(0.01, (double) consKw);
+                    sendNotif(ctx, "Solar ended for today",
+                        String.format("Production ended. Battery at %.0f%%. ~%.1fh backup remaining.", dispSoc, bkp));
+                    prefs.edit().putLong("notif_last_low", nowMs).commit();
 
-                // Rule 3: Evening summary at 20:00
-                } else if (hourNow == 20 && (nowMs - lEve) > now2H) {
-                    if (surplus > 0.5)
-                        sendNotif(ctx, "Good solar today",
-                            String.format("Still producing %.1f kW. Battery %.0f%%. Plan appliances for tomorrow mid-day.", pvKw, dispSoc));
-                    else
-                        sendNotif(ctx, "Solar ended for today",
-                            String.format("Production ended. Battery at %.0f%%. Check tomorrow's forecast in the app.", dispSoc));
+                // Rule 3: Evening summary at 20:00 if solar still running
+                } else if (hourNow == 20 && pvKw > 0.20 && (nowMs - lEve) > now2H) {
+                    sendNotif(ctx, "Good solar today",
+                        String.format("Still producing %.1f kW. Battery %.0f%%. Plan appliances for tomorrow mid-day.", pvKw, dispSoc));
                     prefs.edit().putLong("notif_last_eve", nowMs).commit();
                 }
 
