@@ -667,6 +667,12 @@ const rlog = JSON.parse(localStorage.getItem('solarLog4') || '[]');
 let dchart, lastFlowT = Date.now();
 let geoWatchId = null;
 
+// Startup guard — suppress all proactive notifications for 90s after app opens.
+// Prevents false "Solar dropped" and notification spam from state initialisation.
+const _appStartMs      = Date.now();
+const _NOTIF_GRACE_MS  = 180000; // 3 minutes — wait for pvKw to stabilise before any notification
+const _notifReady      = () => Date.now() - _appStartMs >= _NOTIF_GRACE_MS;
+
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
 // Called by native onResume to restore GPS from SharedPreferences
@@ -967,8 +973,14 @@ async function fetchWeather() {
     setApi('ok', '✅ ' + ST.locName + ' · '
       + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
       + ' · ↻ 1min');
-    scheduleAllNotifications(); notifyRealtime();
-    checkMissedDailyNotifications();
+    scheduleAllNotifications();
+    if (!ST._dailyNotifChecked) {
+      // Run these only once per app session — they fire on config changes too,
+      // but calling them every 60s creates notification spam on first eligible fetch.
+      ST._dailyNotifChecked = true;
+      checkMissedDailyNotifications();
+    }
+    notifyRealtime();
     storeNotifPayloads();
   } catch(e) {
     ST.apiOk = false; ST._fetchInProgress = false;
@@ -1554,6 +1566,8 @@ function evolveSoc() {
   const surplusWasHigh = pvOld >= 1.5;             // was producing enough 30 min ago
 
   if (surplusWasHigh && pvDrop > 1.0 && ST.pvKw < 1.5 &&
+      ST._pvHistory.length >= 360 &&         // full 30-min window required — prevents false alarm on resume
+      _notifReady() &&                        // startup grace period must have passed
       (!ST._lastProdDropNotif || nowMin - ST._lastProdDropNotif > 30)) {
     ST._lastProdDropNotif = nowMin;
     showNotification(
@@ -2441,6 +2455,7 @@ function notifAllowed() {
 
 function notifyRealtime() {
   if (!notifAllowed()) return;
+  if (!_notifReady()) return;  // startup grace — avoid false alerts from state init
   const nowMin = Date.now() / 60000;
   if (!ST._lastRealtimeNotif) {
     try {
@@ -2596,6 +2611,7 @@ async function registerPeriodicSync() {
 
 function checkMissedDailyNotifications() {
   if (!notifAllowed() || !FORECAST.length) return;
+  if (!_notifReady()) return;  // startup grace — wait for state to stabilise
   const now = new Date();
   const todayKey = now.toDateString();
   const h = now.getHours() + now.getMinutes() / 60;
@@ -3411,6 +3427,9 @@ document.addEventListener('visibilitychange', () => {
       ST._fetchStartMs = 0;
       if (window.__nativeWeatherResult) delete window.__nativeWeatherResult;
     }
+    // Clear pvKw history — buffer holds stale values from before backgrounding.
+    // Without this, the drop detector sees a false "2.7 kW → 0.2 kW" drop on resume.
+    ST._pvHistory = [];
     fetchWeather();
     checkForUpdate();
   }
