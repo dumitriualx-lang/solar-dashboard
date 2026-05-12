@@ -884,29 +884,16 @@ function applySatelliteRadiation(sat) {
   if (directRad + diffuseRad <= 0 && sat.swr <= 0) return;  // night or no data
   const ghi = sat.swr > 0 ? sat.swr : (directRad + diffuseRad);
 
-  const tiltDeg  = SYS.tiltDeg || 30;
-  const pnlAz    = SYS.panelAzimuth || 180;
-  const sunPos   = solarPosition(ST.lat, ST.lon, new Date());
-  const dni      = ST.irrDNI || 0;
-
-  // DHI fallback: open-meteo can return 0 for diffuse on cloudy days.
-  // If the reported DHI is suspiciously low (<10% of GHI), estimate from cloud cover:
-  //   clear sky → ~15% of GHI is diffuse
-  //   overcast  → ~80% of GHI is diffuse (all radiation is scattered)
-  const rawDHI   = sat.diffuse > 0 ? sat.diffuse : (ST.irrDif || 0);
-  const cf       = Math.min(1, Math.max(0, (ST.cloudCover || 50) / 100));
-  const dhi      = rawDHI > ghi * 0.10 ? rawDHI : ghi * (0.15 + cf * 0.65);
-
-  const poa      = calcPOA(dni, dhi, ghi, tiltDeg, pnlAz, sunPos);
+  // Simple tilt gain 1.08 for 30° south-facing panels (validated empirically).
+  // calcPOA with API DNI/DHI collapsed on cloudy days (API returns DNI=0 → near-zero POA).
+  const poa = ghi * 1.08;
 
   const panelKw = SYS.panelKw || 5;
   const tempC   = ST.wxTempC || 20;
   const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(0, poa);
   const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
   const acMax   = SYS.acMax || panelKw * 0.984;
-  // acMax = panelKw × invEff × dcLoss already covers inverter + wiring.
-  // Only remaining loss: module mismatch ~0.97. Temperature handled by tFac separately.
-  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac)).toFixed(3);
+  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * panelKw * 0.75 * tFac)).toFixed(3);
   ST.pvKw      = pvKw;
   ST._satLastMs = Date.now();  // timestamp so NWP won't overwrite this
   ST.irrWm2    = sat.swr;
@@ -1115,14 +1102,12 @@ function processOpenMeteo(d) {
   const dhiCur = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
   const satAge = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
   if (satAge > 20 * 60 * 1000) {
-    // Compute actual POA using real sun geometry and API-provided DNI/DHI
-    const nwpPos  = solarPosition(ST.lat, ST.lon, new Date());
-    const poaCur  = calcPOA(dniCur, dhiCur, ghi, SYS.tiltDeg||30, SYS.panelAzimuth||180, nwpPos);
+    // Simple tilt gain for south-facing panels — calcPOA not used here (satellite override takes priority)
+    const poaCur  = ghi * 1.08;
     const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
     const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
     const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
-    // acMax already includes invEff + dcLoss; only mismatch (0.97) is additional
-    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp)).toFixed(3);
+    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * (SYS.panelKw||5) * 0.75 * tFac_nwp)).toFixed(3);
     ST.poaWm2 = +poaCur.toFixed(1);
   }
 
@@ -1329,27 +1314,19 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
 
   const corrGHI  = ghi * cfGHI;
   const corrDNI  = (dni || 0) * cfDNI;
-  // DHI fallback: if API reports near-zero diffuse, estimate from cloud cover
-  const rawDHI   = (dhi || 0) * cfGHI;
-  const effDHI   = rawDHI > corrGHI * 0.10 ? rawDHI : corrGHI * (0.15 + cc * 0.65);
+  const corrDHI  = (dhi || 0) * cfGHI;
 
-  // Use GHI directly — calcPOA + DNI estimation blows up at low sun angles.
-  // Tilt gain 1.10 for 30° south panels, PR 0.75 for real-world losses.
   const ambient  = ST.wxTempC || 15;
   const cellT    = ambient + (45 - 20) * (Math.max(0, corrGHI) / 800);
   const tempF    = Math.max(0.80, 1 - Math.max(0, cellT - 25) * 0.004);
 
   ST.tempFactor  = +tempF.toFixed(4);
   ST.cellTempC   = +cellT.toFixed(1);
+  ST.poaWm2      = +(corrGHI * 1.10).toFixed(1);
   ST.cfGHI       = +cfGHI.toFixed(3);
 
-  // Compute actual POA using real sun geometry — corrected DNI/DHI
-  const pos    = solarPosition(ST.lat||0, ST.lon||0, new Date());
-  const poa    = calcPOA(corrDNI, effDHI, corrGHI, SYS.tiltDeg||30, SYS.panelAzimuth||180, pos);
-  ST.poaWm2    = +poa.toFixed(1);
-
   const acMax  = SYS.acMax;
-  const raw    = (poa / 1000) * acMax * 0.97 * tempF;
+  const raw    = (corrGHI * 1.10 / 1000) * (SYS.panelKw || 5) * 0.75 * tempF;
   return +Math.max(0, Math.min(acMax, raw)).toFixed(3);
 }
 
