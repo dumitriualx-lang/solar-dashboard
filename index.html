@@ -884,14 +884,19 @@ function applySatelliteRadiation(sat) {
   if (directRad + diffuseRad <= 0 && sat.swr <= 0) return;  // night or no data
   const ghi = sat.swr > 0 ? sat.swr : (directRad + diffuseRad);
 
-  // Compute actual Plane-of-Array irradiance using real sun geometry.
-  // Uses DNI from Open-Meteo current conditions (ST.irrDNI) — no derivation,
-  // so no blowup at low sun angles. Falls back to diffuse-only estimate.
   const tiltDeg  = SYS.tiltDeg || 30;
   const pnlAz    = SYS.panelAzimuth || 180;
   const sunPos   = solarPosition(ST.lat, ST.lon, new Date());
   const dni      = ST.irrDNI || 0;
-  const dhi      = sat.diffuse > 0 ? sat.diffuse : (ST.irrDif || ghi * 0.15);
+
+  // DHI fallback: open-meteo can return 0 for diffuse on cloudy days.
+  // If the reported DHI is suspiciously low (<10% of GHI), estimate from cloud cover:
+  //   clear sky → ~15% of GHI is diffuse
+  //   overcast  → ~80% of GHI is diffuse (all radiation is scattered)
+  const rawDHI   = sat.diffuse > 0 ? sat.diffuse : (ST.irrDif || 0);
+  const cf       = Math.min(1, Math.max(0, (ST.cloudCover || 50) / 100));
+  const dhi      = rawDHI > ghi * 0.10 ? rawDHI : ghi * (0.15 + cf * 0.65);
+
   const poa      = calcPOA(dni, dhi, ghi, tiltDeg, pnlAz, sunPos);
 
   const panelKw = SYS.panelKw || 5;
@@ -1323,8 +1328,10 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
   const cfDNI    = Math.max(0, cfGHI - 0.15);   // beam always more attenuated than diffuse
 
   const corrGHI  = ghi * cfGHI;
-  const corrDHI  = dhi * cfGHI;
   const corrDNI  = (dni || 0) * cfDNI;
+  // DHI fallback: if API reports near-zero diffuse, estimate from cloud cover
+  const rawDHI   = (dhi || 0) * cfGHI;
+  const effDHI   = rawDHI > corrGHI * 0.10 ? rawDHI : corrGHI * (0.15 + cc * 0.65);
 
   // Use GHI directly — calcPOA + DNI estimation blows up at low sun angles.
   // Tilt gain 1.10 for 30° south panels, PR 0.75 for real-world losses.
@@ -1338,7 +1345,7 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
 
   // Compute actual POA using real sun geometry — corrected DNI/DHI
   const pos    = solarPosition(ST.lat||0, ST.lon||0, new Date());
-  const poa    = calcPOA(corrDNI, corrDHI, corrGHI, SYS.tiltDeg||30, SYS.panelAzimuth||180, pos);
+  const poa    = calcPOA(corrDNI, effDHI, corrGHI, SYS.tiltDeg||30, SYS.panelAzimuth||180, pos);
   ST.poaWm2    = +poa.toFixed(1);
 
   const acMax  = SYS.acMax;
