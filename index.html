@@ -1635,6 +1635,18 @@ function toggleSection(bodyId, chevronId) {
 
 const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
 
+// Hardcoded Play Store URL — fallback if version.json storeUrl is missing or wrong
+const STORE_URL = 'https://play.google.com/store/apps/details?id=com.dumitriualxlang.solardasboard';
+
+function openPlayStore() {
+  const url = STORE_URL;
+  if (window.AppBridge && typeof AppBridge.openUrl === 'function') {
+    AppBridge.openUrl(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
 async function checkForUpdate() {
   try {
     const res = await fetch('https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now());
@@ -1646,7 +1658,9 @@ async function checkForUpdate() {
       const installed = AppBridge.getVersionCode();
       if (installed && data.versionCode <= installed) return;
     }
-    showUpdateDialog(data.versionName, data.storeUrl, data.versionCode);
+    // Use hardcoded URL as fallback if version.json storeUrl is missing/wrong
+    const storeUrl = (data.storeUrl && data.storeUrl.includes('play.google.com')) ? data.storeUrl : STORE_URL;
+    showUpdateDialog(data.versionName, storeUrl, data.versionCode);
   } catch(e) {}
 }
 
@@ -3512,13 +3526,12 @@ applyAutoConsumption();
 
     <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:6px">🚀 App updates</div>
     <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 10px">
-      The app checks for updates automatically on launch. You can also check manually at any time.
+      Updates are checked automatically on launch. Tap below to go directly to the Play Store.
     </p>
-    <button onclick="checkForUpdate().then(()=>{ document.getElementById('faqUpdMsg').textContent='✅ Check complete'; setTimeout(()=>document.getElementById('faqUpdMsg').textContent='',3000); })"
-      style="background:var(--bl);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:6px">
-      🔍 Check for updates
+    <button onclick="openPlayStore()"
+      style="background:var(--bl);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer">
+      ↗ Open Play Store
     </button>
-    <span id="faqUpdMsg" style="font-size:12px;color:var(--g);margin-left:8px"></span>
     <div style="margin-bottom:80px"></div>
   </div>
 </div>
