@@ -493,13 +493,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
   </div>
 </div>
 
-<div id="pgSched" class="page" style="padding:14px;padding-bottom:90px">
-  <div class="card" id="schedCardFull">
-    <div class="ct">Smart appliance schedule <span class="pill" id="surplusPillFull">calculating...</span></div>
-    <div id="surplusBarFull" style="margin:10px 0 8px"></div>
-    <div id="smartSchedFull"></div>
-  </div>
-</div>
 
 <div id="pgLog" class="page" style="padding:14px;padding-bottom:90px">
   <div class="card" style="margin-bottom:10px">
@@ -552,7 +545,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 <nav class="nav">
   <button class="nb on"  onclick="showPage('Dash',this)"><span class="ni">⚡</span>Dashboard</button>
   <button class="nb"     onclick="showPage('Forecast',this)"><span class="ni">📅</span>Forecast</button>
-  <button class="nb"     onclick="showPage('Sched',this)"><span class="ni">🗓️</span>Schedule</button>
   <button class="nb"     onclick="showPage('Log',this)"><span class="ni">📋</span>Log</button>
   <button class="nb"     onclick="showPage('Faq',this)"><span class="ni">❓</span>FAQ</button>
 </nav>
@@ -2881,7 +2873,7 @@ function saveCfgAndApply() {
   setTimeout(() => { pill.style.display = 'none'; }, 3000);
   applyAutoConsumption();
   renderAll();
-  renderSched();
+  renderSmartSched();
 }
 
 function showPage(n,el){
@@ -2889,7 +2881,6 @@ function showPage(n,el){
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
   document.getElementById('pg'+n).classList.add('on'); el.classList.add('on');
   if(n==='Forecast'){renderStrip();selectForecastDay(0);renderForecastProduction();renderAlerts();}
-  if(n==='Sched')renderSched();
   if(n==='Log')renderLogTable();
 }
 
@@ -3130,13 +3121,6 @@ function renderSmartSched() {
     '</div>';
   }).join('');
   document.getElementById('smartSched').innerHTML = '<div class="sched">' + rows + '</div>';
-
-  const fullSched = document.getElementById('smartSchedFull');
-  if (fullSched) fullSched.innerHTML = '<div class="sched">' + rows + '</div>';
-  const fullBar = document.getElementById('surplusBarFull');
-  if (fullBar) fullBar.innerHTML = document.getElementById('surplusBar').innerHTML;
-  const fullPill = document.getElementById('surplusPillFull');
-  if (fullPill) { fullPill.textContent = pill.textContent; fullPill.className = pill.className; }
 }
 
 const NOTIF_DEBOUNCE_MS = 30 * 1000;
