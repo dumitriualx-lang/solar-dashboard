@@ -10,7 +10,7 @@ VERSION_NAME = "1.2.0"
 if os.path.exists(_vfile):
     with open(_vfile) as _vf: VERSION_CODE = int(_vf.read().strip()) + 1
 else:
-    VERSION_CODE = 9
+    VERSION_CODE = 6
 with open(_vfile, "w") as _vf: _vf.write(str(VERSION_CODE))
 print(f"Build: versionCode={VERSION_CODE}  versionName={VERSION_NAME}")
 
@@ -900,6 +900,10 @@ public class SolarForegroundService extends Service {
         double newSoc = soc;
         double battUse = battGross > 0 ? battGross * (1.0 - battRes) : 4.5;
 
+        // Calendar declared here so hourNow is available in notifications section
+        // regardless of whether weather fetch succeeded
+        final Calendar nowCal = Calendar.getInstance();
+
         try {
             if (hasWeather) {
             JSONObject cur = new JSONObject(raw).getJSONObject("current");
@@ -974,7 +978,6 @@ public class SolarForegroundService extends Service {
             newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
 
             // ── Persist all state ─────────────────────────────────────────────
-            Calendar nowCal = Calendar.getInstance();
             int nm = nowCal.get(Calendar.MONTH)+1, nd = nowCal.get(Calendar.DAY_OF_MONTH);
             String todayStr = nowCal.get(Calendar.YEAR)
                 + "-" + (nm<10?"0":"") + nm + "-" + (nd<10?"0":"") + nd;
@@ -1006,7 +1009,7 @@ public class SolarForegroundService extends Service {
 
             
             // ── Quiet hours: no notifications 22:00–08:00 ────────────────────
-            int hourNow = cal.get(Calendar.HOUR_OF_DAY);
+            int hourNow = nowCal.get(Calendar.HOUR_OF_DAY);
             if (hourNow >= 8 && hourNow < 22) {
                 // Shared throttle keys — all services read/write the same keys
                 // so no duplicate or missed notifications across FGS/AR/Worker
@@ -1300,6 +1303,8 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
         if (!hasWx) android.util.Log.w("SolarAlarm", "Weather unavailable — SOC evolves with last pvKw");
 
         double pvKw = prefs.getFloat("pv_kw", 0f); // use last known; overwritten if fetch succeeds
+        double gridImport = 0, gridExport = 0, battFlow = 0;
+        double newSoc = soc;
 
         try {
             if (hasWx) {
@@ -1397,7 +1402,7 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
             if (!notifEnabled) return;
 
             // Quiet hours: no notifications 22:00-08:00
-            int hourNow = cal.get(Calendar.HOUR_OF_DAY);
+            int hourNow = nowCalAR.get(Calendar.HOUR_OF_DAY);
             if (hourNow >= 8 && hourNow < 22) {
                 long lHigh    = prefs.getLong("notif_last_high",     0);
                 long lLow     = prefs.getLong("notif_last_low",      0);
