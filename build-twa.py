@@ -10,7 +10,7 @@ VERSION_NAME = "1.2.0"
 if os.path.exists(_vfile):
     with open(_vfile) as _vf: VERSION_CODE = int(_vf.read().strip()) + 1
 else:
-    VERSION_CODE = 8
+    VERSION_CODE = 6
 with open(_vfile, "w") as _vf: _vf.write(str(VERSION_CODE))
 print(f"Build: versionCode={VERSION_CODE}  versionName={VERSION_NAME}")
 
@@ -63,7 +63,7 @@ android {
         minSdk 21
         targetSdk 35
         versionCode 4
-        versionName "1.0.3"
+        versionName "1.2.0"
         manifestPlaceholders = [
             hostName:     "dumitriualx-lang.github.io",
             defaultUrl:   "https://dumitriualx-lang.github.io/solar-dashboard/",
@@ -141,7 +141,12 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
         </receiver>
         <receiver
             android:name=".SolarAlarmReceiver"
-            android:exported="false"/>
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.dumitriualxlang.solardasboard.SOLAR_CHECK"/>
+                <action android:name="com.dumitriualxlang.solardasboard.RESTART_FGS"/>
+            </intent-filter>
+        </receiver>
         <service
             android:name=".SolarForegroundService"
             android:foregroundServiceType="dataSync"
@@ -417,15 +422,10 @@ public class MainActivity extends Activity {
     }
 
     private void scheduleBackgroundWork() {
-        // Require network so the worker doesn't run and fail silently offline.
-        // UPDATE policy: keeps the existing schedule/run-count but ensures the
-        // latest SolarWorker code is used. Safe to call on every app open.
-        Constraints constraints = new Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build();
+        // No network constraint — worker handles offline gracefully.
+        // CONNECTED was causing complete overnight failure on Samsung (WiFi off during sleep).
         PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(
             SolarWorker.class, 30, TimeUnit.MINUTES)
-            .setConstraints(constraints)
             .build();
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "solar_background",
@@ -650,7 +650,7 @@ public class MainActivity extends Activity {
                     else                     bD = Math.min(hD, (double) battMaxD);
 
                     double battFlow = bC - bD;
-                    double battEff  = 0.92;  // Huawei Luna 2000
+                    double battEff  = 0.95;  // Huawei Luna 2000 (matches all service calculations)
                     double effFlow  = battFlow > 0 ? battFlow * battEff : battFlow; // discharge: no penalty
                     double newSoc   = soc + (effFlow / battUse) * elapsedH * 100.0;
                     newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
@@ -806,7 +806,32 @@ public class SolarForegroundService extends Service {
         if (handler != null && checker != null) {
             handler.removeCallbacks(checker);
         }
-        android.util.Log.d("SolarFGS", "Service destroyed");
+        // Samsung One UI ignores START_STICKY — schedule a 1-minute restart alarm
+        // so the service comes back even if Android doesn't honour the sticky flag.
+        scheduleRestartAlarm();
+        android.util.Log.d("SolarFGS", "Service destroyed — restart alarm set for 1 min");
+    }
+
+    private void scheduleRestartAlarm() {
+        try {
+            android.app.AlarmManager am =
+                (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            if (am == null) return;
+            Intent ri = new Intent(this, SolarAlarmReceiver.class)
+                .setAction("com.dumitriualxlang.solardasboard.RESTART_FGS");
+            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+                this, 9001, ri,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT |
+                android.app.PendingIntent.FLAG_IMMUTABLE);
+            long at = System.currentTimeMillis() + 60_000L; // 1 minute
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && am.canScheduleExactAlarms()) {
+                am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, at, pi);
+            } else {
+                am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, at, pi);
+            }
+        } catch (Exception e) {
+            android.util.Log.e("SolarFGS", "Restart alarm failed: " + e.getMessage());
+        }
     }
 
     @Override
@@ -859,30 +884,28 @@ public class SolarForegroundService extends Service {
             return;
         }
 
-        // Fetch weather
+        // Fetch weather — skip gracefully if offline, still evolve SOC
         String url = "https://api.open-meteo.com/v1/forecast?"
             + "latitude=" + lat + "&longitude=" + lon
             + "&current=temperature_2m,cloud_cover,shortwave_radiation,"
             + "direct_radiation,diffuse_radiation,direct_normal_irradiance"
             + "&timezone=auto";
         String raw = httpGet(url);
-        if (raw == null || raw.startsWith("ERR")) {
-            android.util.Log.w("SolarFGS", "Weather fetch failed: " + raw);
-            return;
-        }
+        boolean hasWeather = raw != null && !raw.startsWith("ERR");
+        if (!hasWeather) android.util.Log.w("SolarFGS", "Weather unavailable — SOC evolves with last pvKw");
 
-        double pvKw = 0;
+        // Use last known pvKw when offline; weather fetch overwrites if successful
+        double pvKw = prefs.getFloat("pv_kw", 0f);
         double gridImport = 0, battFlow = 0;
         double newSoc = soc;
         double battUse = battGross > 0 ? battGross * (1.0 - battRes) : 4.5;
 
         try {
+            if (hasWeather) {
             JSONObject cur = new JSONObject(raw).getJSONObject("current");
             double directRad  = cur.optDouble("direct_radiation",  0);
             double diffuseRad = cur.optDouble("diffuse_radiation", 0);
-            double swr        = cur.optDouble("shortwave_radiation", directRad + diffuseRad);
             double tempC      = cur.optDouble("temperature_2m", 25);
-            double cloud      = cur.optDouble("cloud_cover", 0);
 
             // ── Solar position (same algorithm as JS solarPosition()) ──────────
             Calendar cal = Calendar.getInstance();
@@ -899,32 +922,35 @@ public class SolarForegroundService extends Service {
                          + Math.cos(latR)*Math.cos(decR)*Math.cos(ha*Math.PI/180.0);
             double alt   = Math.asin(Math.max(-1,Math.min(1,sinAlt)))*180.0/Math.PI;
 
-                // Solar azimuth (degrees from North, clockwise)
-                double cosZ    = Math.cos((90.0 - alt) * Math.PI / 180.0);
-                double sinAz   = Math.cos(decR) * Math.sin(ha * Math.PI / 180.0) / Math.cos(alt * Math.PI / 180.0);
-                double solAzDeg= Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
-                if (alt > 0 && ha > 0) solAzDeg = 180.0 - solAzDeg;
-                else if (alt > 0)      solAzDeg = 180.0 + solAzDeg;
+            double solAzDeg = 180.0;
+            if (alt > 0) {
+                double sinAz = Math.cos(decR) * Math.sin(ha * Math.PI/180.0)
+                    / Math.max(0.001, Math.cos(alt * Math.PI/180.0));
+                solAzDeg = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
+                if (ha > 0) solAzDeg = 180.0 - solAzDeg;
+                else        solAzDeg = 180.0 + solAzDeg;
+            }
 
             if (alt > 2.0) {
-                // Calibrated model: direct*0.9 + diffuse, validated vs FusionSolar (±5%)
-// Panel orientation-aware POA (matches JS calcPOA() exactly)
                 float  panelAz  = prefs.getFloat("panel_azimuth", 180f);
                 double tiltR    = 30.0 * Math.PI / 180.0;
-                double altR     = alt       * Math.PI / 180.0;
-                double solAzR   = solAzDeg  * Math.PI / 180.0;
-                double pnlAzR   = panelAz   * Math.PI / 180.0;
-                double cosAOI   = Math.sin(altR) * Math.cos(tiltR)
-                                + Math.cos(altR) * Math.sin(tiltR) * Math.cos(solAzR - pnlAzR);
+                double altR     = alt      * Math.PI / 180.0;
+                double solAzR   = solAzDeg * Math.PI / 180.0;
+                double pnlAzR   = panelAz  * Math.PI / 180.0;
+                double cosAOI   = Math.sin(altR)*Math.cos(tiltR)
+                                + Math.cos(altR)*Math.sin(tiltR)*Math.cos(solAzR - pnlAzR);
                 double poaBeam  = Math.max(0, cosAOI) * Math.max(0, directRad);
                 double poaSky   = Math.max(0, diffuseRad) * (1 + Math.cos(tiltR)) / 2.0;
                 double poaGnd   = (directRad + diffuseRad) * 0.20 * (1 - Math.cos(tiltR)) / 2.0;
                 double poa_in   = poaBeam + poaSky + poaGnd;
-                double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
-                double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
+                double cellT    = tempC + (45.0 - 20.0) * (poa_in / 800.0);
+                double tFac     = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
                 pvKw = Math.max(0, Math.min(panelKw * 0.984,
                     (poa_in / 1000.0) * panelKw * 0.984 * tFac * 0.85));
+            } else {
+                pvKw = 0; // sun below horizon
             }
+            } // end if(hasWeather)
 
             // ── Energy flow (same model as JS calcFlow()) ─────────────────────
             double hardFlr = 0.0;
@@ -947,8 +973,11 @@ public class SolarForegroundService extends Service {
             newSoc = soc + (effFlow / battUse) * dtH * 100.0;
             newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
 
-            // ── Persist all state for catch-up on next app open ───────────────
-            String todayStr = cal.get(Calendar.YEAR) + "-" + cal.get(Calendar.DAY_OF_YEAR);
+            // ── Persist all state ─────────────────────────────────────────────
+            Calendar nowCal = Calendar.getInstance();
+            int nm = nowCal.get(Calendar.MONTH)+1, nd = nowCal.get(Calendar.DAY_OF_MONTH);
+            String todayStr = nowCal.get(Calendar.YEAR)
+                + "-" + (nm<10?"0":"") + nm + "-" + (nd<10?"0":"") + nd;
             String lastGridDate = prefs.getString("grid_date", "");
             float prevExp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
             float prevImp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
@@ -1208,7 +1237,17 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context ctx, Intent intent) {
-        android.util.Log.d("SolarAlarm", "Alarm fired");
+        android.util.Log.d("SolarAlarm", "Alarm fired: " + intent.getAction());
+        // Always restart the foreground service — it may have been killed by Samsung
+        // battery optimisation. Starting an already-running service is a no-op.
+        SolarForegroundService.start(ctx);
+
+        // RESTART_FGS action is only for reviving the service — no solar check needed
+        if ("com.dumitriualxlang.solardasboard.RESTART_FGS".equals(intent.getAction())) {
+            android.util.Log.d("SolarAlarm", "FGS restart triggered");
+            return;
+        }
+
         createChannel(ctx);
         doSolarCheck(ctx);
         schedule(ctx);
@@ -1257,12 +1296,13 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
             + "direct_radiation,diffuse_radiation,direct_normal_irradiance"
             + "&timezone=auto";
         String raw = httpGet(url);
-        if (raw == null || raw.startsWith("ERR")) { android.util.Log.w("SolarAlarm", "Weather failed: " + raw); return; }
+        boolean hasWx = raw != null && !raw.startsWith("ERR");
+        if (!hasWx) android.util.Log.w("SolarAlarm", "Weather unavailable — SOC evolves with last pvKw");
 
-        double pvKw = 0, gridImport = 0, gridExport = 0, battFlow = 0;
-        double newSoc = soc;
+        double pvKw = prefs.getFloat("pv_kw", 0f); // use last known; overwritten if fetch succeeds
 
         try {
+            if (hasWx) {
             JSONObject cur = new JSONObject(raw).getJSONObject("current");
             double directRad  = cur.optDouble("direct_radiation",  0);
             double diffuseRad = cur.optDouble("diffuse_radiation", 0);
@@ -1279,21 +1319,22 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
             double sinAlt = Math.sin(latR) * Math.sin(decR) + Math.cos(latR) * Math.cos(decR) * Math.cos(ha * Math.PI / 180.0);
             double alt   = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180.0 / Math.PI;
 
-                // Solar azimuth (degrees from North, clockwise)
-                double cosZ    = Math.cos((90.0 - alt) * Math.PI / 180.0);
-                double sinAz   = Math.cos(decR) * Math.sin(ha * Math.PI / 180.0) / Math.cos(alt * Math.PI / 180.0);
-                double solAzDeg= Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
-                if (alt > 0 && ha > 0) solAzDeg = 180.0 - solAzDeg;
-                else if (alt > 0)      solAzDeg = 180.0 + solAzDeg;
+            double solAzDeg = 180.0;
+            if (alt > 0) {
+                double sinAz = Math.cos(decR) * Math.sin(ha * Math.PI/180.0)
+                    / Math.max(0.001, Math.cos(alt * Math.PI/180.0));
+                solAzDeg = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
+                if (ha > 0) solAzDeg = 180.0 - solAzDeg;
+                else        solAzDeg = 180.0 + solAzDeg;
+            }
 
-            // Calibrated solar model: direct*0.9 + diffuse (validated vs FusionSolar ±5%)
+            // Calibrated solar model
             if (alt > 2.0) {
-// Panel orientation-aware POA (matches JS calcPOA() exactly)
                 float  panelAz  = prefs.getFloat("panel_azimuth", 180f);
                 double tiltR    = 30.0 * Math.PI / 180.0;
-                double altR     = alt       * Math.PI / 180.0;
-                double solAzR   = solAzDeg  * Math.PI / 180.0;
-                double pnlAzR   = panelAz   * Math.PI / 180.0;
+                double altR     = alt      * Math.PI / 180.0;
+                double solAzR   = solAzDeg * Math.PI / 180.0;
+                double pnlAzR   = panelAz  * Math.PI / 180.0;
                 double cosAOI   = Math.sin(altR) * Math.cos(tiltR)
                                 + Math.cos(altR) * Math.sin(tiltR) * Math.cos(solAzR - pnlAzR);
                 double poaBeam  = Math.max(0, cosAOI) * Math.max(0, directRad);
@@ -1303,7 +1344,10 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
                 double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
                 double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
                 pvKw = Math.max(0, Math.min(panelKw * 0.984, (poa_in / 1000.0) * panelKw * 0.984 * tFac * 0.85));
+            } else {
+                pvKw = 0; // sun below horizon
             }
+            } // end if(hasWx)
 
             // Energy flow
             double battUse = battGross > 0 ? battGross * (1.0 - battRes) : 4.5;
@@ -1325,7 +1369,10 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
             newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
 
             // Persist
-            String todayStr = cal.get(Calendar.YEAR) + "-" + cal.get(Calendar.DAY_OF_YEAR);
+            Calendar nowCalAR = Calendar.getInstance();
+            int arm = nowCalAR.get(Calendar.MONTH)+1, ard = nowCalAR.get(Calendar.DAY_OF_MONTH);
+            String todayStr = nowCalAR.get(Calendar.YEAR)
+                + "-" + (arm<10?"0":"") + arm + "-" + (ard<10?"0":"") + ard;
             String lastDate = prefs.getString("grid_date", "");
             float prevExp = lastDate.equals(todayStr) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
             float prevImp = lastDate.equals(todayStr) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
@@ -1484,12 +1531,12 @@ public class BootReceiver extends BroadcastReceiver {
         // Start the foreground service first — most reliable on Samsung
         SolarForegroundService.start(context);
         try {
-            Constraints constraints = new Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build();
+            // NO network constraint — worker handles offline gracefully (SOC evolution
+            // still works without internet; weather fetch skipped if no connection).
+            // CONNECTED constraint caused complete overnight failure when Samsung
+            // turns off WiFi to save battery during sleep.
             PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(
                 SolarWorker.class, 30, TimeUnit.MINUTES)
-                .setConstraints(constraints)
                 .build();
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 "solar_background",
@@ -1592,17 +1639,26 @@ public class SolarWorker extends Worker {
         // Still no GPS — cannot calculate production, skip this run
         if (lat == 0f || lon == 0f) return Result.retry();
 
-        // ── Fetch current weather from Open-Meteo ────────────────────────────
+        // ── Fetch current weather from Open-Meteo (skip if offline) ──────────
         String url = "https://api.open-meteo.com/v1/forecast?"
             + "latitude="  + lat + "&longitude=" + lon
             + "&current=temperature_2m,cloud_cover,shortwave_radiation,"
             + "direct_radiation,diffuse_radiation,direct_normal_irradiance"
             + "&timezone=auto";
-        String raw = httpGet(url);
-        if (raw == null || raw.startsWith("ERR")) return Result.retry();
-
-        double pvKw = 0;
+        String raw = null;
         try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
+            android.net.NetworkInfo ni = cm != null ? cm.getActiveNetworkInfo() : null;
+            if (ni != null && ni.isConnected()) {
+                raw = httpGet(url);
+            }
+        } catch (Exception e) { /* ignore connectivity check errors */ }
+        // If offline or fetch failed — still do SOC evolution below, just skip pvKw calc
+        boolean hasWeather = raw != null && !raw.startsWith("ERR");
+
+        double pvKw = hasWeather ? 0 : prefs.getFloat("pv_kw", 0f);
+        if (hasWeather) try {
             JSONObject d   = new JSONObject(raw);
             JSONObject cur = d.getJSONObject("current");
             double directRad  = cur.optDouble("direct_radiation",  0);
@@ -1630,11 +1686,14 @@ public class SolarWorker extends Worker {
             double alt    = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180.0 / Math.PI;
 
                 // Solar azimuth (degrees from North, clockwise)
-                double cosZ    = Math.cos((90.0 - alt) * Math.PI / 180.0);
-                double sinAz   = Math.cos(decR) * Math.sin(ha * Math.PI / 180.0) / Math.cos(alt * Math.PI / 180.0);
-                double solAzDeg= Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
-                if (alt > 0 && ha > 0) solAzDeg = 180.0 - solAzDeg;
-                else if (alt > 0)      solAzDeg = 180.0 + solAzDeg;
+            double solAzDeg = 180.0;
+            if (alt > 0) {
+                double sinAz = Math.cos(decR) * Math.sin(ha * Math.PI/180.0)
+                    / Math.max(0.001, Math.cos(alt * Math.PI/180.0));
+                solAzDeg = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
+                if (ha > 0) solAzDeg = 180.0 - solAzDeg;
+                else        solAzDeg = 180.0 + solAzDeg;
+            }
 
             // Night or sun below horizon — production is zero
             if (alt > 2.0) {
@@ -1693,7 +1752,9 @@ public class SolarWorker extends Worker {
         // ── Persist evolved state back to SharedPreferences ──────────────────
         // JS reads these on resume via applyStateFromNative / injectLocation
         Calendar calSW = Calendar.getInstance();
-        String todaySW = calSW.get(Calendar.YEAR) + "-" + calSW.get(Calendar.DAY_OF_YEAR);
+        int swm = calSW.get(Calendar.MONTH)+1, swd = calSW.get(Calendar.DAY_OF_MONTH);
+        String todaySW = calSW.get(Calendar.YEAR)
+            + "-" + (swm<10?"0":"") + swm + "-" + (swd<10?"0":"") + swd;
         String lastDateSW = prefs.getString("grid_date", "");
         float prevExpSW = lastDateSW.equals(todaySW) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
         float prevImpSW = lastDateSW.equals(todaySW) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
@@ -1714,7 +1775,7 @@ public class SolarWorker extends Worker {
 
         
             // ── Quiet hours: no notifications 22:00–08:00 ────────────────────
-            int hourNow = cal.get(Calendar.HOUR_OF_DAY);
+            int hourNow = calSW.get(Calendar.HOUR_OF_DAY);
             if (hourNow >= 8 && hourNow < 22) {
                 // Shared throttle keys — all services read/write the same keys
                 // so no duplicate or missed notifications across FGS/AR/Worker
