@@ -1940,14 +1940,30 @@ function saveCalibHistory(h) {
 
 function getLearnedFactor(ghi) {
   const h = loadCalibHistory();
-  if (!h.length) return SYS.pvCalibFactor || 1.0;
+  if (!h.length) return 1.0;
+
+  // ── Migrate legacy readings (stored as pvReal/pvApp = relative) ──────
+  // New readings store pvKwBase and use factor = pvReal/pvKwBase (absolute).
+  // Old readings have no pvKwBase. Approximate: absolute ≈ relative²
+  // (valid when all readings share a similar factor, which they do in practice).
+  let migrated = false;
+  h.forEach(pt => {
+    if (!pt.pvKwBase && pt.pvApp && pt.pvReal && !pt.migrated) {
+      const rel = pt.pvReal / pt.pvApp;
+      pt.factor    = +(rel * rel).toFixed(4);  // approximate absolute factor
+      pt.pvKwBase  = +(pt.pvApp / rel).toFixed(3);
+      pt.migrated  = true;
+      migrated     = true;
+    }
+  });
+  if (migrated) saveCalibHistory(h);
+
   const now = Date.now();
-  // Weight each sample: GHI proximity + recency
   let wSum = 0, fSum = 0;
   h.forEach(pt => {
-    const ghiDist  = Math.abs((pt.ghi || 0) - ghi) / Math.max(ghi, 50);
-    const ageDays  = (now - (pt.ts || 0)) / 86400000;
-    const w        = Math.exp(-ghiDist * 1.5) * Math.exp(-ageDays * 0.07);
+    const ghiDist = Math.abs((pt.ghi || 0) - ghi) / Math.max(ghi, 50);
+    const ageDays = (now - (pt.ts || 0)) / 86400000;
+    const w       = Math.exp(-ghiDist * 1.5) * Math.exp(-ageDays * 0.07);
     wSum += w; fSum += pt.factor * w;
   });
   const factor = wSum > 0 ? fSum / wSum : 1.0;
@@ -1961,7 +1977,12 @@ function calibrateProduction() {
 
   if (isNaN(real) || real <= 0)     { setMsg('Enter the kW value from your inverter app.','var(--am)'); return; }
   if (ST.pvKw < 0.3)                { setMsg('Too little production right now — wait for stronger sun.','var(--am)'); return; }
-  const rawFactor = real / ST.pvKw;
+
+  // Use pvKwBase (pre-calibration, raw formula output) for the absolute factor.
+  // Storing pvReal/pvApp (relative) was the bug causing persistent offset after
+  // the first reading shifted the baseline — the factor never grew past the first reading.
+  const pvBase = ST.pvKwBase > 0 ? ST.pvKwBase : ST.pvKw;
+  const rawFactor = real / pvBase;  // absolute: pvReal / pvKwBase
   if (rawFactor < 0.25 || rawFactor > 4.0) { setMsg('Values too far apart — check both are in kW.','var(--rd)'); return; }
 
   // Store data point
@@ -1971,12 +1992,13 @@ function calibrateProduction() {
     ghi:     +(ST.irrWm2 || 0),
     cloud:   +(ST.cloudCover || 0),
     hour:    new Date().getHours(),
-    pvApp:   +ST.pvKw.toFixed(3),
+    pvKwBase: +pvBase.toFixed(3),   // absolute base — key for correct factor
+    pvApp:   +ST.pvKw.toFixed(3),   // calibrated value shown to user
     pvReal:  +real.toFixed(3),
-    factor:  +rawFactor.toFixed(4),
-    // Snapshot of correlated variables for cross-validation
+    factor:  +rawFactor.toFixed(4), // absolute: pvReal / pvKwBase
     consKw:  +(ST.consKw || 0),
     battSoc: +socToDisplay(ST.battSoc).toFixed(1),
+    migrated: true,                 // mark as new-format so migration skips it
   });
   if (h.length > CALIB_MAX) h.splice(0, h.length - CALIB_MAX);
   saveCalibHistory(h);
