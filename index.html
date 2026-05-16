@@ -851,43 +851,87 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
   // Calling it here causes a visible flash before fetchWeather returns fresh data.
 }
 
+// ── Location cache — prevents geocoding on every resume ────────────
+function _locCacheKey(lat, lon) {
+  return (Math.round(lat * 100) / 100) + ',' + (Math.round(lon * 100) / 100);
+}
+function getCachedLocName(lat, lon) {
+  try {
+    const c = JSON.parse(localStorage.getItem('locCache') || '{}');
+    const v = c[_locCacheKey(lat, lon)];
+    if (v && Date.now() - v.ts < 7 * 86400000) return v.name; // 7-day TTL
+  } catch(e) {}
+  return null;
+}
+function setCachedLocName(lat, lon, name) {
+  try {
+    const c = JSON.parse(localStorage.getItem('locCache') || '{}');
+    c[_locCacheKey(lat, lon)] = { name, ts: Date.now() };
+    // Keep max 20 locations
+    const keys = Object.keys(c);
+    if (keys.length > 20) delete c[keys[0]];
+    localStorage.setItem('locCache', JSON.stringify(c));
+  } catch(e) {}
+}
+
 // Reverse geocode lat/lon → city/locality via Nominatim (OSM, no API key needed)
 async function reverseGeocode(lat, lon) {
+  // Check cache first — avoids repeated slow Nominatim requests
+  const cached = getCachedLocName(lat, lon);
+  if (cached) return cached;
+
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), 5000); // 5-second hard timeout
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`;
-    const r = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'SolarDashboard/1.0' } });
+    const r = await fetch(url, {
+      headers: { 'Accept-Language': 'en', 'User-Agent': 'SolarDashboard/1.0' },
+      signal: ctrl.signal
+    });
+    clearTimeout(tid);
     if (!r.ok) return null;
     const d = await r.json();
     const a = d.address || {};
-    return a.city || a.town || a.village || a.municipality || a.county || null;
-  } catch(e) { return null; }
+    const city = a.city || a.town || a.village || a.municipality || a.county || null;
+    if (city) setCachedLocName(lat, lon, city);
+    return city;
+  } catch(e) {
+    clearTimeout(tid);
+    return null;
+  }
 }
 
 function applyGpsFromNative(lat, lon, name) {
-  // Called by native Android on every resume with last known location
-  // Always apply — native location is more authoritative than cached JS state
   if (!lat || !lon) return;
   const moved = !ST.lat || !ST.lon ||
     Math.abs(lat - ST.lat) > 0.005 || Math.abs(lon - ST.lon) > 0.005;
-  ST.lat = lat; ST.lon = lon;
-  ST.locName = name && !name.includes('°') ? name : (lat.toFixed(4) + '°N ' + lon.toFixed(4) + '°E');
-  ST.gpsOk = true;
-  setGps('ok', '📍 ' + ST.locName);
-  if (!name || name.includes('°')) {
+  ST.lat = lat; ST.lon = lon; ST.gpsOk = true;
+
+  // Use priority: passed name → cache → geocode → coordinates
+  const cached = getCachedLocName(lat, lon);
+  const resolved = (name && !name.includes('°')) ? name : cached;
+
+  if (resolved) {
+    ST.locName = resolved;
+    setGps('ok', '📍 ' + resolved);
+    try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: resolved })); } catch(e) {}
+    if (moved || !ST.apiOk) fetchWeather();
+  } else {
+    // No name yet — show Locating, don't flash coordinates
+    ST.locName = 'Locating...';
+    setGps('ok', '📍 Locating...');
+    if (moved || !ST.apiOk) fetchWeather();
     reverseGeocode(lat, lon).then(city => {
+      const displayName = city || (lat.toFixed(3) + '°N ' + lon.toFixed(3) + '°E');
+      ST.locName = displayName;
+      setGps('ok', '📍 ' + displayName);
       if (city) {
-        ST.locName = city;
-        setGps('ok', '📍 ' + city);
-        // Persist resolved name to SharedPreferences so Java reuses it on next resume
-        if (window.AppBridge && AppBridge.saveGps) {
-          try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
-        }
+        setCachedLocName(lat, lon, city);
         try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
+        if (window.AppBridge && AppBridge.saveGps) try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
       }
     });
   }
-  try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: ST.locName })); } catch(e) {}
-  if (moved || !ST.apiOk) fetchWeather();
 }
 
 function onGpsBtnClick() {
@@ -921,19 +965,26 @@ function applyPosition(pos) {
   const moved = !ST.lat || !ST.lon ||
     Math.abs(lat - ST.lat) > 0.005 || Math.abs(lon - ST.lon) > 0.005;
   ST.lat = lat; ST.lon = lon; ST.gpsAccuracy = acc; ST.gpsOk = true;
-  ST.locName = f(lat,4) + '°N ' + f(lon,4) + '°E';
-  setGps('ok', '📍 Locating...');
-  reverseGeocode(lat, lon).then(city => {
-    if (city) { ST.locName = city; setGps('ok', '📍 ' + city); }
-    else { setGps('ok', '📍 ' + ST.locName); }
-  });
-  // Persist to localStorage (browser/PWA)
-  try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: ST.locName })); } catch(e) {}
-  // Persist to Android SharedPreferences (survives WebView process kill)
-  if (window.AppBridge && AppBridge.saveGps) {
-    try { AppBridge.saveGps(lat, lon, ST.locName); } catch(e) {}
-  }
+
+  const cached = getCachedLocName(lat, lon);
+  ST.locName = cached || 'Locating...';
+  setGps('ok', '📍 ' + ST.locName);
   if (moved) fetchWeather();
+
+  if (!cached) {
+    reverseGeocode(lat, lon).then(city => {
+      const displayName = city || (lat.toFixed(3) + '°N ' + lon.toFixed(3) + '°E');
+      ST.locName = displayName;
+      setGps('ok', '📍 ' + displayName);
+      if (city) {
+        setCachedLocName(lat, lon, city);
+        try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
+        if (window.AppBridge && AppBridge.saveGps) try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
+      }
+    });
+  } else {
+    try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: cached })); } catch(e) {}
+  }
 }
 
 function onLocationErr(err) {
@@ -1045,9 +1096,10 @@ function applySatelliteRadiation(sat) {
   const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(0, poa);
   const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
   const acMax   = SYS.acMax || panelKw * 0.984;
-  // PR = acMax × 0.97 (mismatch). acMax already includes invEff + dcLoss.
-  // Multiply by learned calibration factor for current GHI conditions.
-  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac * getLearnedFactor(ghi))).toFixed(3);
+  // PR = acMax × 0.97 × learned calibration factor for current GHI conditions
+  const learnedF = getLearnedFactor(ghi);
+  ST.pvKwBase   = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac)).toFixed(3);
+  const pvKw    = +(ST.pvKwBase * learnedF).toFixed(3);
   ST.pvKw      = pvKw;
   ST._satLastMs = Date.now();
   ST.irrWm2    = sat.swr;
@@ -1922,25 +1974,36 @@ function calibrateProduction() {
     pvApp:   +ST.pvKw.toFixed(3),
     pvReal:  +real.toFixed(3),
     factor:  +rawFactor.toFixed(4),
+    // Snapshot of correlated variables for cross-validation
+    consKw:  +(ST.consKw || 0),
+    battSoc: +socToDisplay(ST.battSoc).toFixed(1),
   });
   if (h.length > CALIB_MAX) h.splice(0, h.length - CALIB_MAX);
   saveCalibHistory(h);
 
-  // Update global factor for current conditions
-  SYS.pvCalibFactor = getLearnedFactor(ST.irrWm2 || 0);
+  // ── Apply correction IMMEDIATELY without waiting for next weather fetch ──
+  // pvKwBase is the pre-calibration reading stored in applySatelliteRadiation
+  const newFactor = getLearnedFactor(ST.irrWm2 || 0);
+  SYS.pvCalibFactor = newFactor;
+  if (ST.pvKwBase > 0) {
+    ST.pvKw = +(ST.pvKwBase * newFactor).toFixed(3);
+  }
 
   document.getElementById('cfgCalibReal').value = '';
-  setMsg('✅ Reading saved — ' + h.length + ' total · factor now ×' + SYS.pvCalibFactor.toFixed(2), 'var(--g)');
+  setMsg('✅ Reading saved · ' + h.length + ' total · now showing ' + f(ST.pvKw,2) + ' kW', 'var(--g)');
   setTimeout(() => { if(msg) msg.textContent = ''; }, 5000);
   updateCalibDisplay();
-  fetchWeather();
+  // Re-render immediately so the dashboard shows the corrected value
+  renderFlow(); renderBattery(); renderMetrics(); renderHeader();
 }
 
 function resetCalibration() {
   saveCalibHistory([]);
+  try { localStorage.removeItem('socCorrHistory'); } catch(e) {}
   SYS.pvCalibFactor = 1.0;
+  ST.pvKwBase = 0;
   const msg = document.getElementById('cfgCalibMsg');
-  if(msg){ msg.textContent = 'All readings cleared.'; msg.style.color = 'var(--t2)'; }
+  if(msg){ msg.textContent = 'All learning data cleared.'; msg.style.color = 'var(--t2)'; }
   setTimeout(() => { if(msg) msg.textContent = ''; }, 3000);
   updateCalibDisplay();
   fetchWeather();
@@ -1952,6 +2015,10 @@ function updateCalibDisplay() {
   const factor  = getLearnedFactor(ST.irrWm2 || 0);
   SYS.pvCalibFactor = factor;
 
+  let socPts = 0;
+  try { socPts = JSON.parse(localStorage.getItem('socCorrHistory') || '[]').length; } catch(e) {}
+  const totalPts = n + socPts;
+
   const labelEl  = document.getElementById('cfgCalibLabel');
   const factorEl = document.getElementById('cfgCalibFactor');
   const barEl    = document.getElementById('cfgCalibBar');
@@ -1960,13 +2027,13 @@ function updateCalibDisplay() {
 
   if(appEl)    appEl.textContent    = 'App: ' + (ST.pvKw > 0 ? f(ST.pvKw,2)+' kW' : '-- kW');
   if(factorEl) factorEl.textContent = '×' + factor.toFixed(2);
-  if(ptsEl)    ptsEl.textContent    = n + ' reading' + (n===1?'':'s');
+  if(ptsEl)    ptsEl.textContent    = n + ' production · ' + socPts + ' SOC readings';
 
   let label, pct, col;
-  if      (n === 0)  { label='No readings yet — enter a value below'; pct=0;   col='var(--t3)'; }
-  else if (n < 4)    { label='Learning… add more readings for accuracy';  pct=Math.round(n/10*100); col='var(--am)'; }
-  else if (n < 10)   { label='Calibrating — accuracy improving';          pct=Math.round(n/10*100); col='var(--bl)'; }
-  else               { label='Well calibrated · auto-adjusting';           pct=100; col='var(--g)'; }
+  if      (totalPts === 0)  { label='No readings yet — enter a value below'; pct=0;   col='var(--t3)'; }
+  else if (totalPts < 4)    { label='Learning… add more readings for accuracy';  pct=Math.round(totalPts/12*100); col='var(--am)'; }
+  else if (totalPts < 10)   { label='Calibrating — accuracy improving';          pct=Math.round(totalPts/12*100); col='var(--bl)'; }
+  else                      { label='Well calibrated · auto-adjusting to conditions'; pct=100; col='var(--g)'; }
 
   if(labelEl) { labelEl.textContent = label; labelEl.style.color = col; }
   if(barEl)   { barEl.style.width = pct+'%'; barEl.style.background = col; }
@@ -1987,8 +2054,47 @@ function applySocEdit() {
   const inp = document.getElementById('socEditInput');
   if (!inp) return;
   const displayPct = Math.min(90, Math.max(10, parseFloat(inp.value) || 50));
+
+  // ── Record SOC correction for cross-variable learning ─────────────
+  const appDisplaySoc = socToDisplay(ST.battSoc);
+  const socDrift      = displayPct - appDisplaySoc;  // +ve = app underestimated
+  const hourNow       = new Date().getHours();
+  const isPvOff       = ST.pvKw < 0.1;
+
+  try {
+    const socH = JSON.parse(localStorage.getItem('socCorrHistory') || '[]');
+    const entry = {
+      ts: Date.now(), hour: hourNow,
+      appSoc: +appDisplaySoc.toFixed(1), realSoc: displayPct,
+      drift: +socDrift.toFixed(1),
+      pvKw: +ST.pvKw.toFixed(3),
+      consKw: +(ST.consKw || 0).toFixed(3),
+      battUsable: +(SYS.battUse || 9).toFixed(2),
+    };
+
+    // If no sun and drift is significant, derive actual consumption from SOC drop
+    // e.g. battery dropped 20% overnight (8h): actual cons = 0.20 * 9kWh / 8h = 0.225 kW
+    if (isPvOff && Math.abs(socDrift) > 3 && socCorrHistory_lastTs) {
+      const hoursElapsed = (Date.now() - socCorrHistory_lastTs) / 3600000;
+      if (hoursElapsed > 1 && hoursElapsed < 16) {
+        const actualConsKw = Math.abs(socDrift) / 100 * (SYS.battUse || 9) / hoursElapsed;
+        entry.derivedConsKw = +actualConsKw.toFixed(3);
+        // Blend derived consumption into profile smoothly (EMA α=0.25)
+        if (actualConsKw > 0.05 && actualConsKw < 5.0) {
+          ST.consKw = +(0.75 * (ST.consKw || actualConsKw) + 0.25 * actualConsKw).toFixed(3);
+        }
+      }
+    }
+
+    socH.push(entry);
+    if (socH.length > 30) socH.splice(0, socH.length - 30);
+    localStorage.setItem('socCorrHistory', JSON.stringify(socH));
+  } catch(e) {}
+  socCorrHistory_lastTs = Date.now();
+
+  // ── Apply SOC ──────────────────────────────────────────────────────
   ST.battSoc = socToInternal(displayPct);
-  lastFlowT  = Date.now();  // reset evolution clock
+  lastFlowT  = Date.now();
   saveCfg({ ...loadCfg(), battSoc: displayPct });
   if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
     try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1,
@@ -1999,14 +2105,58 @@ function applySocEdit() {
   const socEl = document.getElementById('cfgSoc');
   if (socEl) socEl.value = Math.round(displayPct);
 }
+let socCorrHistory_lastTs = null;
 
 function updateClock() {
   const el = document.getElementById('clk');
   if (el) el.textContent = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 
+// ── Energy balance cross-validation ───────────────────────────────
+// Energy law: pvKw = consKw + battCharge + gridExport - gridImport
+// If the balance is consistently violated, one of the estimates is wrong.
+// We use the log history to detect systematic drift.
+let _balanceCheck = { lastRun: 0, drift: 0 };
+function crossValidateEnergyBalance() {
+  const now = Date.now();
+  if (now - _balanceCheck.lastRun < 300000) return; // run every 5 min
+  _balanceCheck.lastRun = now;
+
+  // Need at least 10 log entries and active production
+  if (rlog.length < 10 || !ST.pvKw || ST.pvKw < 0.5) return;
+
+  // Sample recent 20 entries where solar was producing
+  const recent = rlog.slice(-20).filter(e => (e.pvKw || 0) > 0.3);
+  if (recent.length < 5) return;
+
+  // For each entry: balance = pvKw - (consKw + battFlow + netGrid)
+  // battFlow and netGrid are in the log as 'batt' and 'grd'
+  // We don't have consKw in the log directly, use current ST.consKw as proxy
+  // Instead: look at the GHI→pvKw calibration history for correlation with SOC corrections
+
+  // Simple check: if SOC corrections consistently show app overestimating
+  // AND production calibration has < 3 readings, suggest entering a reading
+  try {
+    const socH = JSON.parse(localStorage.getItem('socCorrHistory') || '[]');
+    if (socH.length >= 3) {
+      const avgDrift = socH.slice(-5).reduce((s, e) => s + e.drift, 0) / Math.min(5, socH.length);
+      _balanceCheck.drift = avgDrift;
+      // If battery consistently lower than expected, pvKw is likely overestimated
+      // or consKw is underestimated. Nudge consKw slightly.
+      if (avgDrift < -5 && ST.consKw > 0.1) {
+        // Battery lower than app thinks → app underestimates consumption
+        const nudge = Math.min(0.05, Math.abs(avgDrift) / 100 * (SYS.battUse || 9) / 8);
+        ST.consKw = +(ST.consKw + nudge * 0.1).toFixed(3); // gentle 10% nudge
+      } else if (avgDrift > 5 && ST.consKw > 0.15) {
+        // Battery higher than app thinks → app overestimates consumption
+        const nudge = Math.min(0.05, Math.abs(avgDrift) / 100 * (SYS.battUse || 9) / 8);
+        ST.consKw = +(ST.consKw - nudge * 0.1).toFixed(3);
+      }
+    }
+  } catch(e) {}
+}
+
 // ═══════════════════════════════════════════════════════════════
-// CONSUMPTION INPUT
 // ═══════════════════════════════════════════════════════════════
 
 
@@ -2031,6 +2181,7 @@ function snap() {
 // ═══════════════════════════════════════════════════════════════
 function renderMetrics() {
   updateCalibDisplay();
+  crossValidateEnergyBalance();
   // Populate header stat pills
   const pvEl   = document.getElementById('hdrPv');
   const battEl = document.getElementById('hdrBatt');
