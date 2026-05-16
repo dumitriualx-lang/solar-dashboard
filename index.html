@@ -2258,8 +2258,7 @@ function renderFlow() {
   const html=`<div style="position:relative;height:228px">
     ${flowSVG}
     <div style="position:absolute;top:0;left:0;width:110px;z-index:1">
-      ${nd('l',iSun(CG),CG,'Solar',f(ST.pvKw,2)+' kW',CG,
-        f(SYS.panelKw||5,0)+' kW panels',Math.round(ST.irrWm2)+' W/m²')}
+      ${ndVert(iSun(CG),CG,'Solar',f(ST.pvKw,2)+' kW',CG,'')}
     </div>
     <div style="position:absolute;top:0;right:0;width:110px;z-index:1">
       ${ndVert(iHome(CY),CY,'Home',f(homeKw,2)+' kW',CY,homeSrc)}
@@ -2289,14 +2288,11 @@ function renderFlow() {
     `<svg width="70" height="70" viewBox="0 0 70 70">
       <circle cx="35" cy="35" r="22" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="9"/>
       ${sPct>0?`<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="${CG}"
-        stroke-dasharray="${sLen} ${C}" stroke-dashoffset="${sOff}"
-        style="filter:drop-shadow(0 0 3px ${CG})"/>`:''}
+        stroke-dasharray="${sLen} ${C}" stroke-dashoffset="${sOff}"/>`:''}
       ${bPct>0?`<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="${CB}"
-        stroke-dasharray="${bLen} ${C}" stroke-dashoffset="${bOff}"
-        style="filter:drop-shadow(0 0 3px ${CB})"/>`:''}
+        stroke-dasharray="${bLen} ${C}" stroke-dashoffset="${bOff}"/>`:''}
       ${gPct>0?`<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="${CO}"
-        stroke-dasharray="${gLen} ${C}" stroke-dashoffset="${gOff}"
-        style="filter:drop-shadow(0 0 3px ${CO})"/>`:''}
+        stroke-dasharray="${gLen} ${C}" stroke-dashoffset="${gOff}"/>`:''}
       <text x="35" y="32" text-anchor="middle" font-size="11" font-weight="700" fill="${CG}">${sPct}%</text>
       <text x="35" y="43" text-anchor="middle" font-size="7" fill="rgba(200,224,255,.4)">solar</text>
     </svg>`;
@@ -2304,13 +2300,13 @@ function renderFlow() {
     `<div style="display:flex;flex-direction:column;gap:4px">
       <div style="display:flex;align-items:center;gap:5px;font-size:10px">
         <span style="display:inline-block;width:7px;height:7px;border-radius:50%;
-          background:${CG};box-shadow:0 0 4px ${CG}"></span>Solar ${sPct}%</div>
+          background:${CG}"></span>Solar ${sPct}%</div>
       <div style="display:flex;align-items:center;gap:5px;font-size:10px">
         <span style="display:inline-block;width:7px;height:7px;border-radius:50%;
-          background:${CB};box-shadow:0 0 4px ${CB}"></span>Battery ${bPct}%</div>
+          background:${CB}"></span>Battery ${bPct}%</div>
       <div style="display:flex;align-items:center;gap:5px;font-size:10px">
         <span style="display:inline-block;width:7px;height:7px;border-radius:50%;
-          background:${CO};box-shadow:0 0 4px ${CO}"></span>Grid ${gPct}%</div>
+          background:${CO}"></span>Grid ${gPct}%</div>
     </div>`;
   const eff = ST.pvKw>0&&ST.irrWm2>10
     ? Math.round(Math.min(100,ST.pvKw/((ST.irrWm2/1000)*(SYS.panelKw||5))*100)) : 0;
@@ -2320,10 +2316,9 @@ function renderFlow() {
       <path d="M10,54 A36,36 0 0,1 80,54" fill="none" stroke="rgba(255,255,255,.06)"
         stroke-width="7" stroke-linecap="round"/>
       <path d="M10,54 A36,36 0 0,1 80,54" fill="none" stroke="${effCol}" stroke-width="7"
-        stroke-linecap="round" stroke-dasharray="${113.1*eff/100} 113.1"
-        style="filter:drop-shadow(0 0 4px ${effCol})"/>
+        stroke-linecap="round" stroke-dasharray="${113.1*eff/100} 113.1"/>
       <text x="45" y="46" text-anchor="middle" font-size="14" font-weight="700"
-        fill="${effCol}" style="filter:drop-shadow(0 0 6px ${effCol})">${eff}%</text>
+        fill="${effCol}">${eff}%</text>
       <text x="45" y="58" text-anchor="middle" font-size="7"
         fill="rgba(200,224,255,.35)">PERFORMANCE</text>
     </svg>`;
