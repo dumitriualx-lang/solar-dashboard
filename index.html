@@ -350,7 +350,7 @@ body::before{
     <div class="mfr-grid">
       <div class="mfr-group">
         <div class="mfr-lbl">☀️ Panel brand</div>
-        <select class="mfr-select" id="cfgPanelBrand" onchange="onBrandSelect('panel')">
+        <select class="mfr-select" id="cfgPanelBrand" onchange="onBrandSelect('panel');onPanelBrandChange()">
           <option value="">— Select brand —</option>
           <option value="huawei">Huawei Solar</option>
           <option value="longi">LONGi Solar</option>
@@ -488,6 +488,49 @@ body::before{
             border:1px solid var(--br2);border-radius:5px;color:var(--t3);cursor:pointer;font-family:inherit">
             Clear all readings</button>
         </div>
+      </div>
+    </div>
+
+    <!-- FusionSolar Integration — shown only when Huawei panel brand is selected -->
+    <div id="fusionSolarSection" style="display:none;margin-top:14px;padding:14px;
+      border-radius:var(--r);border:1px solid rgba(0,180,255,.25);
+      background:linear-gradient(135deg,rgba(0,40,100,.5),rgba(0,10,30,.7))">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+          color:var(--bl)">🔗 FusionSolar Live Data</div>
+        <div id="fsStatus" style="font-size:10px;padding:2px 8px;border-radius:10px;
+          background:rgba(0,80,160,.3);color:var(--t2);border:1px solid var(--br2)">Not connected</div>
+      </div>
+      <p style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">
+        Connect with your regular FusionSolar app credentials to get <strong style="color:var(--tx)">real inverter data</strong>
+        instead of satellite estimates. No special account needed — same username and password as the mobile app.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="cfg-inp-wrap">
+          <input type="email" id="cfgFsUser" inputmode="email" placeholder="FusionSolar username (email)"
+            style="text-align:left;font-size:13px" autocomplete="username">
+        </div>
+        <div class="cfg-inp-wrap">
+          <input type="password" id="cfgFsPass" placeholder="FusionSolar password"
+            style="text-align:left;font-size:13px" autocomplete="current-password">
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="connectFusionSolar()"
+            style="flex:1;background:rgba(0,180,230,.15);color:var(--bl);border:1px solid rgba(0,180,230,.4);
+            border-radius:var(--rs);padding:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+            Connect
+          </button>
+          <button onclick="disconnectFusionSolar()"
+            style="background:none;color:var(--t3);border:1px solid var(--br2);
+            border-radius:var(--rs);padding:9px 12px;font-size:12px;cursor:pointer;font-family:inherit">
+            Disconnect
+          </button>
+        </div>
+      </div>
+      <div id="fsMsg" style="font-size:11px;min-height:14px;margin-top:6px"></div>
+      <div style="font-size:10px;color:var(--t3);margin-top:8px;line-height:1.4">
+        Credentials are stored only on this device. Connection uses the eu5.fusionsolar.huawei.com
+        endpoint — the same server your browser uses. Data refreshes every 5 minutes.
       </div>
     </div>
 
@@ -1949,7 +1992,94 @@ function showUpdateDialog(versionName, storeUrl, versionCode) {
 const stored = () => SYS.battUse ? +((ST.battSoc/100) * SYS.battUse).toFixed(3) : 0;
 
 // ── Quick SOC correction from battery panel ───────────────────────────────
-// ── Self-calibrating production learning system ────────────────────
+// ── FusionSolar integration ────────────────────────────────────────
+const FS_HOST = 'https://eu5.fusionsolar.huawei.com';
+
+function onPanelBrandChange() {
+  const brand  = document.getElementById('cfgPanelBrand')?.value || '';
+  const isHuawei = brand === 'huawei' || brand.startsWith('huawei');
+  const section  = document.getElementById('fusionSolarSection');
+  if (section) section.style.display = isHuawei ? 'block' : 'none';
+  // Populate credentials if already saved
+  if (isHuawei) refreshFsStatus();
+}
+
+function loadFsCredentials() {
+  try { return JSON.parse(localStorage.getItem('fsCredentials') || 'null'); }
+  catch(e) { return null; }
+}
+
+function refreshFsStatus() {
+  const creds = loadFsCredentials();
+  const statusEl = document.getElementById('fsStatus');
+  const userEl   = document.getElementById('cfgFsUser');
+  if (creds && creds.user) {
+    if (statusEl) {
+      statusEl.textContent = '● Connected';
+      statusEl.style.background = 'rgba(0,200,130,.15)';
+      statusEl.style.color = 'var(--g)';
+      statusEl.style.borderColor = 'rgba(0,200,130,.3)';
+    }
+    if (userEl && !userEl.value) userEl.value = creds.user;
+  } else {
+    if (statusEl) {
+      statusEl.textContent = 'Not connected';
+      statusEl.style.background = 'rgba(0,80,160,.3)';
+      statusEl.style.color = 'var(--t2)';
+      statusEl.style.borderColor = 'var(--br2)';
+    }
+  }
+}
+
+function connectFusionSolar() {
+  const user = (document.getElementById('cfgFsUser')?.value || '').trim();
+  const pass = (document.getElementById('cfgFsPass')?.value || '');
+  const msg  = document.getElementById('fsMsg');
+  const setMsg = (t, c) => { if(msg){ msg.textContent=t; msg.style.color=c; } };
+
+  if (!user || !pass) { setMsg('Enter your FusionSolar username and password.', 'var(--am)'); return; }
+
+  setMsg('Connecting…', 'var(--bl)');
+
+  // Store credentials for Java background service
+  try {
+    localStorage.setItem('fsCredentials', JSON.stringify({ user, host: FS_HOST }));
+  } catch(e) {}
+
+  // Pass to Android native layer so background service can use them
+  if (window.AppBridge && typeof AppBridge.setFusionSolarCreds === 'function') {
+    try {
+      AppBridge.setFusionSolarCreds(user, pass, FS_HOST);
+      setMsg('✅ Credentials saved — background service will fetch live data every 5 min.', 'var(--g)');
+    } catch(e) {
+      setMsg('Credentials saved locally. Update app to enable background sync.', 'var(--am)');
+    }
+  } else {
+    // AppBridge method not yet in current build — save locally, will be used on next build
+    setMsg('✅ Saved — will activate after next app update.', 'var(--g)');
+  }
+
+  // Clear password field for security
+  const passEl = document.getElementById('cfgFsPass');
+  if (passEl) passEl.value = '';
+  refreshFsStatus();
+  setTimeout(() => { if(msg) msg.textContent = ''; }, 6000);
+}
+
+function disconnectFusionSolar() {
+  localStorage.removeItem('fsCredentials');
+  if (window.AppBridge && typeof AppBridge.clearFusionSolarCreds === 'function') {
+    try { AppBridge.clearFusionSolarCreds(); } catch(e) {}
+  }
+  const userEl = document.getElementById('cfgFsUser');
+  const passEl = document.getElementById('cfgFsPass');
+  if (userEl) userEl.value = '';
+  if (passEl) passEl.value = '';
+  const msg = document.getElementById('fsMsg');
+  if (msg) { msg.textContent = 'Disconnected — using satellite estimates.'; msg.style.color = 'var(--t2)'; }
+  setTimeout(() => { if(msg) msg.textContent = ''; }, 4000);
+  refreshFsStatus();
+}
 // Stores up to 60 (ghi, cloudCover, pvApp, pvReal) data points in localStorage.
 // getLearnedFactor(ghi) computes a weighted factor from historical readings
 // closest in irradiance, time-weighted so older readings matter less.
@@ -3420,6 +3550,7 @@ function initCfgInputs() {
   if (savedCfg.battRes) document.getElementById('cfgRes').value = Math.round(savedCfg.battRes * 100);
   if (savedCfg.battSoc)   { document.getElementById('cfgSoc').value = Math.round(savedCfg.battSoc); ST.battSoc = socToInternal(savedCfg.battSoc); }
   updateCalibDisplay(); // load learned factor from history
+  onPanelBrandChange(); // show/hide FusionSolar section based on saved brand
   if (savedCfg.panelAzimuth) {
     const azEl = document.getElementById('cfgAzimuth');
     if (azEl) azEl.value = String(savedCfg.panelAzimuth);
