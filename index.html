@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#1D9E75">
+<meta name="theme-color" content="#050a14">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 
 <meta http-equiv="Pragma" content="no-cache">
@@ -19,172 +19,268 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
-  --g:#1D9E75;--gl:rgba(29,158,117,.12);--g2:#157A5A;
-  --am:#BA7517;--aml:rgba(186,117,23,.12);
-  --rd:#C0392B;--rdl:rgba(192,57,43,.12);
-  --bl:#2980B9;--bll:rgba(41,128,185,.15);
-  --or:#E67E22;
-  --bg:#F0F2F5;--sf:#fff;--sf2:#F7F8FA;
-  --br:rgba(0,0,0,.07);--br2:rgba(0,0,0,.04);
-  --tx:#0D1117;--t2:#5A6370;--t3:#9BA3AE;
-  --r:16px;--rs:10px;
-  --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06);
-  --shadow-sm:0 1px 2px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.04);
-  --glass:rgba(255,255,255,.72);
-  --glass-border:rgba(255,255,255,.9);
-}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0A0D12;--sf:#141820;--sf2:#1A1F28;
-  --br:rgba(255,255,255,.08);--br2:rgba(255,255,255,.04);
-  --tx:#E8ECF1;--t2:#8B95A1;--t3:#4A5260;
-  --shadow:0 1px 3px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
-  --shadow-sm:0 1px 2px rgba(0,0,0,.2),0 2px 8px rgba(0,0,0,.15);
-  --glass:rgba(20,24,32,.82);--glass-border:rgba(255,255,255,.1);
-}}
-[data-theme="dark"]{
-  --bg:#0A0D12;--sf:#141820;--sf2:#1A1F28;
-  --br:rgba(255,255,255,.08);--br2:rgba(255,255,255,.04);
-  --tx:#E8ECF1;--t2:#8B95A1;--t3:#4A5260;
-  --shadow:0 1px 3px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
-  --shadow-sm:0 1px 2px rgba(0,0,0,.2),0 2px 8px rgba(0,0,0,.15);
-  --glass:rgba(20,24,32,.82);--glass-border:rgba(255,255,255,.1);
-}
-[data-theme="light"]{
-  --bg:#F0F2F5;--sf:#fff;--sf2:#F7F8FA;
-  --br:rgba(0,0,0,.07);--br2:rgba(0,0,0,.04);
-  --tx:#0D1117;--t2:#5A6370;--t3:#9BA3AE;
-  --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06);
-  --shadow-sm:0 1px 2px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.04);
-  --glass:rgba(255,255,255,.72);--glass-border:rgba(255,255,255,.9);
+  /* ── Futuristic dark theme — fixed ────────────────────────────── */
+  --g:#00c882;--gl:rgba(0,200,130,.12);--g2:#007a50;
+  --am:#d4b020;--aml:rgba(212,176,32,.12);
+  --rd:#e03030;--rdl:rgba(224,48,48,.12);
+  --bl:#00b4e6;--bll:rgba(0,180,230,.12);
+  --or:#e05a28;
+  --bg:#050a14;
+  --sf:rgba(0,20,60,.9);
+  --sf2:rgba(0,28,75,.55);
+  --br:rgba(0,160,255,.2);--br2:rgba(0,160,255,.1);
+  --tx:#c8e0ff;--t2:rgba(200,224,255,.55);--t3:rgba(200,224,255,.28);
+  --r:14px;--rs:10px;
+  --shadow:0 0 24px rgba(0,100,200,.1),0 4px 24px rgba(0,0,0,.5);
+  --shadow-sm:0 2px 12px rgba(0,0,0,.3);
+  --glass:rgba(0,12,35,.9);
+  --glass-border:rgba(0,160,255,.22);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
-.hdr{background:linear-gradient(135deg,var(--g) 0%,var(--g2) 100%);color:#fff;padding:48px 18px 16px;position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 2px 20px rgba(29,158,117,.25)}
-.hdr h1{font-size:15px;font-weight:600;letter-spacing:.01em}
+html,body{
+  height:100%;background:var(--bg);color:var(--tx);
+  font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:14px;-webkit-font-smoothing:antialiased;
+  background-image:
+    radial-gradient(ellipse at 15% 60%,rgba(0,80,200,.07) 0%,transparent 55%),
+    radial-gradient(ellipse at 85% 15%,rgba(0,200,130,.05) 0%,transparent 50%);
+}
+/* Global scanline texture */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,80,160,.013) 3px,rgba(0,80,160,.013) 4px);
+}
+/* ── Header ─────────────────────────────────────────────────────── */
+.hdr{
+  background:linear-gradient(145deg,rgba(0,30,70,.97) 0%,rgba(0,10,30,.99) 100%);
+  color:var(--tx);padding:48px 18px 16px;position:sticky;top:0;z-index:100;
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(0,200,130,.25);
+  box-shadow:0 2px 30px rgba(0,0,0,.5),0 0 40px rgba(0,200,130,.04);
+}
+.hdr h1{font-size:15px;font-weight:600;letter-spacing:.05em;color:var(--tx)}
 .hdr-row{display:flex;justify-content:space-between;align-items:flex-start}
-.hdr-sub{font-size:12px;opacity:.75;margin-top:3px;font-weight:400;letter-spacing:.01em}
-.live-pill{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;background:rgba(255,255,255,.18);padding:4px 11px;border-radius:20px;border:.5px solid rgba(255,255,255,.3);backdrop-filter:blur(8px)}
-.live-dot{width:6px;height:6px;border-radius:50%;background:#fff;animation:blink 1.5s infinite}
-.hdr-stats{display:flex;gap:14px;margin-top:10px;font-size:12px;opacity:.9;flex-wrap:wrap}
+.hdr-sub{font-size:12px;color:var(--t2);margin-top:3px;font-weight:400;letter-spacing:.04em}
+.live-pill{
+  display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
+  background:rgba(0,200,130,.1);padding:4px 11px;border-radius:20px;
+  border:1px solid rgba(0,200,130,.35);color:var(--g);letter-spacing:.5px;
+}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g);animation:blink 1.5s infinite}
+.hdr-stats{display:flex;gap:12px;margin-top:10px;font-size:12px;color:var(--t2);flex-wrap:wrap}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-.body{padding:14px;display:flex;flex-direction:column;gap:12px;padding-bottom:90px}
-.card{background:var(--sf);border-radius:var(--r);border:.5px solid var(--br);padding:16px;box-shadow:var(--shadow-sm)}
-.ct{font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
-.pill{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600;text-transform:none;letter-spacing:0;backdrop-filter:blur(8px)}
-.p-ok{background:var(--gl);color:#0F6E56}.p-warn{background:var(--aml);color:#854F0B}.p-info{background:var(--bll);color:#185FA5}.p-err{background:var(--rdl);color:var(--rd)}
-.gps-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:13px;margin-bottom:10px;gap:8px;flex-wrap:wrap}
-.gps-ok{background:var(--gl);color:#0F6E56}.gps-req{background:var(--bll);color:#185FA5}.gps-err{background:var(--aml);color:#854F0B}
-.gps-btn{background:none;border:.5px solid currentColor;border-radius:6px;padding:2px 8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:inherit;white-space:nowrap}
-.api-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:13px;margin-bottom:10px;gap:8px}
-.api-ok{background:var(--gl);color:#0F6E56}.api-err{background:var(--aml);color:#854F0B}.api-load{background:var(--bll);color:#185FA5}
-.api-refresh{background:none;border:.5px solid currentColor;border-radius:6px;padding:2px 8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:inherit;white-space:nowrap}
-.log-btn{background:linear-gradient(135deg,var(--g),var(--g2));color:#fff;border:none;border-radius:var(--rs);padding:9px 16px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(29,158,117,.35);letter-spacing:.01em}
+/* ── Layout ─────────────────────────────────────────────────────── */
+.body{padding:14px;display:flex;flex-direction:column;gap:12px;padding-bottom:90px;position:relative;z-index:1}
+/* ── Cards ──────────────────────────────────────────────────────── */
+.card{
+  background:linear-gradient(145deg,rgba(0,20,60,.88) 0%,rgba(0,8,25,.97) 100%);
+  border-radius:var(--r);border:1px solid var(--br);
+  padding:16px;box-shadow:var(--shadow-sm);
+  position:relative;overflow:hidden;
+}
+.card::after{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,80,160,.015) 3px,rgba(0,80,160,.015) 4px);
+  z-index:0;
+}
+.card>*{position:relative;z-index:1}
+.ct{
+  font-size:10px;font-weight:700;color:var(--t2);
+  text-transform:uppercase;letter-spacing:.12em;
+  margin-bottom:12px;display:flex;justify-content:space-between;
+  align-items:center;flex-wrap:wrap;gap:6px;
+}
+/* ── Pills ──────────────────────────────────────────────────────── */
+.pill{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;letter-spacing:.5px;backdrop-filter:blur(4px)}
+.p-ok{background:rgba(0,200,130,.12);color:var(--g);border:1px solid rgba(0,200,130,.3)}
+.p-warn{background:rgba(212,176,32,.12);color:#d4b020;border:1px solid rgba(212,176,32,.3)}
+.p-info{background:rgba(0,180,230,.12);color:var(--bl);border:1px solid rgba(0,180,230,.3)}
+.p-err{background:rgba(224,48,48,.12);color:var(--rd);border:1px solid rgba(224,48,48,.3)}
+/* ── Status bars ─────────────────────────────────────────────────── */
+.gps-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:13px;margin-bottom:10px;gap:8px;flex-wrap:wrap;border:1px solid var(--br2)}
+.gps-ok{background:rgba(0,200,130,.08);color:var(--g);border-color:rgba(0,200,130,.2)}
+.gps-req{background:rgba(0,180,230,.08);color:var(--bl);border-color:rgba(0,180,230,.2)}
+.gps-err{background:rgba(212,176,32,.08);color:#d4b020;border-color:rgba(212,176,32,.2)}
+.gps-btn{background:none;border:1px solid currentColor;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:inherit;opacity:.8}
+.api-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:13px;margin-bottom:10px;gap:8px;border:1px solid var(--br2)}
+.api-ok{background:rgba(0,200,130,.08);color:var(--g);border-color:rgba(0,200,130,.2)}
+.api-err{background:rgba(212,176,32,.08);color:#d4b020;border-color:rgba(212,176,32,.2)}
+.api-load{background:rgba(0,180,230,.08);color:var(--bl);border-color:rgba(0,180,230,.2)}
+.api-refresh{background:none;border:1px solid currentColor;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:inherit;opacity:.8}
+/* ── Buttons ─────────────────────────────────────────────────────── */
+.log-btn{background:linear-gradient(135deg,rgba(0,200,130,.2),rgba(0,200,130,.1));color:var(--g);border:1px solid rgba(0,200,130,.4);border-radius:var(--rs);padding:9px 16px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;letter-spacing:.05em;box-shadow:0 0 12px rgba(0,200,130,.1)}
+/* ── Metrics grid ────────────────────────────────────────────────── */
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.mc{background:var(--sf);border-radius:var(--r);border:.5px solid var(--br);padding:14px;box-shadow:var(--shadow-sm);transition:transform .15s ease}
+.mc{background:rgba(0,28,75,.6);border-radius:var(--r);border:1px solid var(--br2);padding:14px;transition:transform .15s ease}
 .mc.wide{grid-column:span 2}
-.mc-lbl{font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.mc-lbl{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px;font-weight:600}
 .mc-val{font-size:14px;font-weight:700;line-height:1}
-.mc-sub{font-size:11px;color:var(--t2);margin-top:4px;line-height:1.3}
+.mc-sub{font-size:11px;color:var(--t3);margin-top:4px;line-height:1.3}
 .cg{color:var(--g)!important}.ca{color:var(--am)!important}.cr{color:var(--rd)!important}.cb{color:var(--bl)!important}
-.irr-bar{height:8px;border-radius:4px;background:var(--sf2);margin:8px 0 4px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.08)}
-.irr-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#F5A623,#27AE60);transition:width 1s cubic-bezier(.4,0,.2,1);box-shadow:0 0 8px rgba(29,158,117,.4)}
+/* ── Irradiance bar ──────────────────────────────────────────────── */
+.irr-bar{height:6px;border-radius:3px;background:rgba(0,28,75,.6);border:1px solid var(--br2);margin:8px 0 4px;overflow:hidden}
+.irr-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#d4a820,var(--g));transition:width 1s cubic-bezier(.4,0,.2,1);box-shadow:0 0 10px rgba(0,200,130,.35)}
+/* ── Energy flow legacy classes ──────────────────────────────────── */
 .flow{display:grid;grid-template-columns:1fr 40px 1fr;align-items:flex-start}
 .ef{display:flex;align-items:center;gap:8px;padding:4px 0}
-.ef-sol{flex:0 0 80px;background:var(--sf2);border:1px solid #1D9E7555;border-radius:var(--rs);padding:10px 6px;text-align:center;box-sizing:border-box}
+.ef-sol{flex:0 0 80px;background:var(--sf2);border:1px solid rgba(0,200,130,.3);border-radius:var(--rs);padding:10px 6px;text-align:center}
 .ef-nodes{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
-.ef-node{background:var(--sf2);border:.5px solid var(--br);border-radius:var(--rs);padding:12px 8px;text-align:center;box-sizing:border-box}
-.ef-sol-inner{border:1px solid #1D9E7555}
+.ef-node{background:var(--sf2);border:.5px solid var(--br2);border-radius:var(--rs);padding:12px 8px;text-align:center}
+.ef-sol-inner{border:1px solid rgba(0,200,130,.3)}
 .ef-lbl{font-size:11px;color:var(--t2);margin-top:2px}
 .ef-val{font-size:17px;font-weight:700;margin:3px 0}
 .ef-sub{font-size:10px;color:var(--t3)}
-@keyframes fd{to{stroke-dashoffset:-20}}.fa{stroke-dasharray:6 4;animation:fd .8s linear infinite}
-.fic{font-size:14px}.flb{font-size:10px;color:var(--t2);margin-top:2px;font-family:inherit}
-.fvl{font-size:14px;font-weight:700;margin-top:2px}.fsub{font-size:10px;color:var(--t3);margin-top:1px;font-family:inherit}
-.upd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
-.upd-card{background:var(--bg);border-radius:var(--r);padding:24px 20px;max-width:320px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.3);text-align:center}
-.upd-title{font-size:17px;font-weight:700;color:var(--tx);margin-bottom:8px}
-.upd-body{font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:20px}
-.upd-btns{display:flex;gap:10px}
-.upd-later{flex:1;padding:10px;border-radius:var(--rs);border:.5px solid var(--br);background:none;color:var(--t2);font-size:13px;font-family:inherit;cursor:pointer}
-.upd-now{flex:1;padding:10px;border-radius:var(--rs);border:none;background:var(--g);color:#fff;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
-.ps-wrap{position:relative;height:20px;display:flex;align-items:center}
-.ps-track{position:absolute;left:0;right:0;height:5px;background:var(--sf2);border-radius:3px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.08)}
-.ps-fill{height:100%;background:var(--g);border-radius:3px;transition:width .15s ease}
-.ps-thumb{position:absolute;width:18px;height:18px;border-radius:50%;background:var(--g);box-shadow:0 1px 4px rgba(0,0,0,.2);transform:translateX(-50%);pointer-events:none;transition:left .15s ease}
-.ps-input{position:absolute;left:0;right:0;opacity:0;height:20px;margin:0;cursor:pointer;-webkit-appearance:none}
-.arr{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 2px 0;gap:2px}
-.arr-val{font-size:10px;font-weight:600;text-align:center}
-.arr-track{width:30px;height:3px;border-radius:2px;position:relative;overflow:hidden}
-.arr-dot{width:8px;height:8px;border-radius:50%;position:absolute;top:-2.5px;animation:adot 1s linear infinite}
-@keyframes adot{0%{left:-8px}100%{left:100%}}
-.arr-head{font-size:11px;color:var(--t3)}
-.wstrip{display:flex;gap:4px;margin-bottom:10px}
-.wd{flex:1;text-align:center;padding:6px 2px;border-radius:var(--rs);background:var(--sf2)}
-.wd.today{background:var(--gl);border:.5px solid var(--g)}
-.wi{font-size:15px}.wn{font-size:10px;color:var(--t2);margin:2px 0}
-.wt{font-size:11px;font-weight:600;color:var(--tx)}.wkwh{font-size:10px;font-weight:700}.wr{font-size:9px;color:var(--t3)}
-.sched{display:flex;flex-direction:column;gap:6px}
-.si{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--rs);background:var(--sf2)}
-.sic{font-size:13px;flex-shrink:0}.sinf{flex:1;min-width:0}
-.snm{font-size:13px;font-weight:600;color:var(--tx)}.stm{font-size:11px;color:var(--t2);line-height:1.35;margin-top:1px}
-.sbg{font-size:11px;padding:2px 8px;border-radius:8px;flex-shrink:0;font-weight:600}
-.sb-b{background:var(--gl);color:#0F6E56}.sb-o{background:var(--bll);color:#185FA5}.sb-a{background:var(--rdl);color:var(--rd)}
-.sr-btn{font-size:14px;padding:3px 6px;border-radius:8px;border:none;background:none;cursor:pointer;flex-shrink:0;line-height:1;opacity:.55;transition:opacity .15s,background .15s}
-.sr-btn:active{opacity:.8}
-.sr-btn.sr-on{opacity:1;background:rgba(186,117,23,.15)}
+/* ── Alerts ──────────────────────────────────────────────────────── */
 .alert{padding:10px 12px;border-radius:var(--rs);font-size:12px;margin-bottom:6px;line-height:1.55;border-left:3px solid}
 .alert:last-child{margin-bottom:0}
-.al-s{background:var(--gl);border-color:var(--g);color:#0F6E56}.al-w{background:var(--aml);border-color:var(--am);color:#854F0B}
-.al-i{background:var(--bll);border-color:var(--bl);color:#185FA5}.al-d{background:var(--rdl);border-color:var(--rd);color:var(--rd)}
+.al-s{background:rgba(0,200,130,.08);border-color:var(--g);color:var(--g)}
+.al-w{background:rgba(212,176,32,.08);border-color:#d4b020;color:#d4b020}
+.al-i{background:rgba(0,180,230,.08);border-color:var(--bl);color:var(--bl)}
+.al-d{background:rgba(224,48,48,.08);border-color:var(--rd);color:var(--rd)}
+/* ── Charts ──────────────────────────────────────────────────────── */
 .chart-wrap{position:relative;width:100%;height:175px}.chart-sm{position:relative;width:100%;height:150px}
 .leg{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
 .li{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--t2)}
 .lln{width:12px;height:2px;display:inline-block;border-radius:1px}.lbr{width:9px;height:9px;display:inline-block;border-radius:2px}
-.tabs{display:flex;gap:2px;background:var(--sf2);padding:3px;border-radius:var(--rs);margin-bottom:10px}
-.tab{flex:1;padding:5px;text-align:center;font-size:12px;border-radius:6px;cursor:pointer;color:var(--t2);border:none;background:transparent;font-family:inherit}
-.tab.on{background:var(--sf);color:var(--tx);font-weight:700;border:.5px solid var(--br)}
-.nav{position:fixed;bottom:0;left:0;right:0;background:var(--glass);border-top:.5px solid var(--glass-border);display:flex;z-index:200;padding-bottom:env(safe-area-inset-bottom);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 -1px 20px rgba(0,0,0,.08)}
-.nb{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px 6px;gap:3px;font-size:13px;color:var(--t3);border:none;background:none;cursor:pointer;font-family:inherit}
-.nb.on{color:var(--g)}.ni{font-size:16px}
+/* ── Tabs ────────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:2px;background:rgba(0,28,75,.5);padding:3px;border-radius:var(--rs);margin-bottom:10px;border:1px solid var(--br2)}
+.tab{flex:1;padding:5px;text-align:center;font-size:12px;border-radius:6px;cursor:pointer;color:var(--t2);border:none;background:transparent;font-family:inherit;letter-spacing:.05em}
+.tab.on{background:rgba(0,160,255,.12);color:var(--tx);font-weight:700;border:1px solid rgba(0,160,255,.25)}
+/* ── Navigation ──────────────────────────────────────────────────── */
+.nav{
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(0,8,24,.95);
+  border-top:1px solid rgba(0,160,255,.2);
+  display:flex;z-index:200;
+  padding-bottom:env(safe-area-inset-bottom);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  box-shadow:0 -4px 30px rgba(0,0,0,.6);
+}
+.nb{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px 6px;gap:3px;font-size:10px;color:var(--t3);border:none;background:none;cursor:pointer;font-family:inherit;letter-spacing:.05em;transition:color .2s}
+.nb.on{color:var(--g);text-shadow:0 0 10px rgba(0,200,130,.5)}
+.nb.on .ni{filter:drop-shadow(0 0 6px rgba(0,200,130,.6))}
+.ni{font-size:16px;transition:filter .2s}
 .page{display:none}.page.on{display:block}
+/* ── Log table ───────────────────────────────────────────────────── */
 .log-table{width:100%;border-collapse:collapse;font-size:12px}
-.log-table th{text-align:left;padding:6px 8px;font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;border-bottom:.5px solid var(--br)}
-.log-table td{padding:7px 8px;border-bottom:.5px solid var(--br);color:var(--tx)}
+.log-table th{text-align:left;padding:6px 8px;font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--br2)}
+.log-table td{padding:7px 8px;border-bottom:1px solid var(--br2);color:var(--tx)}
 .log-table tr:last-child td{border-bottom:none}
+.log-table tr:hover td{background:rgba(0,80,160,.08)}
 .empty-log{text-align:center;padding:28px;color:var(--t2);font-size:12px;line-height:1.6}
-.inst{background:var(--g);color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
-.inst button{background:rgba(255,255,255,.22);border:none;color:#fff;padding:5px 12px;border-radius:7px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer}
-.toggle-wrap{display:flex;gap:2px;background:var(--sf2);padding:3px;border-radius:var(--rs)}
-.tog-btn{padding:3px 12px;font-size:11px;font-weight:600;border-radius:6px;border:none;background:transparent;color:var(--t2);cursor:pointer;font-family:inherit;transition:all .15s}
-.tog-btn.on{background:var(--sf);color:var(--tx);border:.5px solid var(--br)}
+/* ── Install banner ──────────────────────────────────────────────── */
+.inst{background:linear-gradient(90deg,rgba(0,200,130,.15),rgba(0,180,230,.1));color:var(--g);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;border-bottom:1px solid rgba(0,200,130,.2)}
+.inst button{background:rgba(0,200,130,.15);border:1px solid rgba(0,200,130,.4);color:var(--g);padding:5px 12px;border-radius:7px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer}
+/* ── Toggle ──────────────────────────────────────────────────────── */
+.toggle-wrap{display:flex;gap:2px;background:rgba(0,28,75,.5);padding:3px;border-radius:var(--rs);border:1px solid var(--br2)}
+.tog-btn{padding:3px 12px;font-size:11px;font-weight:600;border-radius:6px;border:none;background:transparent;color:var(--t2);cursor:pointer;font-family:inherit;transition:all .15s;letter-spacing:.05em}
+.tog-btn.on{background:rgba(0,160,255,.12);color:var(--tx);border:1px solid rgba(0,160,255,.25)}
+/* ── Config form ─────────────────────────────────────────────────── */
 .cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .cfg-group{display:flex;flex-direction:column;gap:3px}
-.cfg-lbl{font-size:11px;color:var(--t2);font-weight:600}
-.cfg-inp-wrap{display:flex;align-items:center;gap:6px;background:var(--sf2);border-radius:var(--rs);padding:8px 12px;border:.5px solid var(--br);box-shadow:inset 0 1px 3px rgba(0,0,0,.04)}
+.cfg-lbl{font-size:11px;color:var(--t2);font-weight:600;letter-spacing:.05em}
+.cfg-inp-wrap{display:flex;align-items:center;gap:6px;background:rgba(0,28,75,.6);border-radius:var(--rs);padding:8px 12px;border:1px solid var(--br2);transition:border-color .2s}
+.cfg-inp-wrap:focus-within{border-color:rgba(0,200,130,.45);box-shadow:0 0 0 2px rgba(0,200,130,.08)}
 .cfg-inp-wrap input{flex:1;background:none;border:none;outline:none;font-size:14px;font-weight:700;color:var(--tx);width:100%;font-family:inherit;text-align:right}
 .cfg-unit{font-size:14px;font-weight:600;color:var(--t2);white-space:nowrap}
 .cfg-hint{font-size:11px;color:var(--t3)}
-.cfg-save{background:linear-gradient(135deg,var(--g),var(--g2));color:#fff;border:none;border-radius:var(--rs);padding:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;width:100%;margin-top:6px;box-shadow:0 2px 8px rgba(29,158,117,.3);letter-spacing:.01em}
+.cfg-save{
+  background:linear-gradient(135deg,rgba(0,200,130,.2),rgba(0,200,130,.1));
+  color:var(--g);border:1px solid rgba(0,200,130,.4);border-radius:var(--rs);
+  padding:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;
+  width:100%;margin-top:6px;letter-spacing:.08em;
+  box-shadow:0 0 16px rgba(0,200,130,.08);transition:background .2s,box-shadow .2s;
+}
+.cfg-save:active{box-shadow:0 0 24px rgba(0,200,130,.2)}
 .cfg-saved{font-size:11px;color:var(--g);text-align:center;margin-top:4px;height:14px}
+/* ── Manufacturer selects ────────────────────────────────────────── */
 .mfr-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .mfr-group{display:flex;flex-direction:column;gap:3px}
-.mfr-lbl{font-size:11px;color:var(--t2);font-weight:600}
-.mfr-select{width:100%;padding:7px 10px;font-size:13px;font-weight:600;font-family:inherit;background:var(--sf2);color:var(--tx);border:.5px solid var(--br);border-radius:var(--rs);appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+.mfr-lbl{font-size:11px;color:var(--t2);font-weight:600;letter-spacing:.05em}
+.mfr-select{width:100%;padding:7px 10px;font-size:13px;font-weight:600;font-family:inherit;background:rgba(0,28,75,.6);color:var(--tx);border:1px solid var(--br2);border-radius:var(--rs);appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2300c882' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
 .mfr-hint{font-size:11px;color:var(--t3)}
-.notif-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:var(--rs);font-size:13px;font-weight:500;margin-bottom:10px;gap:10px;flex-wrap:wrap}
-.notif-ok{background:var(--gl);color:#0F6E56}
-.notif-req{background:var(--bll);color:#185FA5}
-.notif-off{background:var(--sf2);color:var(--t2)}
-.notif-btn{background:none;border:1.5px solid currentColor;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:inherit;white-space:nowrap}
+/* ── Notification bar ────────────────────────────────────────────── */
+.notif-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:var(--rs);font-size:13px;font-weight:500;margin-bottom:10px;gap:10px;flex-wrap:wrap;border:1px solid var(--br2)}
+.notif-ok{background:rgba(0,200,130,.08);color:var(--g);border-color:rgba(0,200,130,.2)}
+.notif-req{background:rgba(0,180,230,.08);color:var(--bl);border-color:rgba(0,180,230,.2)}
+.notif-off{background:rgba(0,28,75,.4);color:var(--t2)}
+.notif-btn{background:none;border:1px solid currentColor;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:inherit;letter-spacing:.05em}
+/* ── Slider ──────────────────────────────────────────────────────── */
+.ps-wrap{position:relative;height:20px;display:flex;align-items:center}
+.ps-track{position:absolute;left:0;right:0;height:5px;background:rgba(0,28,75,.6);border-radius:3px;overflow:hidden;border:1px solid var(--br2)}
+.ps-fill{height:100%;background:linear-gradient(90deg,var(--g2),var(--g));border-radius:3px;transition:width .15s ease}
+.ps-thumb{position:absolute;width:18px;height:18px;border-radius:50%;background:var(--g);box-shadow:0 0 10px rgba(0,200,130,.5);transform:translateX(-50%);pointer-events:none;transition:left .15s ease}
+.ps-input{position:absolute;left:0;right:0;opacity:0;height:20px;margin:0;cursor:pointer;-webkit-appearance:none}
+/* ── Flow arrows ─────────────────────────────────────────────────── */
+.arr{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 2px 0;gap:2px}
+.arr-val{font-size:10px;font-weight:600;text-align:center}
+.arr-track{width:30px;height:3px;border-radius:2px;position:relative;overflow:hidden;background:var(--br2)}
+.arr-dot{width:8px;height:8px;border-radius:50%;position:absolute;top:-2.5px;animation:adot 1s linear infinite}
+@keyframes adot{0%{left:-8px}100%{left:100%}}
+.arr-head{font-size:11px;color:var(--t3)}
+/* ── Forecast strip ──────────────────────────────────────────────── */
+.wstrip{display:flex;gap:4px;margin-bottom:10px}
+.wd{flex:1;text-align:center;padding:6px 2px;border-radius:var(--rs);background:rgba(0,28,75,.5);border:1px solid var(--br2);cursor:pointer;transition:background .15s}
+.wd.today{background:rgba(0,200,130,.08);border-color:rgba(0,200,130,.3)}
+.wd:active{background:rgba(0,80,160,.2)}
+.wi{font-size:15px}.wn{font-size:10px;color:var(--t2);margin:2px 0;letter-spacing:.05em}
+.wt{font-size:11px;font-weight:600;color:var(--tx)}.wkwh{font-size:10px;font-weight:700}.wr{font-size:9px;color:var(--t3)}
+/* ── Schedule ────────────────────────────────────────────────────── */
+.sched{display:flex;flex-direction:column;gap:6px}
+.si{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--rs);background:rgba(0,28,75,.5);border:1px solid var(--br2)}
+.sic{font-size:13px;flex-shrink:0}.sinf{flex:1;min-width:0}
+.snm{font-size:13px;font-weight:600;color:var(--tx)}.stm{font-size:11px;color:var(--t2);line-height:1.35;margin-top:1px}
+.sbg{font-size:11px;padding:2px 8px;border-radius:8px;flex-shrink:0;font-weight:700;letter-spacing:.3px}
+.sb-b{background:rgba(0,200,130,.1);color:var(--g);border:1px solid rgba(0,200,130,.25)}
+.sb-o{background:rgba(0,180,230,.1);color:var(--bl);border:1px solid rgba(0,180,230,.25)}
+.sb-a{background:rgba(224,48,48,.1);color:var(--rd);border:1px solid rgba(224,48,48,.25)}
+.sr-btn{font-size:14px;padding:3px 6px;border-radius:8px;border:none;background:none;cursor:pointer;flex-shrink:0;line-height:1;opacity:.5;transition:opacity .15s,background .15s}
+.sr-btn:active{opacity:.8}
+.sr-btn.sr-on{opacity:1;background:rgba(212,176,32,.15)}
+/* ── Surplus/schedule bar ─────────────────────────────────────────── */
 .sched-surplus{font-size:11px;color:var(--t2);margin-bottom:6px}
+/* ── Grid panel ──────────────────────────────────────────────────── */
 .grid-panel{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
-.grid-stat{text-align:center;padding:12px 8px;border-radius:var(--rs);background:var(--sf2);border:.5px solid var(--br2)}
-.gs-lbl{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.grid-stat{text-align:center;padding:12px 8px;border-radius:var(--rs);background:rgba(0,28,75,.5);border:1px solid var(--br2)}
+.gs-lbl{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;font-weight:600}
 .gs-val{font-size:14px;font-weight:700;line-height:1}
 .gs-sub{font-size:10px;color:var(--t3);margin-top:3px}
-.grid-flow-bar{height:10px;border-radius:5px;background:var(--sf2);overflow:hidden;margin:8px 0 4px;position:relative;box-shadow:inset 0 1px 3px rgba(0,0,0,.1)}
-.grid-flow-fill{position:absolute;top:0;bottom:0;border-radius:4px;transition:all .6s ease}
+.grid-flow-bar{height:8px;border-radius:4px;background:rgba(0,28,75,.6);overflow:hidden;margin:8px 0 4px;position:relative;border:1px solid var(--br2)}
+.grid-flow-fill{position:absolute;top:0;bottom:0;border-radius:3px;transition:all .6s ease}
 .grid-status-row{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--t2)}
+/* ── Update overlay ──────────────────────────────────────────────── */
+.upd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.upd-card{background:linear-gradient(145deg,rgba(0,20,60,.97),rgba(0,8,25,.99));border-radius:var(--r);border:1px solid var(--br);padding:24px 20px;max-width:320px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.6);text-align:center}
+.upd-title{font-size:17px;font-weight:700;color:var(--tx);margin-bottom:8px}
+.upd-body{font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:20px}
+.upd-btns{display:flex;gap:10px}
+.upd-later{flex:1;padding:10px;border-radius:var(--rs);border:1px solid var(--br2);background:none;color:var(--t2);font-size:13px;font-family:inherit;cursor:pointer}
+.upd-now{flex:1;padding:10px;border-radius:var(--rs);border:1px solid rgba(0,200,130,.4);background:rgba(0,200,130,.12);color:var(--g);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer}
+/* ── FAQ specific ────────────────────────────────────────────────── */
+.fic{font-size:14px}.flb{font-size:10px;color:var(--t2);margin-top:2px;font-family:inherit}
+.fvl{font-size:14px;font-weight:700;margin-top:2px}.fsub{font-size:10px;color:var(--t3);margin-top:1px;font-family:inherit}
+@keyframes fd{to{stroke-dashoffset:-20}}.fa{stroke-dasharray:6 4;animation:fd .8s linear infinite}
+@keyframes coreRot{to{transform:rotate(360deg)}}
+@keyframes coreFlicker{0%,90%,100%{opacity:1}93%{opacity:.5}97%{opacity:.8}}
+@keyframes drawWave{to{stroke-dashoffset:0}}
+.cn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;border-radius:12px;padding:10px 8px;transition:transform .15s}
+.cn:active{transform:scale(.97)}
+.cn-g{background:rgba(0,200,100,.06);border:1px solid rgba(0,200,100,.25);box-shadow:0 0 16px rgba(0,200,100,.08) inset}
+.cn-b{background:rgba(0,180,255,.06);border:1px solid rgba(0,180,255,.25);box-shadow:0 0 16px rgba(0,180,255,.08) inset}
+.cn-o{background:rgba(220,90,50,.06);border:1px solid rgba(220,90,50,.25);box-shadow:0 0 16px rgba(220,90,50,.08) inset}
+.cn-y{background:rgba(220,170,40,.06);border:1px solid rgba(220,170,40,.25);box-shadow:0 0 16px rgba(220,170,40,.08) inset}
+.cn-lbl{font-size:8px;letter-spacing:1.2px;text-transform:uppercase;opacity:.5;font-weight:600}
+.cn-val{font-size:15px;font-weight:700;line-height:1.1}
+.cn-sub{font-size:9px;opacity:.5;white-space:nowrap;max-width:72px;overflow:hidden;text-overflow:ellipsis}
+.core-ring{width:72px;height:72px;border-radius:50%;position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.core-spin{position:absolute;inset:-3px;border-radius:50%;animation:coreRot 4s linear infinite;opacity:.7}
+.core-bg{position:absolute;inset:3px;border-radius:50%;background:var(--bg)}
+.core-face{position:relative;z-index:1;width:60px;height:60px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 38% 33%,rgba(0,140,255,.22),rgba(0,15,50,.95));border:1px solid rgba(0,160,255,.3);box-shadow:0 0 18px rgba(0,140,255,.12) inset}
+.core-bolt{font-size:20px;animation:coreFlicker 4s infinite}
+.core-kw{font-size:8px;font-weight:700;margin-top:1px;letter-spacing:.3px}
+.wave-line{fill:none;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:500;stroke-dashoffset:500;animation:drawWave 2s ease forwards}
+.donut-seg{fill:none;stroke-width:9}
+
 </style>
 </head>
 <body>
@@ -204,7 +300,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
       <div class="hdr-sub" id="hdrSub"><span id="hdrSysName"></span><span id="clk">--:--:--</span></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <button id="themeBtn" onclick="toggleTheme()" style="background:rgba(255,255,255,.18);border:.5px solid rgba(255,255,255,.3);color:#fff;border-radius:20px;padding:4px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;backdrop-filter:blur(8px)" title="Toggle theme">🌙</button>
+      
       <div class="live-pill"><div class="live-dot"></div><span id="liveTag">Live</span></div>
     </div>
   </div>
@@ -350,6 +446,17 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
       </div>
     </div>
 
+    <div class="cfg-grid" style="margin-top:14px">
+      <div class="cfg-group" style="grid-column:span 2">
+        <div class="cfg-lbl">⚖️ Production calibration</div>
+        <div class="cfg-inp-wrap">
+          <input type="number" id="cfgCalib" inputmode="decimal" min="0.5" max="2.0" step="0.05" value="1.00" oninput="onCfgChange()">
+          <span class="cfg-unit">× factor</span>
+        </div>
+        <div class="cfg-hint">Compare app kW vs your inverter app — set ratio here. Example: inverter shows 2.54 kW, app shows 1.95 kW → enter 1.30. Default 1.00.</div>
+      </div>
+    </div>
+
     <div class="cfg-group" style="margin-top:14px">
       <div class="cfg-lbl">🏠 Daily consumption profile</div>
       <div style="font-size:11px;color:var(--t2);margin-bottom:8px">Set once — the app uses this to auto-fill home load by time of day</div>
@@ -401,10 +508,24 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     </div><!-- /cfgBody -->
   </div>
 
-<div class="card">
-    <div class="ct">Energy flow <span id="fTs" style="font-size:10px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--t3)"></span></div>
-    <div id="flowG" style="display:block"><div style="grid-column:span 3;text-align:center;padding:20px;color:var(--t2);font-size:11px">Awaiting GPS and irradiance data...</div></div>
+<div class="card" style="background:linear-gradient(145deg,rgba(0,20,60,.9) 0%,rgba(0,8,25,.98) 100%);border:1px solid rgba(0,160,255,.2);padding:14px 12px;position:relative;overflow:hidden">
+  <!-- scan lines -->
+  <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,100,200,.012) 3px,rgba(0,100,200,.012) 4px);pointer-events:none;z-index:0"></div>
+  <!-- header -->
+  <div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(0,200,130,.85);text-transform:uppercase">Energy Flow</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:9px;color:rgba(200,230,255,.5);letter-spacing:.5px">
+      <span id="fTs"></span>
+      <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#00c880;box-shadow:0 0 6px #00c880;animation:corePulse 2s infinite;flex-shrink:0"></span>
+    </div>
   </div>
+  <!-- nodes + flow -->
+  <div id="flowG" style="position:relative;z-index:1">
+    <div style="text-align:center;padding:24px;color:rgba(200,224,255,.4);font-size:11px">Awaiting GPS and irradiance data…</div>
+  </div>
+  <!-- bottom metrics row -->
+  <div id="coreMetrics" style="position:relative;z-index:1;display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,160,255,.12)"></div>
+</div>
 
 <div class="card" style="padding:10px 14px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -421,7 +542,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
             <input type="number" id="socEditInput" inputmode="numeric" min="10" max="90" step="1"
               style="width:70px;padding:4px 8px;font-size:14px;font-weight:700;border:.5px solid var(--g);border-radius:6px;background:var(--sf2);color:var(--tx);font-family:inherit;text-align:right">
             <span style="font-size:12px;color:var(--t2)">%</span>
-            <button onclick="applySocEdit()" style="background:var(--g);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Apply</button>
+            <button onclick="applySocEdit()" style="background:rgba(0,200,130,.15);color:var(--g);border:1px solid rgba(0,200,130,.4);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Apply</button>
             <button onclick="closeSocEdit()" style="background:none;border:.5px solid var(--t3);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;color:var(--t2);font-family:inherit">Cancel</button>
           </div>
         </div>
@@ -473,8 +594,8 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     <div class="wstrip" id="ws"><div class="empty-log" style="width:100%">Awaiting GPS...</div></div>
     <div class="chart-sm"><canvas id="fC"></canvas></div>
     <div class="leg" style="margin-top:8px">
-      <span class="li"><span class="lbr" style="background:rgba(29,158,117,.4);border:1px solid #1D9E75"></span>Surplus day</span>
-      <span class="li"><span class="lbr" style="background:rgba(186,117,23,.4);border:1px solid #BA7517"></span>Deficit day</span>
+      <span class="li"><span class="lbr" style="background:rgba(0,200,130,.2);border:1px solid var(--g)"></span>Surplus day</span>
+      <span class="li"><span class="lbr" style="background:rgba(186,117,23,.4);border:1px solid #d4a820"></span>Deficit day</span>
       <span class="li"><span class="lln" style="background:#D85A30"></span>Daily need</span>
     </div>
   </div>
@@ -482,7 +603,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     <div class="ct">Today's generation curve <span class="pill p-info">from live irradiance</span></div>
     <div class="chart-wrap"><canvas id="dayC"></canvas></div>
     <div class="leg" style="margin-top:8px">
-      <span class="li"><span class="lln" style="background:#1D9E75"></span>Solar kW (from API)</span>
+      <span class="li"><span class="lln" style="background:#00c882"></span>Solar kW (from API)</span>
       <span class="li"><span class="lln" style="background:#D85A30;opacity:.7"></span>Consumption kW</span>
       <span class="li"><span class="lbr" style="background:rgba(55,138,221,.3);border:1px solid #378ADD"></span>Battery charge kW</span>
     </div>
@@ -500,7 +621,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
       <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
         <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Produced</div>
-        <div style="font-size:16px;font-weight:700;color:#1D9E75" id="statProduced">— kWh</div>
+        <div style="font-size:16px;font-weight:700;color:var(--g)" id="statProduced">— kWh</div>
       </div>
       <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
         <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Consumed</div>
@@ -508,20 +629,20 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
       </div>
       <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
         <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Daily avg</div>
-        <div style="font-size:16px;font-weight:700;color:#BA7517" id="statDailyAvg">— kWh</div>
+        <div style="font-size:16px;font-weight:700;color:#d4a820" id="statDailyAvg">— kWh</div>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div style="background:#E1F5EE;border-radius:var(--rs);padding:8px 10px">
-        <div style="font-size:10px;color:#0F6E56;margin-bottom:2px">From solar</div>
+        <div style="font-size:10px;color:#00c882;margin-bottom:2px">From solar</div>
         <div style="font-size:13px;font-weight:700;color:#085041" id="statFromSolar">— kWh</div>
       </div>
       <div style="background:var(--bll);border-radius:var(--rs);padding:8px 10px">
-        <div style="font-size:10px;color:#185FA5;margin-bottom:2px">From grid</div>
+        <div style="font-size:10px;color:#00b4e6;margin-bottom:2px">From grid</div>
         <div style="font-size:13px;font-weight:700;color:#0C447C" id="statFromGrid">— kWh</div>
       </div>
       <div style="background:#FAEEDA;border-radius:var(--rs);padding:8px 10px">
-        <div style="font-size:10px;color:#854F0B;margin-bottom:2px">Fed to grid</div>
+        <div style="font-size:10px;color:#d4a820;margin-bottom:2px">Fed to grid</div>
         <div style="font-size:13px;font-weight:700;color:#633806" id="statToGrid">— kWh</div>
       </div>
       <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
@@ -576,6 +697,7 @@ function isSysConfigured() {
 const SYS = {
   panelKw:   savedCfg.panelKw   || null,     // kW peak — must be set by user
   tiltDeg:      savedCfg.tiltDeg      || 30,  // panel tilt angle
+  pvCalibFactor: +(savedCfg.pvCalibFactor || 1.0), // user production calibration multiplier
   consProfile:  savedCfg.consProfile  || [
     { from:0,  to:6,  label:'Night',      kw:0 },
     { from:6,  to:9,  label:'Morning',    kw:0 },
@@ -670,25 +792,12 @@ const _notifReady      = () => Date.now() - _appStartMs >= _NOTIF_GRACE_MS;
 // Called by native onResume to restore GPS from SharedPreferences
 // This fires before JS may have read localStorage, ensuring coords are set
 function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) {
-  // Restore persisted state from Android SharedPreferences on every resume.
-  // bgPvKw is the last solar production calculated by SolarWorker in background.
   if (panelKw > 0)  { SYS.panelKw   = panelKw; }
   if (battGross > 0){ SYS.battGross  = battGross; SYS.battRes = battRes || 0.10; }
-  // Only restore SOC from SharedPreferences if evolveSoc hasn't run in the last 60s.
-  // If evolveSoc has been running, it has a more accurate evolved value — don't overwrite.
   const socAge = Date.now() - (ST._socEvolvedMs || 0);
-  if (soc >= 0 && socAge > 90000) { ST.battSoc = soc; } // 90s guard — allow native evolved SOC to win
+  if (soc >= 0 && socAge > 90000) { ST.battSoc = soc; }
   if (consKw > 0)   { ST.consKw      = consKw; }
-  // Apply background-evolved solar production if provided and > 0.
-  // bgPvKw=0 is intentionally skipped — it likely means the background ran at night
-  // or when cloud cover was 100%. Let fetchWeather() determine the real value.
-  // A stale 0 would incorrectly show "no production" while panels may be producing.
-  // Only apply background pvKw if no live API result yet — prevents overwriting fresh satellite data on resume
   if (typeof bgPvKw === 'number' && bgPvKw > 0 && !ST.apiOk) { ST.pvKw = bgPvKw; }
-  // CRITICAL: reset the SOC evolution clock to NOW.
-  // Without this, the 5s evolveSoc loop would see a huge dtH gap (hours since
-  // last JS run) and apply a massive SOC change on top of what the worker
-  // already evolved — resulting in double-evolution.
   lastFlowT = Date.now();
   // Sync UI inputs
   const socEl   = document.getElementById('cfgSoc');
@@ -876,18 +985,34 @@ function applySatelliteRadiation(sat) {
   if (directRad + diffuseRad <= 0 && sat.swr <= 0) return;  // night or no data
   const ghi = sat.swr > 0 ? sat.swr : (directRad + diffuseRad);
 
-  // Simple tilt gain 1.08 for 30° south-facing panels (validated empirically).
-  // calcPOA with API DNI/DHI collapsed on cloudy days (API returns DNI=0 → near-zero POA).
-  const poa = ghi * 1.08;
+  // Use horizontal direct radiation (not DNI) to avoid sin(elevation) blowup at low sun angles.
+  // DHI fallback: when API returns near-zero diffuse on cloudy days, estimate from cloud cover.
+  const cloudFrac = Math.min(1, Math.max(0, (ST.cloudCover || 0) / 100));
+  const rawDHI    = diffuseRad > 0 ? diffuseRad : (ST.irrDif || 0);
+  const dhi       = rawDHI > ghi * 0.10 ? rawDHI : ghi * (0.15 + cloudFrac * 0.65);
+  const rawDirect = directRad > 0 ? directRad : Math.max(0, ghi - dhi);
+
+  const tiltR  = (SYS.tiltDeg || 30) * Math.PI / 180;
+  const pnlAzR = (SYS.panelAzimuth || 180) * Math.PI / 180;
+  const pos    = solarPosition(ST.lat, ST.lon, new Date());
+  const altR   = Math.max(0.001, pos.altitude) * Math.PI / 180;
+  const azR    = pos.azimuth * Math.PI / 180;
+  const cosAOI = Math.sin(altR)*Math.cos(tiltR) + Math.cos(altR)*Math.sin(tiltR)*Math.cos(azR - pnlAzR);
+  const poa    = Math.max(0,
+    Math.max(0, cosAOI) * rawDirect +
+    dhi * (1 + Math.cos(tiltR)) / 2 +
+    ghi * 0.20 * (1 - Math.cos(tiltR)) / 2
+  );
 
   const panelKw = SYS.panelKw || 5;
   const tempC   = ST.wxTempC || 20;
   const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(0, poa);
   const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
   const acMax   = SYS.acMax || panelKw * 0.984;
-  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * panelKw * 0.75 * tFac)).toFixed(3);
+  // PR = acMax × 0.97 (mismatch). acMax already includes invEff + dcLoss.
+  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac)).toFixed(3);
   ST.pvKw      = pvKw;
-  ST._satLastMs = Date.now();  // timestamp so NWP won't overwrite this
+  ST._satLastMs = Date.now();
   ST.irrWm2    = sat.swr;
   ST.poaWm2    = +poa.toFixed(1);
 }
@@ -1094,12 +1219,25 @@ function processOpenMeteo(d) {
   const dhiCur = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
   const satAge = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
   if (satAge > 20 * 60 * 1000) {
-    // Simple tilt gain for south-facing panels — calcPOA not used here (satellite override takes priority)
-    const poaCur  = ghi * 1.08;
+    // POA using horizontal direct + DHI fallback (same as satellite path)
+    const cfNwp     = Math.min(1, Math.max(0, (ST.cloudCover || 0) / 100));
+    const rawDHInwp = dhiCur > 0 ? dhiCur : ghi * (0.15 + cfNwp * 0.65);
+    const rawDirNwp = dniCur > 0 ? Math.min(dniCur, ghi) : Math.max(0, ghi - rawDHInwp);
+    const tiltRnwp  = (SYS.tiltDeg || 30) * Math.PI / 180;
+    const pnlAzRnwp = (SYS.panelAzimuth || 180) * Math.PI / 180;
+    const posNwp    = solarPosition(ST.lat, ST.lon, new Date());
+    const altRnwp   = Math.max(0.001, posNwp.altitude) * Math.PI / 180;
+    const azRnwp    = posNwp.azimuth * Math.PI / 180;
+    const cosAOInwp = Math.sin(altRnwp)*Math.cos(tiltRnwp) + Math.cos(altRnwp)*Math.sin(tiltRnwp)*Math.cos(azRnwp - pnlAzRnwp);
+    const poaCur    = Math.max(0,
+      Math.max(0, cosAOInwp) * rawDirNwp +
+      rawDHInwp * (1 + Math.cos(tiltRnwp)) / 2 +
+      ghi * 0.20 * (1 - Math.cos(tiltRnwp)) / 2
+    );
     const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
     const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
     const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
-    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * (SYS.panelKw||5) * 0.75 * tFac_nwp)).toFixed(3);
+    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp)).toFixed(3);
     ST.poaWm2 = +poaCur.toFixed(1);
   }
 
@@ -1318,7 +1456,7 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
   ST.cfGHI       = +cfGHI.toFixed(3);
 
   const acMax  = SYS.acMax;
-  const raw    = (corrGHI * 1.10 / 1000) * (SYS.panelKw || 5) * 0.75 * tempF;
+  const raw    = (corrGHI * 1.10 / 1000) * acMax * 0.97 * tempF;
   return +Math.max(0, Math.min(acMax, raw)).toFixed(3);
 }
 
@@ -1793,8 +1931,8 @@ function renderBattery() {
   const fl  = calcFlow(), soc = Math.round(ST.battSoc), st = stored(), dispSoc = socToDisplay(ST.battSoc);
   const chr = fl.battFlow > 0.01, dis = fl.battFlow < -0.01;
   const bkp = f(st / Math.max(0.01, ST.consKw), 1);
-  const col = soc > 60 ? '#1D9E75' : soc > 30 ? '#BA7517' : '#A32D2D';
-  const bg  = soc > 60 ? '#1D9E75' : soc > 30 ? '#BA7517' : '#A32D2D';
+  const col = soc > 60 ? '#00c882' : soc > 30 ? '#d4a820' : '#e03030';
+  const bg  = soc > 60 ? '#00c882' : soc > 30 ? '#d4a820' : '#e03030';
 
   // Update battery brand label dynamically
   const battKey = document.getElementById('cfgBattBrand') ? document.getElementById('cfgBattBrand').value : '';
@@ -1830,7 +1968,7 @@ function renderBattery() {
     const maxFlow = chr ? (SYS.battMaxC || 2.5) : (SYS.battMaxD || 2.5);
     const flowPct = (chr || dis) ? Math.min(100, Math.abs(fl.battFlow) / Math.max(0.01, maxFlow) * 100) : 0;
     flowFill.style.width      = flowPct + '%';
-    flowFill.style.background = chr ? '#378ADD' : dis ? '#BA7517' : 'transparent';
+    flowFill.style.background = chr ? '#378ADD' : dis ? '#d4a820' : 'transparent';
     if (flowLbl) {
       if (chr) flowLbl.textContent = '⚡ Charging ' + f(fl.battFlow,2) + ' kW · ' + Math.round(flowPct) + '% of max ' + (SYS.battMaxC||2.5) + ' kW';
       else if (dis) flowLbl.textContent = '⚡ Discharging ' + f(-fl.battFlow,2) + ' kW · ' + Math.round(flowPct) + '% of max ' + (SYS.battMaxD||2.5) + ' kW';
@@ -1844,63 +1982,143 @@ function renderBattery() {
 // ═══════════════════════════════════════════════════════════════
 function renderFlow() {
   const fl = calcFlow();
-  document.getElementById('fTs').textContent =
-    new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) +
-    ' · ' + ST.wxIcon + ' ' + ST.wxCond + ' · ' + f(ST.wxTempC,0) + '°C';
+  const ts = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const tEl = document.getElementById('fTs');
+  if (tEl) tEl.textContent = ts + ' · ' + ST.wxIcon + ' ' + ST.wxCond + ' · ' + f(ST.wxTempC,0)+'°C';
 
   const hOn = (fl.solar2home + fl.batt2home + fl.gridImport) > 0.01;
   const bOn = Math.abs(fl.battFlow) > 0.01;
   const gOn = Math.max(fl.gridExport, fl.gridImport) > 0.01;
-  const hc = hOn ? '#D85A30' : '#555';
-  const bc = fl.battFlow > 0.01 ? '#378ADD' : fl.battFlow < -0.01 ? '#BA7517' : '#555';
-  const gc = fl.gridExport > 0.01 ? '#1D9E75' : fl.gridImport > 0.01 ? '#D85A30' : '#555';
 
-  const CS = 'background:var(--sf2);border-radius:var(--rs);padding:10px 8px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;box-sizing:border-box';
+  // Colours
+  const CG='#00c882', CB='#00b4e6', CO='#e05a28', CY='#d4a820';
+  const bCol = fl.battFlow > 0.01 ? CB : fl.battFlow < -0.01 ? CY : '#555';
+  const gCol = fl.gridExport > 0.01 ? CG : fl.gridImport > 0.01 ? CO : '#555';
+  const hCol = hOn ? CY : '#555';
 
-  // Solar card: fixed 140px wide, centred
-  const solCard =
-    '<div style="'+CS+';border:1px solid #1D9E7555;width:140px;margin:0 auto">' +
-    '<div style="font-size:26px;line-height:1">☀️</div>' +
-    '<div style="font-size:10px;color:var(--t2);margin-top:2px">'+f(SYS.panelKw,0)+' kW panels</div>' +
-    '<div style="font-size:18px;font-weight:700;color:#1D9E75">'+f(ST.pvKw,2)+' kW</div>' +
-    '<div style="font-size:10px;color:var(--t3)">'+Math.round(ST.irrWm2)+' W/m²</div>' +
-    '</div>';
+  // Values
+  const dispSoc   = socToDisplay(ST.battSoc);
+  const battVal   = fl.battFlow > 0.01 ? '+'+f(fl.battFlow,2)+' kW' : fl.battFlow < -0.01 ? '-'+f(-fl.battFlow,2)+' kW' : 'idle';
+  const battSub   = Math.round(dispSoc)+'% · '+f(stored(),1)+' kWh';
+  const gridVal   = fl.gridExport > 0.01 ? '+'+f(fl.gridExport,2)+' kW' : fl.gridImport > 0.01 ? '-'+f(fl.gridImport,2)+' kW' : '0.00 kW';
+  const gridSub   = fl.gridExport > 0.01 ? 'export' : fl.gridImport > 0.01 ? 'import' : 'idle';
+  const homeSrc   = fl.solar2home>0.01&&fl.batt2home>0.01?'solar+batt':fl.solar2home>0.01?'solar':fl.batt2home>0.01?'batt':fl.gridImport>0.01?'grid':'idle';
+  const homeKw    = fl.solar2home + fl.batt2home + fl.gridImport;
+  const netFlow   = ST.pvKw - (ST.consKw || 0);
+  const netStr    = netFlow >= 0 ? '+'+f(netFlow,2)+' kW' : f(netFlow,2)+' kW';
+  const netCol    = netFlow >= 0 ? CG : CY;
 
-  // 3 bottom cards — equal flex, full width
-  function node(col, icon, label, value, sub) {
-    return '<div style="'+CS+';border:1px solid '+col+'44;flex:1;min-width:0">' +
-      '<div style="font-size:22px;line-height:1">'+icon+'</div>' +
-      '<div style="font-size:10px;color:var(--t2)">'+label+'</div>' +
-      '<div style="font-size:14px;font-weight:700;color:'+col+';white-space:nowrap">'+value+'</div>' +
-      '<div style="font-size:9px;color:var(--t3);white-space:nowrap">'+sub+'</div>' +
+  // Helper: node card
+  function cn(cls, icon, lbl, val, valCol, sub) {
+    return '<div class="cn '+cls+'" style="flex:1;min-width:0">' +
+      '<div style="font-size:18px;line-height:1;margin-bottom:2px">'+icon+'</div>' +
+      '<div class="cn-lbl">'+lbl+'</div>' +
+      '<div class="cn-val" style="color:'+valCol+';text-shadow:0 0 10px '+valCol+'66">'+val+'</div>' +
+      '<div class="cn-sub">'+sub+'</div>' +
       '</div>';
   }
 
-  const battVal = fl.battFlow>0.01?'+'+f(fl.battFlow,2)+' kW':fl.battFlow<-0.01?'-'+f(-fl.battFlow,2)+' kW':'idle';
-  const battSub = socToDisplay(ST.battSoc)+'% · '+f(stored(),1)+' kWh';
-  const gridVal = fl.gridExport>0.01?'+'+f(fl.gridExport,2)+' kW':fl.gridImport>0.01?'-'+f(fl.gridImport,2)+' kW':'0.00 kW';
-  const homeSrc = fl.solar2home>0.01&&fl.batt2home>0.01?'solar+batt':fl.solar2home>0.01?'solar':fl.batt2home>0.01?'batt':fl.gridImport>0.01?'grid':'idle';
-
-  // SVG: viewBox 300×60. Solar card bottom-centre at x=150,y=0.
-  // 3 cards: centres at x=50,150,250, top at y=60.
-  // Bezier curves: start at solar bottom, curve down to each card top.
+  // Animated SVG bezier paths solar→each node
   function bez(x2, col, on) {
-    return '<path d="M150 0 C150 35 '+x2+' 35 '+x2+' 60" fill="none" stroke="'+col+
-      '" stroke-width="2" stroke-linecap="round"'+
-      (on?' stroke-dasharray="5 3" style="animation:fd .9s linear infinite"':' opacity="0.2"')+'/>';
+    return '<path d="M150 0 C150 30 '+x2+' 30 '+x2+' 55" fill="none" stroke="'+col+'"' +
+      ' stroke-width="1.5" stroke-linecap="round"' +
+      (on?' class="fa"':' opacity="0.12"') + '/>';
   }
-  const svg = '<svg width="100%" height="60" viewBox="0 0 300 60" preserveAspectRatio="none" style="display:block;overflow:visible">'+
-    bez(50, hc, hOn)+bez(150, bc, bOn)+bez(250, gc, gOn)+'</svg>';
+
+  // Conic gradient for spin ring
+  const spinGrad = 'background:conic-gradient('+CG+' 0%,'+CB+' 33%,'+CO+' 66%,'+CG+' 100%)';
+
+  // Build central core ring
+  const core =
+    '<div class="core-ring">' +
+      '<div class="core-spin" style="'+spinGrad+'"></div>' +
+      '<div class="core-bg"></div>' +
+      '<div class="core-face">' +
+        '<div class="core-bolt">⚡</div>' +
+        '<div class="core-kw" style="color:'+netCol+';text-shadow:0 0 8px '+netCol+'">'+netStr+'</div>' +
+      '</div>' +
+    '</div>';
+
+  const svg = '<svg width="100%" height="55" viewBox="0 0 300 55" preserveAspectRatio="none" style="display:block;overflow:visible;margin:4px 0">' +
+    bez(50, hCol, hOn) + bez(150, bCol, bOn) + bez(250, gCol, gOn) + '</svg>';
+
+  // Solar top card
+  const solCard =
+    '<div class="cn cn-g" style="margin:0 auto;width:100%">' +
+      '<div style="font-size:22px;line-height:1;margin-bottom:2px">☀️</div>' +
+      '<div class="cn-lbl">Solar · '+(SYS.panelKw||5)+' kW panels</div>' +
+      '<div class="cn-val" style="font-size:20px;color:'+CG+';text-shadow:0 0 12px '+CG+'66">'+f(ST.pvKw,2)+' kW</div>' +
+      '<div class="cn-sub">'+Math.round(ST.irrWm2)+' W/m²</div>' +
+    '</div>';
+
+  // Bottom row: home | core | battery | grid
+  const bottomRow =
+    '<div style="display:flex;align-items:center;gap:6px;width:100%">' +
+      cn('cn-y','🏠','Home',  f(homeKw,2)+' kW', CY, homeSrc) +
+      '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'+core+'</div>' +
+      cn('cn-b','🔋','Battery', battVal, bCol, battSub) +
+      cn('cn-o','⚡','Grid', gridVal, gCol, gridSub) +
+    '</div>';
 
   document.getElementById('flowG').innerHTML =
-    '<div style="display:flex;flex-direction:column;align-items:center;gap:0;margin:0 auto;width:100%">' +
-    solCard +
-    svg +
-    '<div style="display:flex;gap:6px;width:100%">' +
-    node(hc,'🏠','Home',f(fl.solar2home+fl.batt2home+fl.gridImport,2)+' kW',homeSrc)+
-    node(bc,'🔋','Battery',battVal,battSub)+
-    node(gc,'⚡','Grid',gridVal,fl.gridExport>0.01?'export':fl.gridImport>0.01?'import':'idle')+
-    '</div></div>';
+    '<div style="display:flex;flex-direction:column;gap:0">' +
+    solCard + svg + bottomRow +
+    '</div>';
+
+  // ── Bottom metrics: source donut + efficiency gauge ───────────────
+  const totalH = homeKw || 0.001;
+  const sPct = Math.round(fl.solar2home / totalH * 100);
+  const bPct = Math.round(fl.batt2home  / totalH * 100);
+  const gPct = 100 - sPct - bPct;
+  // Donut circumference r=22: 138.2
+  const C = 138.2;
+  const sLen = C * sPct / 100, bLen = C * bPct / 100, gLen = C * gPct / 100;
+  const donut =
+    '<svg width="70" height="70" viewBox="0 0 70 70">' +
+      '<circle cx="35" cy="35" r="22" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="9"/>' +
+      (sPct>0?'<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="'+CG+'" stroke-dasharray="'+sLen+' '+C+'" stroke-dashoffset="'+(C*.25)+'" style="filter:drop-shadow(0 0 3px '+CG+')"/>':'')+
+      (bPct>0?'<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="'+CB+'" stroke-dasharray="'+bLen+' '+C+'" stroke-dashoffset="'+(C*.25-sLen)+'" style="filter:drop-shadow(0 0 3px '+CB+')"/>':'')+
+      (gPct>0?'<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="'+CO+'" stroke-dasharray="'+gLen+' '+C+'" stroke-dashoffset="'+(C*.25-sLen-bLen)+'" style="filter:drop-shadow(0 0 3px '+CO+')"/>':'')+
+      '<text x="35" y="32" text-anchor="middle" font-size="11" font-weight="700" fill="'+CG+'">'+sPct+'%</text>' +
+      '<text x="35" y="43" text-anchor="middle" font-size="7" fill="rgba(200,224,255,.4)">solar</text>' +
+    '</svg>';
+
+  const legend =
+    '<div style="display:flex;flex-direction:column;gap:4px">' +
+      '<div style="display:flex;align-items:center;gap:5px;font-size:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+CG+';box-shadow:0 0 4px '+CG+'"></span>Solar '+sPct+'%</div>' +
+      '<div style="display:flex;align-items:center;gap:5px;font-size:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+CB+';box-shadow:0 0 4px '+CB+'"></span>Battery '+bPct+'%</div>' +
+      '<div style="display:flex;align-items:center;gap:5px;font-size:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+CO+';box-shadow:0 0 4px '+CO+'"></span>Grid '+gPct+'%</div>' +
+    '</div>';
+
+  // Efficiency gauge (PR: actual / theoretical)
+  const eff = ST.pvKw > 0 && ST.irrWm2 > 10
+    ? Math.round(Math.min(100, ST.pvKw / ((ST.irrWm2/1000)*(SYS.panelKw||5)) * 100))
+    : 0;
+  // Arc: stroke-dasharray on r=26, C=163.4, 0%=top (dashoffset 163.4*.25=40.85)
+  const effArc = 163.4 * eff / 100;
+  const effCol = eff >= 70 ? CG : eff >= 45 ? CY : CO;
+  const gauge =
+    '<svg width="90" height="60" viewBox="0 0 90 60" overflow="visible">' +
+      '<path d="M10,52 A36,36 0 0,1 80,52" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="7" stroke-linecap="round"/>' +
+      '<path d="M10,52 A36,36 0 0,1 80,52" fill="none" stroke="'+effCol+'" stroke-width="7" stroke-linecap="round"' +
+        ' stroke-dasharray="'+(113.1*eff/100)+' 113.1" style="filter:drop-shadow(0 0 4px '+effCol+')"/>' +
+      '<text x="45" y="44" text-anchor="middle" font-size="14" font-weight="700" fill="'+effCol+'" style="filter:drop-shadow(0 0 6px '+effCol+')">'+eff+'%</text>' +
+      '<text x="45" y="56" text-anchor="middle" font-size="7" fill="rgba(200,224,255,.35)">PERFORMANCE</text>' +
+    '</svg>';
+
+  const metricsEl = document.getElementById('coreMetrics');
+  if (metricsEl) {
+    metricsEl.style.display = 'flex';
+    metricsEl.innerHTML =
+      '<div style="flex:1">' +
+        '<div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;opacity:.4;font-weight:600;margin-bottom:6px">Source</div>' +
+        '<div style="display:flex;align-items:center;gap:10px">'+donut+legend+'</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;align-items:center">' +
+        '<div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;opacity:.4;font-weight:600;margin-bottom:4px">Efficiency</div>' +
+        gauge +
+      '</div>';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1913,7 +2131,7 @@ function renderStrip() {
     '<div class="wd '+(i===0?'today':'')+'" onclick="selectForecastDay('+i+')" style="cursor:pointer" id="wd'+i+'">'+
     '<div class="wi">'+d.icon+'</div>'+
     '<div class="wn">'+d.d+'</div><div class="wt">'+f(d.tempC,0)+'°C</div>'+
-    '<div class="wkwh" style="color:'+(d.yieldKwh>=need?'#1D9E75':d.yieldKwh>=need*.5?'#BA7517':'#A32D2D')+'">'+f(d.yieldKwh,1)+' kWh</div>'+
+    '<div class="wkwh" style="color:'+(d.yieldKwh>=need?'#00c882':d.yieldKwh>=need*.5?'#d4a820':'#e03030')+'">'+f(d.yieldKwh,1)+' kWh</div>'+
     '<div class="wr">'+d.rain+'% 🌧</div></div>'
   ).join('');
 }
@@ -1978,9 +2196,9 @@ function buildDayChartForDay(dayIdx) {
 
   dchart = new Chart(document.getElementById('dayC').getContext('2d'), {
     data: { labels: lbls, datasets: [
-      { type:'line', data:genD, borderColor:'#1D9E75', backgroundColor:'rgba(29,158,117,.1)',
+      { type:'line', data:genD, borderColor:'#00c882', backgroundColor:'rgba(0,200,130,.1)',
         fill:true, tension:.4, pointRadius:0, borderWidth:2 },
-      { type:'line', data:conD, borderColor:'#D85A30', fill:false, tension:0,
+      { type:'line', data:conD, borderColor:'#e05a28', fill:false, tension:0,
         pointRadius:0, borderWidth:1.5, borderDash:[5,4] },
       { type:'bar',  data:batD, backgroundColor:'rgba(55,138,221,.25)',
         borderColor:'#378ADD', borderWidth:1, borderRadius:3 },
@@ -2016,14 +2234,14 @@ function buildDayChart() {
   const batD=genD.map(g=>{const s=g-ST.consKw;return s>0?+Math.min(s,SYS.battMaxC).toFixed(3):0;});
   dchart=new Chart(document.getElementById('dayC').getContext('2d'),{
     data:{labels:lbls,datasets:[
-      {type:'line',data:genD,borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,.1)',fill:true,tension:.4,
-        pointRadius:genD.map((_,i)=>i===nowH?5:0),pointBackgroundColor:'#1D9E75',borderWidth:2},
-      {type:'line',data:conD,borderColor:'#D85A30',fill:false,tension:0,pointRadius:0,borderWidth:1.5,borderDash:[5,4]},
-      {type:'bar', data:batD,backgroundColor:'rgba(55,138,221,.25)',borderColor:'#378ADD',borderWidth:1,borderRadius:3},
+      {type:'line',data:genD,borderColor:'#00c882',backgroundColor:'rgba(0,200,130,.1)',fill:true,tension:.4,
+        pointRadius:genD.map((_,i)=>i===nowH?5:0),pointBackgroundColor:'#00c882',borderWidth:2},
+      {type:'line',data:conD,borderColor:'#e05a28',fill:false,tension:0,pointRadius:0,borderWidth:1.5,borderDash:[5,4]},
+      {type:'bar', data:batD,backgroundColor:'rgba(0,180,230,.15)',borderColor:'#00b4e6',borderWidth:1,borderRadius:3},
     ]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{font:{size:9},color:'#888',maxTicksLimit:12},grid:{color:'rgba(128,128,128,.06)'}},
-              y:{ticks:{font:{size:9},color:'#888',callback:v=>f(v,1)+'kW'},grid:{color:'rgba(128,128,128,.06)'},beginAtZero:true}}}
+      scales:{x:{ticks:{font:{size:9},color:'rgba(200,224,255,.3)',maxTicksLimit:12},grid:{color:'rgba(0,100,200,.08)'}},
+              y:{ticks:{font:{size:9},color:'rgba(200,224,255,.3)',callback:v=>f(v,1)+'kW'},grid:{color:'rgba(0,100,200,.08)'},beginAtZero:true}}}
   });
 }
 
@@ -2138,10 +2356,10 @@ function renderLogTable() {
   if(!rlog.length){document.getElementById('logBodyInner').innerHTML='<div class="empty-log">No readings yet.<br>The app logs automatically every 30 seconds when solar is producing.</div>';return;}
   const rows=[...rlog].reverse().slice(0,50).map((r,i)=>{
     const d=new Date(r.t), t=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-    return '<tr><td>'+t+'</td><td style="color:#1D9E75">'+f(r.pvKw,2)+'</td>'+
-      '<td style="color:'+(r.batt>=0?'#378ADD':'#BA7517')+'">'+(r.batt>=0?'+':'')+f(r.batt,2)+'</td>'+
+    return '<tr><td>'+t+'</td><td style="color:var(--g)">'+f(r.pvKw,2)+'</td>'+
+      '<td style="color:'+(r.batt>=0?'#378ADD':'#d4a820')+'">'+(r.batt>=0?'+':'')+f(r.batt,2)+'</td>'+
       '<td>'+Math.round(r.soc)+'%</td><td style="color:#888">'+Math.round(r.irr)+'</td>'+
-      '<td style="color:'+(r.grd>=0?'#1D9E75':'#A32D2D')+'">'+(r.grd>0?'+':'')+f(r.grd,2)+'</td>'+
+      '<td style="color:'+(r.grd>=0?'#00c882':'#e03030')+'">'+(r.grd>0?'+':'')+f(r.grd,2)+'</td>'+
       '<td><button onclick="deleteLog('+i+')" style="background:none;border:none;color:var(--rd);font-size:14px;cursor:pointer;padding:2px 6px" title="Delete entry">✕</button></td></tr>';
   }).join('');
   document.getElementById('logBodyInner').innerHTML='<table class="log-table"><thead><tr><th>Time</th><th>☀️kW</th><th>🔋kW</th><th>SOC</th><th>W/m²</th><th>Grid kW</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
@@ -2701,6 +2919,7 @@ function initCfgInputs() {
   if (savedCfg.battGross) document.getElementById('cfgBatt').value  = savedCfg.battGross;
   if (savedCfg.battRes) document.getElementById('cfgRes').value = Math.round(savedCfg.battRes * 100);
   if (savedCfg.battSoc)   { document.getElementById('cfgSoc').value = Math.round(savedCfg.battSoc); ST.battSoc = socToInternal(savedCfg.battSoc); }
+  if (savedCfg.pvCalibFactor) document.getElementById('cfgCalib').value = savedCfg.pvCalibFactor;
   if (savedCfg.panelAzimuth) {
     const azEl = document.getElementById('cfgAzimuth');
     if (azEl) azEl.value = String(savedCfg.panelAzimuth);
@@ -2850,6 +3069,8 @@ function saveCfgAndApply() {
   SYS._battMaxD = maxD;
   const azimuth = parseInt(document.getElementById('cfgAzimuth').value) || 180;
   SYS.panelAzimuth = azimuth;
+  const calib = Math.max(0.5, Math.min(2.0, parseFloat(document.getElementById('cfgCalib').value) || 1.0));
+  SYS.pvCalibFactor = calib;
   saveCfg({
     panelKw: panel, battGross: gross, battRes: res,
     battMaxC: maxC, battMaxD: maxD,
@@ -2858,9 +3079,9 @@ function saveCfgAndApply() {
     consProfile: SYS.consProfile,
     panelAzimuth: azimuth,
     tiltDeg: SYS.tiltDeg,
+    pvCalibFactor: calib,
     panelBrand:    document.getElementById('cfgPanelBrand').value,
     battBrand:     document.getElementById('cfgBattBrand').value,
-    panelAzimuth:  parseInt(document.getElementById('cfgAzimuth')?.value || '180'),
     tiltDeg:       SYS.tiltDeg || 30,
     notifEnabled:  loadCfg().notifEnabled,
   });
@@ -3068,7 +3289,7 @@ function renderSmartSched() {
     pill.className   = 'pill p-warn';
   }
   const barPct  = Math.min(100, Math.max(0, (surplus / acMax) * 100));
-  const barCol  = surplus > 1.0 ? '#1D9E75' : surplus > 0 ? '#BA7517' : '#D85A30';
+  const barCol  = surplus > 1.0 ? '#00c882' : surplus > 0 ? '#d4a820' : '#e05a28';
   document.getElementById('surplusBar').innerHTML =
     '<div style="font-size:9px;color:var(--t2);margin-bottom:3px;display:flex;justify-content:space-between">' +
     '<span>0</span><span style="font-weight:600;color:' + barCol + '">Surplus ' + f(Math.max(0,surplus),2) + ' kW</span><span>' + f(acMax,1) + ' kW</span></div>' +
@@ -3083,11 +3304,11 @@ function renderSmartSched() {
     const deficit   = !canRun && !partial && !battCovers;
     let statusCls, statusTxt, statusDot;
     const isFirst = firstRunnable && app.id === firstRunnable.id;
-    if      (canRun && isFirst){ statusCls='sb-b'; statusTxt='Run now ✓'; statusDot='#1D9E75'; }
-    else if (canRun && !isFirst){ statusCls='sb-o'; statusTxt='Queue';    statusDot='#BA7517'; }
-    else if (partial)     { statusCls='sb-o'; statusTxt='Partial';   statusDot='#BA7517'; }
+    if      (canRun && isFirst){ statusCls='sb-b'; statusTxt='Run now ✓'; statusDot='#00c882'; }
+    else if (canRun && !isFirst){ statusCls='sb-o'; statusTxt='Queue';    statusDot='#d4a820'; }
+    else if (partial)     { statusCls='sb-o'; statusTxt='Partial';   statusDot='#d4a820'; }
     else if (battCovers)  { statusCls='sb-o'; statusTxt='Batt only'; statusDot='#378ADD'; }
-    else                  { statusCls='sb-a'; statusTxt='Wait';      statusDot='#D85A30'; }
+    else                  { statusCls='sb-a'; statusTxt='Wait';      statusDot='#e05a28'; }
     applianceState[app.id] = canRun;
     const needed = app.kw - Math.max(0, surplus);
     const extraInfo = canRun && isFirst
@@ -3114,7 +3335,7 @@ function renderSmartSched() {
       '<div class="sic">' + app.icon + '</div>' +
       '<div class="sinf">' +
         '<div class="snm">' + app.name + ' <span style="font-size:9px;color:var(--t3);font-weight:400">' + app.kw + ' kW</span></div>' +
-        '<div class="stm">' + extraInfo + (reminded && showBell ? ' · <span style="color:#BA7517;font-weight:600">🔔 reminder in ' + _reminderLabel(app.id) + '</span>' : '') + '</div>' +
+        '<div class="stm">' + extraInfo + (reminded && showBell ? ' · <span style="color:#d4a820;font-weight:600">🔔 reminder in ' + _reminderLabel(app.id) + '</span>' : '') + '</div>' +
       '</div>' +
       '<div class="sbg ' + statusCls + '">' + statusTxt + '</div>' +
       remindBtn +
@@ -3445,14 +3666,14 @@ applyAutoConsumption();
       each with a kW value that reflects your typical household draw at that time of day.
     </p>
     <div style="background:var(--gl);border-radius:var(--rs);padding:10px 12px;margin:0 0 14px">
-      <div style="font-size:13px;font-weight:700;color:#0F6E56;margin-bottom:5px">📊 How the profile works</div>
-      <p style="font-size:12px;line-height:1.7;color:#0F6E56;margin:0">
+      <div style="font-size:13px;font-weight:700;color:#00c882;margin-bottom:5px">📊 How the profile works</div>
+      <p style="font-size:12px;line-height:1.7;color:#00c882;margin:0">
         The six time slots (Night, Morning, Midday, Afternoon, Evening, Late night) each have a kW slider.
         Set each slot to your typical consumption at that time — check your solar panel app or smart meter for reference values.<br><br>
         The app reads the current hour, picks the matching slot, and uses that value automatically for all calculations:
         battery flow, grid import/export, forecast accuracy, and alerts. Set the profile once — no daily input needed.
       </p>
-      <div style="font-size:12px;color:#0F6E56;margin-top:8px">
+      <div style="font-size:12px;color:#00c882;margin-top:8px">
         <strong>Tip:</strong> Your average daily consumption divided by 24 gives a rough starting kW per slot.
         Adjust evening higher (cooking, TV, lighting) and night lower (standby only).
         The <strong>Log tab</strong> shows your cumulative energy summary — produced, consumed, self-sufficiency
@@ -3497,7 +3718,7 @@ applyAutoConsumption();
       Updates are checked automatically on launch. Tap below to go directly to the Play Store.
     </p>
     <button onclick="openPlayStore()"
-      style="background:var(--bl);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer">
+      style="background:rgba(0,180,230,.12);color:var(--bl);border:1px solid rgba(0,180,230,.35);border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.05em">
       ↗ Open Play Store
     </button>
     <div style="margin-bottom:80px"></div>
