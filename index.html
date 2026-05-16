@@ -453,26 +453,41 @@ body::before{
 
     <div class="cfg-grid" style="margin-top:14px">
       <div class="cfg-group" style="grid-column:span 2">
-        <div class="cfg-lbl">⚖️ Calibrate to your inverter</div>
-        <div style="font-size:11px;color:var(--t2);margin:5px 0 8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-          <span>App: <strong id="cfgCalibApp" style="color:var(--tx)">-- kW</strong></span>
-          <span style="color:var(--t3)">·</span>
-          <span>Factor: <strong id="cfgCalibFactor" style="color:var(--g)">×1.00</strong></span>
-          <button onclick="resetCalibration()" style="font-size:10px;padding:2px 8px;background:none;border:1px solid var(--br2);border-radius:5px;color:var(--t3);cursor:pointer;font-family:inherit;margin-left:auto">Reset</button>
+        <div class="cfg-lbl">🧠 Self-calibrating production</div>
+        <!-- Learning status bar -->
+        <div id="cfgCalibStatus" style="margin:6px 0 8px;padding:8px 10px;border-radius:var(--rs);
+          background:rgba(0,28,75,.5);border:1px solid var(--br2);font-size:11px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span id="cfgCalibLabel" style="color:var(--t2)">No readings yet</span>
+            <span id="cfgCalibFactor" style="color:var(--g);font-weight:700">×1.00</span>
+          </div>
+          <div style="height:4px;border-radius:2px;background:rgba(0,80,160,.3);overflow:hidden">
+            <div id="cfgCalibBar" style="height:100%;border-radius:2px;background:var(--g);width:0%;transition:width .6s ease"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px">
+            <span id="cfgCalibPts" style="font-size:10px;color:var(--t3)">0 readings</span>
+            <span id="cfgCalibApp" style="font-size:10px;color:var(--t3)">App: -- kW</span>
+          </div>
         </div>
+        <!-- Input row -->
         <div style="display:flex;gap:8px;align-items:stretch">
           <div class="cfg-inp-wrap" style="flex:1">
             <input type="number" id="cfgCalibReal" inputmode="decimal" min="0" max="20" step="0.01"
-              placeholder="Your inverter kW" style="text-align:left">
+              placeholder="Inverter live kW" style="text-align:left">
             <span class="cfg-unit">kW</span>
           </div>
           <button onclick="calibrateProduction()"
             style="background:rgba(0,200,130,.12);color:var(--g);border:1px solid rgba(0,200,130,.4);
             border-radius:var(--rs);padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;
-            font-family:inherit;white-space:nowrap">Calibrate</button>
+            font-family:inherit;white-space:nowrap">+ Reading</button>
         </div>
-        <div class="cfg-hint" style="margin-top:5px">Open FusionSolar, read the live PV power, enter it here. Best done when panels produce over 1 kW.</div>
-        <div id="cfgCalibMsg" style="font-size:11px;min-height:14px;margin-top:4px"></div>
+        <div class="cfg-hint" style="margin-top:5px">Open FusionSolar, read live PV power, enter it here. Each reading teaches the app — accuracy improves automatically over time.</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+          <div id="cfgCalibMsg" style="font-size:11px;min-height:14px"></div>
+          <button onclick="resetCalibration()" style="font-size:10px;padding:2px 8px;background:none;
+            border:1px solid var(--br2);border-radius:5px;color:var(--t3);cursor:pointer;font-family:inherit">
+            Clear all readings</button>
+        </div>
       </div>
     </div>
 
@@ -1031,7 +1046,8 @@ function applySatelliteRadiation(sat) {
   const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
   const acMax   = SYS.acMax || panelKw * 0.984;
   // PR = acMax × 0.97 (mismatch). acMax already includes invEff + dcLoss.
-  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac)).toFixed(3);
+  // Multiply by learned calibration factor for current GHI conditions.
+  const pvKw    = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac * getLearnedFactor(ghi))).toFixed(3);
   ST.pvKw      = pvKw;
   ST._satLastMs = Date.now();
   ST.irrWm2    = sat.swr;
@@ -1258,7 +1274,7 @@ function processOpenMeteo(d) {
     const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
     const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
     const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
-    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp)).toFixed(3);
+    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp * getLearnedFactor(ghi))).toFixed(3);
     ST.poaWm2 = +poaCur.toFixed(1);
   }
 
@@ -1489,7 +1505,7 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
   ST.cfGHI       = +cfGHI.toFixed(3);
 
   const acMax  = SYS.acMax;
-  const raw    = (corrGHI * 1.10 / 1000) * acMax * 0.97 * tempF;
+  const raw    = (corrGHI * 1.10 / 1000) * acMax * 0.97 * tempF * getLearnedFactor(corrGHI);
   return +Math.max(0, Math.min(acMax, raw)).toFixed(3);
 }
 
@@ -1853,47 +1869,107 @@ function showUpdateDialog(versionName, storeUrl, versionCode) {
 const stored = () => SYS.battUse ? +((ST.battSoc/100) * SYS.battUse).toFixed(3) : 0;
 
 // ── Quick SOC correction from battery panel ───────────────────────────────
+// ── Self-calibrating production learning system ────────────────────
+// Stores up to 60 (ghi, cloudCover, pvApp, pvReal) data points in localStorage.
+// getLearnedFactor(ghi) computes a weighted factor from historical readings
+// closest in irradiance, time-weighted so older readings matter less.
+
+const CALIB_STORE = 'solarCalibHistory';
+const CALIB_MAX   = 60;
+
+function loadCalibHistory() {
+  try { return JSON.parse(localStorage.getItem(CALIB_STORE) || '[]'); }
+  catch(e) { return []; }
+}
+
+function saveCalibHistory(h) {
+  try { localStorage.setItem(CALIB_STORE, JSON.stringify(h)); } catch(e) {}
+}
+
+function getLearnedFactor(ghi) {
+  const h = loadCalibHistory();
+  if (!h.length) return SYS.pvCalibFactor || 1.0;
+  const now = Date.now();
+  // Weight each sample: GHI proximity + recency
+  let wSum = 0, fSum = 0;
+  h.forEach(pt => {
+    const ghiDist  = Math.abs((pt.ghi || 0) - ghi) / Math.max(ghi, 50);
+    const ageDays  = (now - (pt.ts || 0)) / 86400000;
+    const w        = Math.exp(-ghiDist * 1.5) * Math.exp(-ageDays * 0.07);
+    wSum += w; fSum += pt.factor * w;
+  });
+  const factor = wSum > 0 ? fSum / wSum : 1.0;
+  return +Math.max(0.25, Math.min(4.0, factor)).toFixed(3);
+}
+
 function calibrateProduction() {
   const real = parseFloat(document.getElementById('cfgCalibReal').value);
   const msg  = document.getElementById('cfgCalibMsg');
-  function setMsg(txt, col) { if(msg){ msg.textContent=txt; msg.style.color=col; } }
+  const setMsg = (t, c) => { if(msg){ msg.textContent=t; msg.style.color=c; } };
 
-  if (isNaN(real) || real <= 0) {
-    setMsg('Enter the kW value shown in your inverter app.', 'var(--am)'); return;
-  }
-  if (ST.pvKw < 0.3) {
-    setMsg('App is showing near-zero production — wait for stronger sunlight.', 'var(--am)'); return;
-  }
-  const factor = real / ST.pvKw;
-  if (factor < 0.25 || factor > 4.0) {
-    setMsg('Values too far apart — check both readings are in kW and try again.', 'var(--rd)'); return;
-  }
-  SYS.pvCalibFactor = +factor.toFixed(3);
-  const cfg = loadCfg(); cfg.pvCalibFactor = SYS.pvCalibFactor; saveCfg(cfg);
+  if (isNaN(real) || real <= 0)     { setMsg('Enter the kW value from your inverter app.','var(--am)'); return; }
+  if (ST.pvKw < 0.3)                { setMsg('Too little production right now — wait for stronger sun.','var(--am)'); return; }
+  const rawFactor = real / ST.pvKw;
+  if (rawFactor < 0.25 || rawFactor > 4.0) { setMsg('Values too far apart — check both are in kW.','var(--rd)'); return; }
+
+  // Store data point
+  const h = loadCalibHistory();
+  h.push({
+    ts:      Date.now(),
+    ghi:     +(ST.irrWm2 || 0),
+    cloud:   +(ST.cloudCover || 0),
+    hour:    new Date().getHours(),
+    pvApp:   +ST.pvKw.toFixed(3),
+    pvReal:  +real.toFixed(3),
+    factor:  +rawFactor.toFixed(4),
+  });
+  if (h.length > CALIB_MAX) h.splice(0, h.length - CALIB_MAX);
+  saveCalibHistory(h);
+
+  // Update global factor for current conditions
+  SYS.pvCalibFactor = getLearnedFactor(ST.irrWm2 || 0);
+
   document.getElementById('cfgCalibReal').value = '';
-  document.getElementById('cfgCalibFactor').textContent = '×' + SYS.pvCalibFactor.toFixed(2);
-  setMsg('✅ Calibrated — factor ×' + SYS.pvCalibFactor.toFixed(2) + ' saved.', 'var(--g)');
-  setTimeout(() => { if(msg) msg.textContent=''; }, 4000);
-  // Re-run satellite path so new pvKw is displayed immediately
+  setMsg('✅ Reading saved — ' + h.length + ' total · factor now ×' + SYS.pvCalibFactor.toFixed(2), 'var(--g)');
+  setTimeout(() => { if(msg) msg.textContent = ''; }, 5000);
+  updateCalibDisplay();
   fetchWeather();
 }
 
 function resetCalibration() {
+  saveCalibHistory([]);
   SYS.pvCalibFactor = 1.0;
-  const cfg = loadCfg(); cfg.pvCalibFactor = 1.0; saveCfg(cfg);
-  const fEl = document.getElementById('cfgCalibFactor');
-  const mEl = document.getElementById('cfgCalibMsg');
-  if(fEl) fEl.textContent = '×1.00';
-  if(mEl){ mEl.textContent='Factor reset to ×1.00'; mEl.style.color='var(--t2)'; }
-  setTimeout(()=>{ if(mEl) mEl.textContent=''; }, 3000);
+  const msg = document.getElementById('cfgCalibMsg');
+  if(msg){ msg.textContent = 'All readings cleared.'; msg.style.color = 'var(--t2)'; }
+  setTimeout(() => { if(msg) msg.textContent = ''; }, 3000);
+  updateCalibDisplay();
   fetchWeather();
 }
 
 function updateCalibDisplay() {
-  const appEl = document.getElementById('cfgCalibApp');
-  const facEl = document.getElementById('cfgCalibFactor');
-  if(appEl) appEl.textContent = ST.pvKw > 0 ? f(ST.pvKw,2)+' kW' : '-- kW';
-  if(facEl) facEl.textContent = '×'+(SYS.pvCalibFactor||1.0).toFixed(2);
+  const h       = loadCalibHistory();
+  const n       = h.length;
+  const factor  = getLearnedFactor(ST.irrWm2 || 0);
+  SYS.pvCalibFactor = factor;
+
+  const labelEl  = document.getElementById('cfgCalibLabel');
+  const factorEl = document.getElementById('cfgCalibFactor');
+  const barEl    = document.getElementById('cfgCalibBar');
+  const ptsEl    = document.getElementById('cfgCalibPts');
+  const appEl    = document.getElementById('cfgCalibApp');
+
+  if(appEl)    appEl.textContent    = 'App: ' + (ST.pvKw > 0 ? f(ST.pvKw,2)+' kW' : '-- kW');
+  if(factorEl) factorEl.textContent = '×' + factor.toFixed(2);
+  if(ptsEl)    ptsEl.textContent    = n + ' reading' + (n===1?'':'s');
+
+  let label, pct, col;
+  if      (n === 0)  { label='No readings yet — enter a value below'; pct=0;   col='var(--t3)'; }
+  else if (n < 4)    { label='Learning… add more readings for accuracy';  pct=Math.round(n/10*100); col='var(--am)'; }
+  else if (n < 10)   { label='Calibrating — accuracy improving';          pct=Math.round(n/10*100); col='var(--bl)'; }
+  else               { label='Well calibrated · auto-adjusting';           pct=100; col='var(--g)'; }
+
+  if(labelEl) { labelEl.textContent = label; labelEl.style.color = col; }
+  if(barEl)   { barEl.style.width = pct+'%'; barEl.style.background = col; }
 }
 
 function openSocEdit() {
@@ -3151,7 +3227,7 @@ function initCfgInputs() {
   if (savedCfg.battGross) document.getElementById('cfgBatt').value  = savedCfg.battGross;
   if (savedCfg.battRes) document.getElementById('cfgRes').value = Math.round(savedCfg.battRes * 100);
   if (savedCfg.battSoc)   { document.getElementById('cfgSoc').value = Math.round(savedCfg.battSoc); ST.battSoc = socToInternal(savedCfg.battSoc); }
-  if (savedCfg.pvCalibFactor) { SYS.pvCalibFactor = savedCfg.pvCalibFactor; updateCalibDisplay(); }
+  updateCalibDisplay(); // load learned factor from history
   if (savedCfg.panelAzimuth) {
     const azEl = document.getElementById('cfgAzimuth');
     if (azEl) azEl.value = String(savedCfg.panelAzimuth);
@@ -3301,7 +3377,7 @@ function saveCfgAndApply() {
   SYS._battMaxD = maxD;
   const azimuth = parseInt(document.getElementById('cfgAzimuth').value) || 180;
   SYS.panelAzimuth = azimuth;
-  const calib = SYS.pvCalibFactor || 1.0; // set via calibrateProduction(), not a direct input
+  const calib = getLearnedFactor(ST.irrWm2 || 0);
   SYS.pvCalibFactor = calib;
   saveCfg({
     panelKw: panel, battGross: gross, battRes: res,
