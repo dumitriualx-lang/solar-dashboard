@@ -316,21 +316,25 @@ body::before{
 <div id="pgDash" class="page on">
 
   <!-- GPS STATUS BAR -->
-  <div class="gps-bar gps-req" id="gpsBar" style="display:none">
-    <span id="gpsMsg">📍 Requesting your location for accurate solar data...</span>
-    <button class="gps-btn" id="gpsBtnEl" onclick="onGpsBtnClick()">Allow GPS</button>
+  <!-- GPS STATUS BAR -->
+  <div id="gpsBar" style="display:none;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;border:1px solid rgba(0,180,230,.25);background:linear-gradient(135deg,rgba(0,180,230,.07),rgba(0,8,25,.9));margin-bottom:10px">
+    <div id="gpsIcon" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:radial-gradient(circle at 35% 35%,rgba(0,180,230,.25),rgba(0,180,230,.06));border:1.5px solid rgba(0,180,230,.5);box-shadow:0 0 14px rgba(0,180,230,.2)">📍</div>
+    <span id="gpsMsg" style="flex:1;font-size:12px;color:rgba(200,224,255,.75);line-height:1.4">Requesting your location for accurate solar data...</span>
+    <button class="gps-btn" id="gpsBtnEl" onclick="onGpsBtnClick()" style="background:rgba(0,180,230,.12);border:1px solid rgba(0,180,230,.4);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:#00b4e6;letter-spacing:.5px;white-space:nowrap">Allow GPS</button>
   </div>
 
   <!-- API STATUS BAR -->
-  <div class="api-bar api-load" id="apiBar">
-    <span id="apiMsg" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⏳ Waiting for location before fetching irradiance...</span>
-    <button class="api-refresh" onclick="fetchWeather()" style="flex-shrink:0">Refresh</button>
+  <div class="api-load" id="apiBar" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;margin-bottom:10px">
+    <div id="apiIcon" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:radial-gradient(circle at 35% 35%,rgba(0,180,230,.25),rgba(0,180,230,.06));border:1.5px solid rgba(0,180,230,.5);box-shadow:0 0 14px rgba(0,180,230,.2)">🛰️</div>
+    <span id="apiMsg" style="flex:1;font-size:12px;color:rgba(200,224,255,.75);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⏳ Waiting for location before fetching irradiance...</span>
+    <button class="api-refresh" onclick="fetchWeather()" style="background:rgba(0,180,230,.12);border:1px solid rgba(0,180,230,.4);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:#00b4e6;letter-spacing:.5px;flex-shrink:0">↻</button>
   </div>
 
   <!-- PUSH NOTIFICATION BAR -->
-  <div class="notif-bar notif-off" id="notifBar">
-    <span id="notifMsg">🔔 Enable notifications to get alerts when it's best to run large appliances</span>
-    <button class="notif-btn" id="notifBtn" onclick="requestNotifPermission()">Enable</button>
+  <div id="notifBar" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;border:1px solid rgba(212,176,32,.25);background:linear-gradient(135deg,rgba(212,176,32,.07),rgba(0,8,25,.9));margin-bottom:10px">
+    <div id="notifIcon" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:radial-gradient(circle at 35% 35%,rgba(212,176,32,.25),rgba(212,176,32,.06));border:1.5px solid rgba(212,176,32,.5);box-shadow:0 0 14px rgba(212,176,32,.2);animation:corePulse 2.5s infinite">🔔</div>
+    <span id="notifMsg" style="flex:1;font-size:12px;color:rgba(200,224,255,.75);line-height:1.4">Enable notifications to get alerts at peak solar windows</span>
+    <button id="notifBtn" onclick="requestNotifPermission()" style="background:rgba(212,176,32,.12);border:1px solid rgba(212,176,32,.4);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:#d4b020;letter-spacing:.5px;white-space:nowrap">Enable</button>
   </div>
 
   <!-- SYSTEM CONFIGURATION -->
@@ -920,20 +924,22 @@ function onLocationOk(lat, lon, name, acc) {
 }
 
 function setGps(type, html) {
-  const bar = document.getElementById('gpsBar');
+  const bar  = document.getElementById('gpsBar');
+  const icon = document.getElementById('gpsIcon');
+  const msg  = document.getElementById('gpsMsg');
+  const btn  = document.getElementById('gpsBtnEl');
   if (!bar) return;
   if (type === 'ok') {
-    // GPS acquired — hide the bar entirely, no need to show it
-    bar.style.display = 'none';
-  } else {
-    // GPS needed or error — show bar so user can act
-    bar.style.display = '';
-    bar.className = 'gps-bar gps-' + type;
-    const msg = document.getElementById('gpsMsg');
-    if (msg) msg.textContent = html;
-    const btn = document.getElementById('gpsBtnEl');
-    if (btn) btn.style.display = '';
+    bar.style.display = 'none'; return;
   }
+  bar.style.display = 'flex';
+  const col = type === 'err' ? '#d4b020' : '#00b4e6';
+  const bg  = type === 'err' ? 'rgba(212,176,32' : 'rgba(0,180,230';
+  bar.style.borderColor = col+'55';
+  bar.style.background  = `linear-gradient(135deg,${bg},.07),rgba(0,8,25,.9))`;
+  if (icon) { icon.style.borderColor = col+'99'; icon.style.boxShadow = `0 0 14px ${col}44`; }
+  if (msg)  msg.textContent = html;
+  if (btn)  { btn.style.color = col; btn.style.borderColor = col+'66'; btn.style.background = bg+',.12)'; }
 }
 
 // Reverse geocode using Open-Meteo's geocoding — no API key needed
@@ -1366,8 +1372,20 @@ function processForecastSolar(data) {
 }
 
 function setApi(t, m) {
-  const ab = document.getElementById('apiBar'); if (ab) ab.className = 'api-bar api-' + t;
-  const am = document.getElementById('apiMsg'); if (am) am.textContent = m;
+  const bar  = document.getElementById('apiBar');
+  const icon = document.getElementById('apiIcon');
+  const msg  = document.getElementById('apiMsg');
+  if (!bar) return;
+  const palettes = {
+    ok:   { col:'#00c882', bg:'rgba(0,200,130', ic:'✅', glyph:'🛰️' },
+    err:  { col:'#d4b020', bg:'rgba(212,176,32', ic:'⚠️', glyph:'📡' },
+    load: { col:'#00b4e6', bg:'rgba(0,180,230', ic:'⏳', glyph:'🛰️' },
+  };
+  const p = palettes[t] || palettes.load;
+  bar.style.borderColor = p.col+'44';
+  bar.style.background  = `linear-gradient(135deg,${p.bg},.08),rgba(0,8,25,.9))`;
+  if (icon) { icon.textContent=p.glyph; icon.style.borderColor=p.col+'66'; icon.style.boxShadow=`0 0 14px ${p.col}33`; icon.style.background=`radial-gradient(circle at 35% 35%,${p.bg},.2),${p.bg},.05))`; }
+  if (msg)  msg.textContent = m;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1844,7 +1862,7 @@ function applySocEdit() {
       ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
   }
   closeSocEdit();
-  renderBattery(); renderMetrics(); updateSocDisplay();
+  renderBattery(); renderMetrics(); updateSocDisplay(); renderFlow();
   const socEl = document.getElementById('cfgSoc');
   if (socEl) socEl.value = Math.round(displayPct);
 }
@@ -2051,23 +2069,26 @@ function renderFlow() {
     );
   }
 
-  // ── Node card (absolutely positioned) ────────────────────────────
-  function nodeCard(pos, emoji, col, label, value, sub) {
+  // SVG icon definitions (COL placeholder replaced with actual colour)
+  const ICONS = {
+    solar: `<svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="13" cy="13" r="5" stroke="COL" stroke-width="1.5"/><line x1="13" y1="1" x2="13" y2="5" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="13" y1="21" x2="13" y2="25" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="1" y1="13" x2="5" y2="13" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="13" x2="25" y2="13" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="4.22" y1="4.22" x2="7.05" y2="7.05" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="18.95" y1="18.95" x2="21.78" y2="21.78" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="21.78" y1="4.22" x2="18.95" y2="7.05" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="7.05" y1="18.95" x2="4.22" y2="21.78" stroke="COL" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+    home:  `<svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 12L13 3L24 12V23H17V17H9V23H2V12Z" stroke="COL" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
+    grid:  `<svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 2L7 14H13L11 24L19 12H13L15 2Z" stroke="COL" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
+    batt:  `<svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="7" width="20" height="12" rx="2" stroke="COL" stroke-width="1.5"/><path d="M21 10V16" stroke="COL" stroke-width="2" stroke-linecap="round"/><rect x="3" y="9" width="12" height="8" rx="1" fill="COL" opacity="0.5"/><line x1="25" y1="10" x2="25" y2="16" stroke="COL" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  };
+
+  // ── Node card (absolutely positioned, futuristic SVG icon) ────────
+  function nodeCard(pos, iconKey, col, label, value, sub) {
+    const svgIcon = ICONS[iconKey].replace(/COL/g, col);
     return `<div style="position:absolute;${pos};width:108px;text-align:center;padding:9px 6px 8px;` +
-      `background:linear-gradient(145deg,rgba(0,15,40,.75),rgba(0,8,24,.9));` +
-      `border-radius:14px;border:1px solid ${col}33;backdrop-filter:blur(6px);` +
-      `box-shadow:0 0 18px ${col}0d inset">` +
-      // Icon circle
+      `background:linear-gradient(145deg,rgba(0,15,40,.78),rgba(0,8,24,.92));` +
+      `border-radius:14px;border:1px solid ${col}33;backdrop-filter:blur(6px)">` +
       `<div style="width:48px;height:48px;border-radius:50%;margin:0 auto 6px;` +
-      `background:radial-gradient(circle at 35% 35%,${col}28,${col}08);` +
-      `border:1.5px solid ${col}66;` +
-      `box-shadow:0 0 16px ${col}22,inset 0 0 12px ${col}0a;` +
-      `display:flex;align-items:center;justify-content:center;font-size:24px">${emoji}</div>` +
-      // Label
-      `<div style="font-size:8px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:${col};opacity:.85;margin-bottom:3px">${label}</div>` +
-      // Value
-      `<div style="font-size:14px;font-weight:700;color:${col};text-shadow:0 0 12px ${col}66;line-height:1">${value}</div>` +
-      // Sub
+      `background:radial-gradient(circle at 35% 35%,${col}22,${col}06);` +
+      `border:1.5px solid ${col}55;` +
+      `display:flex;align-items:center;justify-content:center">${svgIcon}</div>` +
+      `<div style="font-size:8px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:${col};opacity:.8;margin-bottom:3px">${label}</div>` +
+      `<div style="font-size:14px;font-weight:700;color:${col};line-height:1">${value}</div>` +
       `<div style="font-size:9px;color:rgba(200,224,255,.38);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub}</div>` +
       `</div>`;
   }
@@ -2099,11 +2120,11 @@ function renderFlow() {
   document.getElementById('flowG').innerHTML =
     `<div style="position:relative;height:288px">` +
     svgEl +
-    nodeCard('left:0;top:6px',  '☀️', CG, 'Solar',   f(ST.pvKw,2)+' kW',    (Math.round(ST.irrWm2)||0)+' W/m²') +
-    nodeCard('right:0;top:6px', '🏠', CY, 'Home',    f(homeKw,2)+' kW',     homeSrc) +
+    nodeCard('left:0;top:6px',  'solar', CG, 'Solar',   f(ST.pvKw,2)+' kW',    (Math.round(ST.irrWm2)||0)+' W/m²') +
+    nodeCard('right:0;top:6px', 'home', CY, 'Home',    f(homeKw,2)+' kW',     homeSrc) +
     coreEl +
-    nodeCard('left:0;bottom:6px',  '⚡', gCol, 'Grid',    gridVal, gridSub) +
-    nodeCard('right:0;bottom:6px', '🔋', bCol, 'Battery', battVal, battSub) +
+    nodeCard('left:0;bottom:6px',  'grid', gCol, 'Grid',    gridVal, gridSub) +
+    nodeCard('right:0;bottom:6px', 'batt', bCol, 'Battery', battVal, battSub) +
     `</div>`;
 
   // ── Metrics: source donut + efficiency gauge ───────────────────────
@@ -2116,10 +2137,10 @@ function renderFlow() {
   const donut =
     `<svg width="70" height="70" viewBox="0 0 70 70">` +
     `<circle cx="35" cy="35" r="22" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="9"/>` +
-    (sPct>0?`<circle cx="35" cy="35" r="22" fill="none" stroke="${CG}" stroke-width="9" stroke-dasharray="${sLen} ${C}" stroke-dashoffset="${C*.25}" style="filter:drop-shadow(0 0 3px ${CG})"/>`:'')+
-    (bPct>0?`<circle cx="35" cy="35" r="22" fill="none" stroke="${CB}" stroke-width="9" stroke-dasharray="${bLen} ${C}" stroke-dashoffset="${C*.25-sLen}" style="filter:drop-shadow(0 0 3px ${CB})"/>`:'')+
-    (gPct>0?`<circle cx="35" cy="35" r="22" fill="none" stroke="${CO}" stroke-width="9" stroke-dasharray="${gLen} ${C}" stroke-dashoffset="${C*.25-sLen-bLen}" style="filter:drop-shadow(0 0 3px ${CO})"/>`:'')+
-    `<text x="35" y="32" text-anchor="middle" font-size="11" font-weight="700" fill="${CG}" style="filter:drop-shadow(0 0 5px ${CG})">${sPct}%</text>` +
+    (sPct>0?`<circle cx="35" cy="35" r="22" fill="none" stroke="${CG}" stroke-width="9" stroke-dasharray="${sLen} ${C}" stroke-dashoffset="${C*.25}"/>`:'')+
+    (bPct>0?`<circle cx="35" cy="35" r="22" fill="none" stroke="${CB}" stroke-width="9" stroke-dasharray="${bLen} ${C}" stroke-dashoffset="${C*.25-sLen}"/>`:'')+
+    (gPct>0?`<circle cx="35" cy="35" r="22" fill="none" stroke="${CO}" stroke-width="9" stroke-dasharray="${gLen} ${C}" stroke-dashoffset="${C*.25-sLen-bLen}"/>`:'')+
+    `<text x="35" y="32" text-anchor="middle" font-size="11" font-weight="700" fill="${CG}">${sPct}%</text>` +
     `<text x="35" y="43" text-anchor="middle" font-size="7" fill="rgba(200,224,255,.4)">solar</text>` +
     `</svg>`;
 
@@ -2138,8 +2159,8 @@ function renderFlow() {
     `<svg width="90" height="62" viewBox="0 0 90 62" overflow="visible">` +
     `<path d="M10,54 A36,36 0 0,1 80,54" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="7" stroke-linecap="round"/>` +
     `<path d="M10,54 A36,36 0 0,1 80,54" fill="none" stroke="${effCol}" stroke-width="7" stroke-linecap="round"` +
-    ` stroke-dasharray="${113.1*eff/100} 113.1" style="filter:drop-shadow(0 0 5px ${effCol})"/>` +
-    `<text x="45" y="46" text-anchor="middle" font-size="14" font-weight="700" fill="${effCol}" style="filter:drop-shadow(0 0 6px ${effCol})">${eff}%</text>` +
+    ` stroke-dasharray="${113.1*eff/100} 113.1"/>` +
+    `<text x="45" y="46" text-anchor="middle" font-size="14" font-weight="700" fill="${effCol}">${eff}%</text>` +
     `<text x="45" y="58" text-anchor="middle" font-size="7" fill="rgba(200,224,255,.35)">PERFORMANCE</text>` +
     `</svg>`;
 
@@ -2575,13 +2596,25 @@ async function requestNotifPermission() {
 }
 
 function setNotifBar(type, msg) {
-  const bar = document.getElementById('notifBar');
+  const bar  = document.getElementById('notifBar');
+  const icon = document.getElementById('notifIcon');
+  const msgEl= document.getElementById('notifMsg');
+  const btn  = document.getElementById('notifBtn');
   if (!bar) return;
-  bar.className = 'notif-bar notif-' + type;
-  const msgEl = document.getElementById('notifMsg');
+  const palettes = {
+    ok:  { col:'#00c882', bg:'rgba(0,200,130',  glyph:'🔔', btnTxt:'Active' },
+    off: { col:'rgba(200,224,255,.4)', bg:'rgba(100,120,160', glyph:'🔕', btnTxt:'Enable' },
+    req: { col:'#d4b020', bg:'rgba(212,176,32', glyph:'🔔', btnTxt:'Enable' },
+  };
+  const p = palettes[type] || palettes.req;
+  bar.style.borderColor = typeof p.col==='string'&&p.col.startsWith('#') ? p.col+'44' : 'rgba(100,120,160,.25)';
+  bar.style.background  = `linear-gradient(135deg,${p.bg},.07),rgba(0,8,25,.9))`;
+  if (icon) { icon.textContent=p.glyph; icon.style.borderColor=p.col+'66'; icon.style.boxShadow=`0 0 14px ${p.col}33`; icon.style.animation=type==='ok'?'none':'corePulse 2.5s infinite'; }
   if (msgEl) msgEl.textContent = msg;
-  const btn     = document.getElementById('notifBtn');
-  if (btn)     btn.style.display     = (type === 'ok') ? 'none' : '';
+  if (btn) {
+    btn.style.display = (type==='ok') ? 'none' : '';
+    btn.style.color = p.col; btn.style.borderColor = p.col+'66'; btn.style.background = p.bg+',.12)';
+  }
 }
 
 function testNotifications() {
