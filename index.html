@@ -262,6 +262,7 @@ body::before{
 @keyframes fd{to{stroke-dashoffset:-20}}.fa{stroke-dasharray:6 4;animation:fd .8s linear infinite}
 @keyframes coreRot{to{transform:rotate(360deg)}}
 @keyframes coreFlicker{0%,90%,100%{opacity:1}93%{opacity:.5}97%{opacity:.8}}
+@keyframes corePulse{0%,100%{opacity:.6}50%{opacity:.2}}
 @keyframes drawWave{to{stroke-dashoffset:0}}
 .cn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;border-radius:12px;padding:10px 8px;transition:transform .15s}
 .cn:active{transform:scale(.97)}
@@ -452,12 +453,26 @@ body::before{
 
     <div class="cfg-grid" style="margin-top:14px">
       <div class="cfg-group" style="grid-column:span 2">
-        <div class="cfg-lbl">⚖️ Production calibration</div>
-        <div class="cfg-inp-wrap">
-          <input type="number" id="cfgCalib" inputmode="decimal" min="0.5" max="2.0" step="0.05" value="1.00" oninput="onCfgChange()">
-          <span class="cfg-unit">× factor</span>
+        <div class="cfg-lbl">⚖️ Calibrate to your inverter</div>
+        <div style="font-size:11px;color:var(--t2);margin:5px 0 8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <span>App: <strong id="cfgCalibApp" style="color:var(--tx)">-- kW</strong></span>
+          <span style="color:var(--t3)">·</span>
+          <span>Factor: <strong id="cfgCalibFactor" style="color:var(--g)">×1.00</strong></span>
+          <button onclick="resetCalibration()" style="font-size:10px;padding:2px 8px;background:none;border:1px solid var(--br2);border-radius:5px;color:var(--t3);cursor:pointer;font-family:inherit;margin-left:auto">Reset</button>
         </div>
-        <div class="cfg-hint">Compare app kW vs your inverter app — set ratio here. Example: inverter shows 2.54 kW, app shows 1.95 kW → enter 1.30. Default 1.00.</div>
+        <div style="display:flex;gap:8px;align-items:stretch">
+          <div class="cfg-inp-wrap" style="flex:1">
+            <input type="number" id="cfgCalibReal" inputmode="decimal" min="0" max="20" step="0.01"
+              placeholder="Your inverter kW" style="text-align:left">
+            <span class="cfg-unit">kW</span>
+          </div>
+          <button onclick="calibrateProduction()"
+            style="background:rgba(0,200,130,.12);color:var(--g);border:1px solid rgba(0,200,130,.4);
+            border-radius:var(--rs);padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;
+            font-family:inherit;white-space:nowrap">Calibrate</button>
+        </div>
+        <div class="cfg-hint" style="margin-top:5px">Open FusionSolar, read the live PV power, enter it here. Best done when panels produce over 1 kW.</div>
+        <div id="cfgCalibMsg" style="font-size:11px;min-height:14px;margin-top:4px"></div>
       </div>
     </div>
 
@@ -1838,8 +1853,50 @@ function showUpdateDialog(versionName, storeUrl, versionCode) {
 const stored = () => SYS.battUse ? +((ST.battSoc/100) * SYS.battUse).toFixed(3) : 0;
 
 // ── Quick SOC correction from battery panel ───────────────────────────────
+function calibrateProduction() {
+  const real = parseFloat(document.getElementById('cfgCalibReal').value);
+  const msg  = document.getElementById('cfgCalibMsg');
+  function setMsg(txt, col) { if(msg){ msg.textContent=txt; msg.style.color=col; } }
+
+  if (isNaN(real) || real <= 0) {
+    setMsg('Enter the kW value shown in your inverter app.', 'var(--am)'); return;
+  }
+  if (ST.pvKw < 0.3) {
+    setMsg('App is showing near-zero production — wait for stronger sunlight.', 'var(--am)'); return;
+  }
+  const factor = real / ST.pvKw;
+  if (factor < 0.25 || factor > 4.0) {
+    setMsg('Values too far apart — check both readings are in kW and try again.', 'var(--rd)'); return;
+  }
+  SYS.pvCalibFactor = +factor.toFixed(3);
+  const cfg = loadCfg(); cfg.pvCalibFactor = SYS.pvCalibFactor; saveCfg(cfg);
+  document.getElementById('cfgCalibReal').value = '';
+  document.getElementById('cfgCalibFactor').textContent = '×' + SYS.pvCalibFactor.toFixed(2);
+  setMsg('✅ Calibrated — factor ×' + SYS.pvCalibFactor.toFixed(2) + ' saved.', 'var(--g)');
+  setTimeout(() => { if(msg) msg.textContent=''; }, 4000);
+  // Re-run satellite path so new pvKw is displayed immediately
+  fetchWeather();
+}
+
+function resetCalibration() {
+  SYS.pvCalibFactor = 1.0;
+  const cfg = loadCfg(); cfg.pvCalibFactor = 1.0; saveCfg(cfg);
+  const fEl = document.getElementById('cfgCalibFactor');
+  const mEl = document.getElementById('cfgCalibMsg');
+  if(fEl) fEl.textContent = '×1.00';
+  if(mEl){ mEl.textContent='Factor reset to ×1.00'; mEl.style.color='var(--t2)'; }
+  setTimeout(()=>{ if(mEl) mEl.textContent=''; }, 3000);
+  fetchWeather();
+}
+
+function updateCalibDisplay() {
+  const appEl = document.getElementById('cfgCalibApp');
+  const facEl = document.getElementById('cfgCalibFactor');
+  if(appEl) appEl.textContent = ST.pvKw > 0 ? f(ST.pvKw,2)+' kW' : '-- kW';
+  if(facEl) facEl.textContent = '×'+(SYS.pvCalibFactor||1.0).toFixed(2);
+}
+
 function openSocEdit() {
-  const row = document.getElementById('socEditRow');
   const inp = document.getElementById('socEditInput');
   if (!row || !inp) return;
   inp.value = Math.round(socToDisplay(ST.battSoc));
@@ -1897,6 +1954,7 @@ function snap() {
 // RENDER — METRICS
 // ═══════════════════════════════════════════════════════════════
 function renderMetrics() {
+  updateCalibDisplay();
   // Populate header stat pills
   const pvEl   = document.getElementById('hdrPv');
   const battEl = document.getElementById('hdrBatt');
@@ -1999,180 +2057,236 @@ function renderBattery() {
 // RENDER — FLOW DIAGRAM
 // ═══════════════════════════════════════════════════════════════
 function renderFlow() {
-  const fl   = calcFlow();
-  const ts   = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  const tEl  = document.getElementById('fTs');
-  if (tEl) tEl.textContent = ts+' · '+ST.wxIcon+' '+ST.wxCond+' · '+f(ST.wxTempC,0)+'°C';
+  const fl = calcFlow();
+  const CG='#00c882',CB='#00b4e6',CO='#e05a28',CY='#d4a820';
 
-  // ── Colours ───────────────────────────────────────────────────────
-  const CG='#00c882', CB='#00b4e6', CO='#e05a28', CY='#d4a820';
-  const homeKw  = fl.solar2home + fl.batt2home + fl.gridImport;
-  const homeSrc = fl.solar2home>0.01&&fl.batt2home>0.01?'solar+batt':fl.solar2home>0.01?'solar':fl.batt2home>0.01?'batt':fl.gridImport>0.01?'grid':'idle';
-  const dispSoc = socToDisplay(ST.battSoc);
-  const battVal = fl.battFlow>0.01?'+'+f(fl.battFlow,2)+' kW':fl.battFlow<-0.01?f(fl.battFlow,2)+' kW':'idle';
-  const battSub = Math.round(dispSoc)+'% · '+f(stored(),1)+' kWh';
-  const gridVal = fl.gridExport>0.01?'+'+f(fl.gridExport,2)+' kW':fl.gridImport>0.01?f(-fl.gridImport,2)+' kW':'0.00 kW';
-  const gridSub = fl.gridExport>0.01?'export':fl.gridImport>0.01?'import':'idle';
-  const bCol  = fl.battFlow>0.01?CB:fl.battFlow<-0.01?CY:'#444';
-  const gCol  = fl.gridExport>0.01?CG:fl.gridImport>0.01?CO:'#444';
-  const netFlow = ST.pvKw-(ST.consKw||0);
-  const netStr  = (netFlow>=0?'+':'')+f(netFlow,2)+' kW';
-  const netCol  = netFlow>=0?CG:CY;
+  const fTs = document.getElementById('fTs');
+  if(fTs) fTs.textContent =
+    new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+
+    ' · '+ST.wxIcon+' '+ST.wxCond+' · '+f(ST.wxTempC,0)+'°C';
 
-  // ── Active flags ──────────────────────────────────────────────────
-  const sOn = ST.pvKw>0.05;
-  const hOn = homeKw>0.05;
-  const bOn = Math.abs(fl.battFlow)>0.05;
-  const gOn = Math.max(fl.gridExport,fl.gridImport)>0.05;
-  const bRev = fl.battFlow<-0.05;   // battery discharging → reverse particle direction
-  const gRev = fl.gridImport>0.05;  // grid importing → reverse particle direction
+  const hOn = (fl.solar2home+fl.batt2home+fl.gridImport)>0.01;
+  const bOn = Math.abs(fl.battFlow)>0.01;
+  const bChg= fl.battFlow>0.01;
+  const gImp= fl.gridImport>0.01;
+  const gExp= fl.gridExport>0.01;
+  const gOn = gImp||gExp;
+  const bCol= bChg?CB:fl.battFlow<-0.01?CY:'#445';
+  const gCol= gExp?CG:gImp?CO:'#445';
+  const hCol= hOn?CY:'#445';
+  const pvOn= ST.pvKw>0.1;
 
-  // ── Hub-and-spoke SVG paths (viewBox 340×288) ────────────────────
-  // Node centres: Solar(56,54) Home(284,54) Grid(56,234) Battery(284,234)
-  // Core centre: (170,144) radius 36px
-  // Paths connect node edge to core edge
-  const PS = 'M56,106 C56,136 112,140 134,140';   // Solar → Core
-  const PH = 'M206,136 C250,136 284,136 284,106';  // Core → Home
-  const PG = 'M56,182 C56,152 112,148 134,148';    // Grid → Core
-  const PB = 'M206,148 C250,148 284,148 284,182';  // Core → Battery
+  const dispSoc  = socToDisplay(ST.battSoc);
+  const battKw   = bOn?(bChg?'+':'-')+f(Math.abs(fl.battFlow),2)+' kW':'idle';
+  const gridKw   = gExp?'+'+f(fl.gridExport,2)+' kW':gImp?'-'+f(fl.gridImport,2)+' kW':'0.00 kW';
+  const homeKw   = fl.solar2home+fl.batt2home+fl.gridImport;
+  const netFlow  = ST.pvKw-(ST.consKw||0);
+  const netStr   = (netFlow>=0?'+':'')+f(netFlow,2)+' kW';
+  const netCol   = netFlow>=0?CG:CY;
+  const homeSrc  = fl.solar2home>0.01&&fl.batt2home>0.01?'solar+batt':fl.solar2home>0.01?'solar':fl.batt2home>0.01?'batt':gImp?'grid':'idle';
+  const battSub  = Math.round(dispSoc)+'% · '+f(stored(),1)+' kWh';
 
-  // Animated particle dots along a path
-  function particles(path, col, active, reverse) {
-    if (!active) return '';
-    const kp = reverse ? '1;0' : '0;1';
-    const durs = ['1.3s','1.8s','2.4s'];
-    const begins = ['0s','0.43s','0.87s'];
-    const radii = [3,2.5,2];
-    const opacities = [1,0.65,0.38];
-    return radii.map((r,i) =>
-      `<circle r="${r}" fill="${col}" opacity="${opacities[i]}">` +
-      `<animateMotion dur="${durs[i]}" repeatCount="indefinite" begin="${begins[i]}" ` +
-      `keyPoints="${kp}" keyTimes="0;1" calcMode="linear" path="${path}"/>` +
-      `</circle>`
-    ).join('');
+  // ── Node card builder ──────────────────────────────────────────────
+  // side='l': info on LEFT, icon on RIGHT (left column nodes)
+  // side='r': icon on LEFT, info on RIGHT (right column nodes)
+  function nd(side,icon,iconCol,label,val,valCol,sub1,sub2){
+    const ic=`<div style="width:42px;height:42px;min-width:42px;border-radius:50%;
+      background:rgba(0,14,40,.95);border:2px solid ${iconCol};flex-shrink:0;
+      box-shadow:0 0 12px ${iconCol}55,inset 0 0 10px ${iconCol}18;
+      display:flex;align-items:center;justify-content:center;font-size:19px">${icon}</div>`;
+    const inf=`<div style="flex:1;min-width:0;overflow:hidden">
+      <div style="font-size:7px;letter-spacing:1.4px;text-transform:uppercase;color:${iconCol};
+        font-weight:700;opacity:.85;line-height:1.2">${label}</div>
+      <div style="font-size:13px;font-weight:700;color:${valCol};
+        text-shadow:0 0 8px ${valCol}66;line-height:1.15;margin-top:1px">${val}</div>
+      <div style="font-size:8px;opacity:.45;line-height:1.3;margin-top:1px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub1}</div>
+      ${sub2?`<div style="font-size:7.5px;opacity:.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub2}</div>`:''}
+    </div>`;
+    return `<div style="display:flex;align-items:center;gap:6px;
+      background:linear-gradient(135deg,rgba(0,20,62,.92),rgba(0,7,22,.96));
+      border:1px solid ${iconCol}3a;border-radius:10px;padding:8px;
+      box-shadow:0 0 18px ${iconCol}0a inset">${side==='l'?inf+ic:ic+inf}</div>`;
   }
 
-  // Glowing line (base glow + fine stroke + particles)
-  function flowLine(path, col, active, reverse) {
-    const op = active ? 1 : 0.12;
-    const gOp = active ? 0.12 : 0.03;
-    return (
-      // wide glow base
-      `<path d="${path}" stroke="${col}" stroke-width="8" fill="none" opacity="${gOp}" stroke-linecap="round"/>` +
-      // hair line
-      `<path d="${path}" stroke="${col}" stroke-width="1.2" fill="none" opacity="${op*0.7}" stroke-linecap="round"/>` +
-      // bright core
-      `<path d="${path}" stroke="${col}" stroke-width="2.5" fill="none" opacity="${op*0.35}" stroke-linecap="round"` +
-      ` style="filter:drop-shadow(0 0 4px ${col})"/>` +
-      // particles
-      particles(path, col, active, reverse)
-    );
+  // ── Central reactor core ───────────────────────────────────────────
+  const core=`
+  <svg viewBox="0 0 84 120" width="84" height="120" style="display:block;overflow:visible">
+    <defs>
+      <radialGradient id="cig" cx="50%" cy="35%">
+        <stop offset="0%" stop-color="rgba(0,120,255,.55)"/>
+        <stop offset="60%" stop-color="rgba(0,20,80,.85)"/>
+        <stop offset="100%" stop-color="rgba(0,6,24,.98)"/>
+      </radialGradient>
+      <filter id="cf"><feGaussianBlur stdDeviation="2.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <!-- Outer glow ring (spinning) -->
+    <ellipse cx="42" cy="21" rx="37" ry="11" fill="none" stroke="${netCol}" stroke-width="1.5"
+      stroke-dasharray="5 3" style="animation:coreRot 3s linear infinite;transform-box:fill-box;transform-origin:center"/>
+    <!-- Top cap -->
+    <ellipse cx="42" cy="21" rx="37" ry="11" fill="rgba(0,25,70,.9)" stroke="rgba(0,180,255,.55)" stroke-width="1.5"/>
+    <!-- Body -->
+    <rect x="5" y="21" width="74" height="78" rx="5" fill="url(#cig)" stroke="rgba(0,160,255,.35)" stroke-width="1.5"/>
+    <!-- Band rings -->
+    <rect x="5" y="28" width="74" height="7" rx="2" fill="rgba(0,70,180,.22)" stroke="rgba(0,180,255,.18)" stroke-width=".5"/>
+    <rect x="5" y="48" width="74" height="7" rx="2" fill="rgba(0,70,180,.22)" stroke="rgba(0,180,255,.18)" stroke-width=".5"/>
+    <rect x="5" y="68" width="74" height="7" rx="2" fill="rgba(0,70,180,.22)" stroke="rgba(0,180,255,.18)" stroke-width=".5"/>
+    <rect x="5" y="84" width="74" height="7" rx="2" fill="rgba(0,70,180,.22)" stroke="rgba(0,180,255,.18)" stroke-width=".5"/>
+    <!-- Inner chamber glow -->
+    <circle cx="42" cy="59" r="20" fill="rgba(0,80,200,.18)" stroke="rgba(0,200,255,.25)" stroke-width="1.5"/>
+    <circle cx="42" cy="59" r="12" fill="rgba(0,120,255,.12)" stroke="rgba(0,210,255,.4)" stroke-width="1"/>
+    <!-- Lightning bolt -->
+    <text x="42" y="66" text-anchor="middle" font-size="18"
+      fill="rgba(100,225,255,.95)" filter="url(#cf)"
+      style="animation:coreFlicker 4s infinite">⚡</text>
+    <!-- Port connectors — left side (top + bottom) -->
+    <rect x="-5" y="33" width="11" height="10" rx="2" fill="rgba(0,40,110,.85)" stroke="rgba(0,160,255,.55)" stroke-width=".8"/>
+    <rect x="-5" y="66" width="11" height="10" rx="2" fill="rgba(0,40,110,.85)" stroke="rgba(0,160,255,.55)" stroke-width=".8"/>
+    <!-- Port connectors — right side -->
+    <rect x="78" y="33" width="11" height="10" rx="2" fill="rgba(0,40,110,.85)" stroke="rgba(0,160,255,.55)" stroke-width=".8"/>
+    <rect x="78" y="66" width="11" height="10" rx="2" fill="rgba(0,40,110,.85)" stroke="rgba(0,160,255,.55)" stroke-width=".8"/>
+    <!-- Bottom cap -->
+    <ellipse cx="42" cy="99" rx="37" ry="11" fill="rgba(0,16,52,.7)" stroke="rgba(0,140,255,.3)" stroke-width="1"/>
+    <!-- Bottom glow drip -->
+    <line x1="42" y1="110" x2="42" y2="120" stroke="${netCol}" stroke-width="1.5" opacity=".5"
+      style="animation:corePulse 2s ease-in-out infinite"/>
+    <circle cx="42" cy="120" r="2.5" fill="${netCol}" opacity=".6"
+      style="animation:corePulse 2s ease-in-out infinite"/>
+  </svg>
+  <div style="text-align:center;margin-top:3px;font-size:9px;font-weight:700;
+    letter-spacing:.6px;color:${netCol};text-shadow:0 0 8px ${netCol}99">${netStr}</div>`;
+
+  // ── SVG flow line helper ───────────────────────────────────────────
+  // Triple stroke: wide glow + mid + thin animated dash
+  function tube(d,col,active){
+    const a=active?'class="fa"':'opacity="0.12"';
+    return `<path d="${d}" fill="none" stroke="${col}" stroke-width="10" opacity=".08" stroke-linecap="round"/>
+<path d="${d}" fill="none" stroke="${col}" stroke-width="4"  opacity=".18" stroke-linecap="round"/>
+<path d="${d}" fill="none" stroke="${col}" stroke-width="1.5" ${a} stroke-linecap="round"/>`;
   }
 
-  // SVG icon definitions (COL placeholder replaced with actual colour)
-  const ICONS = {
-    solar: `<svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="13" cy="13" r="5" stroke="COL" stroke-width="1.5"/><line x1="13" y1="1" x2="13" y2="5" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="13" y1="21" x2="13" y2="25" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="1" y1="13" x2="5" y2="13" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="21" y1="13" x2="25" y2="13" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="4.22" y1="4.22" x2="7.05" y2="7.05" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="18.95" y1="18.95" x2="21.78" y2="21.78" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="21.78" y1="4.22" x2="18.95" y2="7.05" stroke="COL" stroke-width="1.5" stroke-linecap="round"/><line x1="7.05" y1="18.95" x2="4.22" y2="21.78" stroke="COL" stroke-width="1.5" stroke-linecap="round"/></svg>`,
-    home:  `<svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 12L13 3L24 12V23H17V17H9V23H2V12Z" stroke="COL" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
-    grid:  `<svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 2L7 14H13L11 24L19 12H13L15 2Z" stroke="COL" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
-    batt:  `<svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="7" width="20" height="12" rx="2" stroke="COL" stroke-width="1.5"/><path d="M21 10V16" stroke="COL" stroke-width="2" stroke-linecap="round"/><rect x="3" y="9" width="12" height="8" rx="1" fill="COL" opacity="0.5"/><line x1="25" y1="10" x2="25" y2="16" stroke="COL" stroke-width="1.5" stroke-linecap="round"/></svg>`,
-  };
+  // SVG viewBox "0 0 320 228" matches approximate pixel layout.
+  // Node areas: 112px wide on each side. Core: ~84px centered.
+  // Top node center-y ≈ 38.  Bottom node center-y ≈ 190.
+  // Core SVG top ≈ 54px in container. Core top port (y=33 in SVG) → container y=87.
+  // Core bottom port (y=66 in SVG) → container y=120.
+  // Core right edge at x ≈ 119+84=203 from left.
+  // So: left ports x=114, right ports x=203.
+  const dSolar = `M112,38 C116,38 114,72 114,88`;
+  const dHome  = `M208,38 C204,38 206,72 206,88`;
+  const dGrid  = `M112,190 C116,190 114,156 114,122`;
+  const dBatt  = `M208,190 C204,190 206,156 206,122`;
+  const dLvert = `M114,88 L114,122`;   // left core vertical line
+  const dRvert = `M206,88 L206,122`;   // right core vertical line
 
-  // ── Node card (absolutely positioned, futuristic SVG icon) ────────
-  function nodeCard(pos, iconKey, col, label, value, sub) {
-    const svgIcon = ICONS[iconKey].replace(/COL/g, col);
-    return `<div style="position:absolute;${pos};width:108px;text-align:center;padding:9px 6px 8px;` +
-      `background:linear-gradient(145deg,rgba(0,15,40,.78),rgba(0,8,24,.92));` +
-      `border-radius:14px;border:1px solid ${col}33;backdrop-filter:blur(6px)">` +
-      `<div style="width:48px;height:48px;border-radius:50%;margin:0 auto 6px;` +
-      `background:radial-gradient(circle at 35% 35%,${col}22,${col}06);` +
-      `border:1.5px solid ${col}55;` +
-      `display:flex;align-items:center;justify-content:center">${svgIcon}</div>` +
-      `<div style="font-size:8px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:${col};opacity:.8;margin-bottom:3px">${label}</div>` +
-      `<div style="font-size:14px;font-weight:700;color:${col};line-height:1">${value}</div>` +
-      `<div style="font-size:9px;color:rgba(200,224,255,.38);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub}</div>` +
-      `</div>`;
-  }
+  const flowSVG=`<svg style="position:absolute;inset:0;width:100%;height:100%;
+    pointer-events:none;overflow:visible;z-index:0"
+    viewBox="0 0 320 228" preserveAspectRatio="none">
+    <defs>
+      <filter id="lg" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="2" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#lg)">
+      ${tube(dSolar,CG,pvOn)}
+      ${tube(dHome ,hCol,hOn)}
+      ${tube(dGrid ,gCol,gOn)}
+      ${tube(dBatt ,bCol,bOn)}
+      ${tube(dLvert,CB,true)}
+      ${tube(dRvert,CB,true)}
+    </g>
+  </svg>`;
 
-  // ── Central core ──────────────────────────────────────────────────
-  const spinGrad = `conic-gradient(${CG} 0%,${CB} 33%,${CO} 66%,${CG} 100%)`;
-  const coreEl =
-    `<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3">` +
-    `<div class="core-ring">` +
-      `<div class="core-spin" style="background:${spinGrad}"></div>` +
-      `<div class="core-bg"></div>` +
-      `<div class="core-face">` +
-        `<div class="core-bolt">⚡</div>` +
-        `<div class="core-kw" style="color:${netCol};text-shadow:0 0 8px ${netCol}">${netStr}</div>` +
-      `</div>` +
-    `</div></div>`;
+  // ── Assemble layout ────────────────────────────────────────────────
+  const html=`<div style="position:relative;height:228px">
+    ${flowSVG}
+    <div style="position:absolute;top:0;left:0;width:110px;z-index:1">
+      ${nd('l','☀️',CG,'Solar',f(ST.pvKw,2)+' kW',CG,
+        f(SYS.panelKw||5,0)+' kW panels',Math.round(ST.irrWm2)+' W/m²')}
+    </div>
+    <div style="position:absolute;top:0;right:0;width:110px;z-index:1">
+      ${nd('r','🏠',CY,'Home',f(homeKw,2)+' kW',CY,homeSrc,'')}
+    </div>
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);z-index:2">
+      ${core}
+    </div>
+    <div style="position:absolute;bottom:0;left:0;width:110px;z-index:1">
+      ${nd('l','⚡',gCol,'Grid',gridKw,gCol,gImp?'import':gExp?'export':'idle','')}
+    </div>
+    <div style="position:absolute;bottom:0;right:0;width:110px;z-index:1">
+      ${nd('r','🔋',bCol,'Battery',battKw,bCol,battSub,'')}
+    </div>
+  </div>`;
 
-  // ── Assemble SVG ──────────────────────────────────────────────────
-  const svgEl =
-    `<svg viewBox="0 0 340 288" width="100%" height="100%" ` +
-    `style="position:absolute;inset:0;pointer-events:none;overflow:visible" ` +
-    `xmlns="http://www.w3.org/2000/svg">` +
-    flowLine(PS, CG, sOn, false) +
-    flowLine(PH, CY, hOn, false) +
-    flowLine(PG, gCol, gOn, gRev) +
-    flowLine(PB, bCol, bOn, bRev) +
-    `</svg>`;
+  document.getElementById('flowG').innerHTML = html;
 
-  document.getElementById('flowG').innerHTML =
-    `<div style="position:relative;height:288px">` +
-    svgEl +
-    nodeCard('left:0;top:6px',  'solar', CG, 'Solar',   f(ST.pvKw,2)+' kW',    (Math.round(ST.irrWm2)||0)+' W/m²') +
-    nodeCard('right:0;top:6px', 'home', CY, 'Home',    f(homeKw,2)+' kW',     homeSrc) +
-    coreEl +
-    nodeCard('left:0;bottom:6px',  'grid', gCol, 'Grid',    gridVal, gridSub) +
-    nodeCard('right:0;bottom:6px', 'batt', bCol, 'Battery', battVal, battSub) +
-    `</div>`;
-
-  // ── Metrics: source donut + efficiency gauge ───────────────────────
-  const totalH = homeKw || 0.001;
-  const sPct = Math.round(fl.solar2home / totalH * 100);
-  const bPct = Math.round(fl.batt2home  / totalH * 100);
-  const gPct = 100 - sPct - bPct;
-  const C = 138.2;
-  const sLen = C*sPct/100, bLen = C*bPct/100, gLen = C*gPct/100;
-  const donut =
-    `<svg width="70" height="70" viewBox="0 0 70 70">` +
-    `<circle cx="35" cy="35" r="22" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="9"/>` +
-    (sPct>0?`<circle cx="35" cy="35" r="22" fill="none" stroke="${CG}" stroke-width="9" stroke-dasharray="${sLen} ${C}" stroke-dashoffset="${C*.25}"/>`:'')+
-    (bPct>0?`<circle cx="35" cy="35" r="22" fill="none" stroke="${CB}" stroke-width="9" stroke-dasharray="${bLen} ${C}" stroke-dashoffset="${C*.25-sLen}"/>`:'')+
-    (gPct>0?`<circle cx="35" cy="35" r="22" fill="none" stroke="${CO}" stroke-width="9" stroke-dasharray="${gLen} ${C}" stroke-dashoffset="${C*.25-sLen-bLen}"/>`:'')+
-    `<text x="35" y="32" text-anchor="middle" font-size="11" font-weight="700" fill="${CG}">${sPct}%</text>` +
-    `<text x="35" y="43" text-anchor="middle" font-size="7" fill="rgba(200,224,255,.4)">solar</text>` +
-    `</svg>`;
-
-  const legend =
-    `<div style="display:flex;flex-direction:column;gap:5px">` +
-    [`Solar ${sPct}%|${CG}`,`Battery ${bPct}%|${CB}`,`Grid ${gPct}%|${CO}`].map(x=>{
-      const[lbl,col]=x.split('|');
-      return `<div style="display:flex;align-items:center;gap:5px;font-size:10px">` +
-        `<span style="width:8px;height:8px;border-radius:50%;background:${col};box-shadow:0 0 5px ${col};flex-shrink:0;display:inline-block"></span>${lbl}</div>`;
-    }).join('') + `</div>`;
-
-  const eff = ST.pvKw>0 && ST.irrWm2>10
-    ? Math.round(Math.min(100, ST.pvKw/((ST.irrWm2/1000)*(SYS.panelKw||5))*100)) : 0;
+  // ── Bottom metrics: source donut + efficiency gauge ────────────────
+  const totalH = homeKw||0.001;
+  const sPct   = Math.round(fl.solar2home/totalH*100);
+  const bPct   = Math.round(fl.batt2home/totalH*100);
+  const gPct   = 100-sPct-bPct;
+  const C      = 138.2;
+  const sLen   = C*sPct/100, bLen=C*bPct/100, gLen=C*gPct/100;
+  const sOff   = C*.25, bOff=sOff-sLen, gOff=bOff-bLen;
+  const donut=
+    `<svg width="70" height="70" viewBox="0 0 70 70">
+      <circle cx="35" cy="35" r="22" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="9"/>
+      ${sPct>0?`<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="${CG}"
+        stroke-dasharray="${sLen} ${C}" stroke-dashoffset="${sOff}"
+        style="filter:drop-shadow(0 0 3px ${CG})"/>`:''}
+      ${bPct>0?`<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="${CB}"
+        stroke-dasharray="${bLen} ${C}" stroke-dashoffset="${bOff}"
+        style="filter:drop-shadow(0 0 3px ${CB})"/>`:''}
+      ${gPct>0?`<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="${CO}"
+        stroke-dasharray="${gLen} ${C}" stroke-dashoffset="${gOff}"
+        style="filter:drop-shadow(0 0 3px ${CO})"/>`:''}
+      <text x="35" y="32" text-anchor="middle" font-size="11" font-weight="700" fill="${CG}">${sPct}%</text>
+      <text x="35" y="43" text-anchor="middle" font-size="7" fill="rgba(200,224,255,.4)">solar</text>
+    </svg>`;
+  const legend=
+    `<div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:5px;font-size:10px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;
+          background:${CG};box-shadow:0 0 4px ${CG}"></span>Solar ${sPct}%</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:10px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;
+          background:${CB};box-shadow:0 0 4px ${CB}"></span>Battery ${bPct}%</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:10px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;
+          background:${CO};box-shadow:0 0 4px ${CO}"></span>Grid ${gPct}%</div>
+    </div>`;
+  const eff = ST.pvKw>0&&ST.irrWm2>10
+    ? Math.round(Math.min(100,ST.pvKw/((ST.irrWm2/1000)*(SYS.panelKw||5))*100)) : 0;
   const effCol = eff>=70?CG:eff>=45?CY:CO;
-  const gauge =
-    `<svg width="90" height="62" viewBox="0 0 90 62" overflow="visible">` +
-    `<path d="M10,54 A36,36 0 0,1 80,54" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="7" stroke-linecap="round"/>` +
-    `<path d="M10,54 A36,36 0 0,1 80,54" fill="none" stroke="${effCol}" stroke-width="7" stroke-linecap="round"` +
-    ` stroke-dasharray="${113.1*eff/100} 113.1"/>` +
-    `<text x="45" y="46" text-anchor="middle" font-size="14" font-weight="700" fill="${effCol}">${eff}%</text>` +
-    `<text x="45" y="58" text-anchor="middle" font-size="7" fill="rgba(200,224,255,.35)">PERFORMANCE</text>` +
-    `</svg>`;
+  const gauge=
+    `<svg width="90" height="62" viewBox="0 0 90 62" overflow="visible">
+      <path d="M10,54 A36,36 0 0,1 80,54" fill="none" stroke="rgba(255,255,255,.06)"
+        stroke-width="7" stroke-linecap="round"/>
+      <path d="M10,54 A36,36 0 0,1 80,54" fill="none" stroke="${effCol}" stroke-width="7"
+        stroke-linecap="round" stroke-dasharray="${113.1*eff/100} 113.1"
+        style="filter:drop-shadow(0 0 4px ${effCol})"/>
+      <text x="45" y="46" text-anchor="middle" font-size="14" font-weight="700"
+        fill="${effCol}" style="filter:drop-shadow(0 0 6px ${effCol})">${eff}%</text>
+      <text x="45" y="58" text-anchor="middle" font-size="7"
+        fill="rgba(200,224,255,.35)">PERFORMANCE</text>
+    </svg>`;
 
-  const metricsEl = document.getElementById('coreMetrics');
-  if (metricsEl) {
-    metricsEl.style.display = 'flex';
-    metricsEl.innerHTML =
-      `<div style="flex:1"><div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;opacity:.4;font-weight:600;margin-bottom:6px">Source</div>` +
-      `<div style="display:flex;align-items:center;gap:10px">${donut}${legend}</div></div>` +
-      `<div style="display:flex;flex-direction:column;align-items:center">` +
-      `<div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;opacity:.4;font-weight:600;margin-bottom:4px">Efficiency</div>` +
-      gauge + `</div>`;
+  const metricsEl=document.getElementById('coreMetrics');
+  if(metricsEl){
+    metricsEl.style.display='flex';
+    metricsEl.innerHTML=
+      `<div style="flex:1">
+        <div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;
+          opacity:.4;font-weight:600;margin-bottom:6px">Source</div>
+        <div style="display:flex;align-items:center;gap:10px">${donut}${legend}</div>
+       </div>
+       <div style="display:flex;flex-direction:column;align-items:center">
+        <div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;
+          opacity:.4;font-weight:600;margin-bottom:4px">Efficiency</div>
+        ${gauge}
+       </div>`;
   }
 }
 
@@ -2987,7 +3101,7 @@ function initCfgInputs() {
   if (savedCfg.battGross) document.getElementById('cfgBatt').value  = savedCfg.battGross;
   if (savedCfg.battRes) document.getElementById('cfgRes').value = Math.round(savedCfg.battRes * 100);
   if (savedCfg.battSoc)   { document.getElementById('cfgSoc').value = Math.round(savedCfg.battSoc); ST.battSoc = socToInternal(savedCfg.battSoc); }
-  if (savedCfg.pvCalibFactor) document.getElementById('cfgCalib').value = savedCfg.pvCalibFactor;
+  if (savedCfg.pvCalibFactor) { SYS.pvCalibFactor = savedCfg.pvCalibFactor; updateCalibDisplay(); }
   if (savedCfg.panelAzimuth) {
     const azEl = document.getElementById('cfgAzimuth');
     if (azEl) azEl.value = String(savedCfg.panelAzimuth);
@@ -3137,7 +3251,7 @@ function saveCfgAndApply() {
   SYS._battMaxD = maxD;
   const azimuth = parseInt(document.getElementById('cfgAzimuth').value) || 180;
   SYS.panelAzimuth = azimuth;
-  const calib = Math.max(0.5, Math.min(2.0, parseFloat(document.getElementById('cfgCalib').value) || 1.0));
+  const calib = SYS.pvCalibFactor || 1.0; // set via calibrateProduction(), not a direct input
   SYS.pvCalibFactor = calib;
   saveCfg({
     panelKw: panel, battGross: gross, battRes: res,
