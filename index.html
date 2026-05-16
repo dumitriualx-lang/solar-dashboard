@@ -907,8 +907,8 @@ function applyGpsFromNative(lat, lon, name) {
     Math.abs(lat - ST.lat) > 0.005 || Math.abs(lon - ST.lon) > 0.005;
   ST.lat = lat; ST.lon = lon; ST.gpsOk = true;
 
-  // Use priority: passed name → cache → geocode → coordinates
-  const cached = getCachedLocName(lat, lon);
+  // Priority: passed name → cache → geocode → short coordinates
+  const cached   = getCachedLocName(lat, lon);
   const resolved = (name && !name.includes('°')) ? name : cached;
 
   if (resolved) {
@@ -916,22 +916,38 @@ function applyGpsFromNative(lat, lon, name) {
     setGps('ok', '📍 ' + resolved);
     try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: resolved })); } catch(e) {}
     if (moved || !ST.apiOk) fetchWeather();
-  } else {
-    // No name yet — show Locating, don't flash coordinates
-    ST.locName = 'Locating...';
-    setGps('ok', '📍 Locating...');
-    if (moved || !ST.apiOk) fetchWeather();
-    reverseGeocode(lat, lon).then(city => {
-      const displayName = city || (lat.toFixed(3) + '°N ' + lon.toFixed(3) + '°E');
-      ST.locName = displayName;
-      setGps('ok', '📍 ' + displayName);
-      if (city) {
-        setCachedLocName(lat, lon, city);
-        try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
-        if (window.AppBridge && AppBridge.saveGps) try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
-      }
-    });
+    return;
   }
+
+  // No name available — show Locating while geocoding runs
+  ST.locName = 'Locating\u2026';
+  setGps('ok', '📍 Locating\u2026');
+  if (moved || !ST.apiOk) fetchWeather();
+
+  reverseGeocode(lat, lon).then(city => {
+    const fallback   = lat.toFixed(2) + '\u00b0N ' + lon.toFixed(2) + '\u00b0E';
+    const displayName = city || fallback;
+    ST.locName = displayName;
+    setGps('ok', '📍 ' + displayName);
+
+    // Update api bar immediately — no refresh needed
+    if (ST.apiOk && ST.lastFetch) {
+      setApi('ok', '\u2705 ' + displayName + ' \u00b7 '
+        + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+        + ' \u00b7 \u21bb 1min');
+    }
+
+    // Persist resolved name so next resume uses it instantly
+    if (city) {
+      setCachedLocName(lat, lon, city);
+      try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
+      if (window.AppBridge && AppBridge.saveGps) try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
+    } else {
+      // Geocoding failed — cache the coordinate fallback so we stop retrying every resume
+      setCachedLocName(lat, lon, fallback);
+      try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: fallback })); } catch(e) {}
+    }
+  });
 }
 
 function onGpsBtnClick() {
@@ -967,19 +983,29 @@ function applyPosition(pos) {
   ST.lat = lat; ST.lon = lon; ST.gpsAccuracy = acc; ST.gpsOk = true;
 
   const cached = getCachedLocName(lat, lon);
-  ST.locName = cached || 'Locating...';
+  ST.locName = cached || 'Locating\u2026';
   setGps('ok', '📍 ' + ST.locName);
   if (moved) fetchWeather();
 
   if (!cached) {
     reverseGeocode(lat, lon).then(city => {
-      const displayName = city || (lat.toFixed(3) + '°N ' + lon.toFixed(3) + '°E');
+      const fallback    = lat.toFixed(2) + '\u00b0N ' + lon.toFixed(2) + '\u00b0E';
+      const displayName = city || fallback;
       ST.locName = displayName;
       setGps('ok', '📍 ' + displayName);
+      // Update api bar — no refresh needed
+      if (ST.apiOk && ST.lastFetch) {
+        setApi('ok', '\u2705 ' + displayName + ' \u00b7 '
+          + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+          + ' \u00b7 \u21bb 1min');
+      }
       if (city) {
         setCachedLocName(lat, lon, city);
         try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
         if (window.AppBridge && AppBridge.saveGps) try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
+      } else {
+        setCachedLocName(lat, lon, fallback);
+        try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: fallback })); } catch(e) {}
       }
     });
   } else {
