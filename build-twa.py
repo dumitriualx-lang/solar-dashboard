@@ -10,7 +10,7 @@ VERSION_NAME = "1.2.0"
 if os.path.exists(_vfile):
     with open(_vfile) as _vf: VERSION_CODE = int(_vf.read().strip()) + 1
 else:
-    VERSION_CODE = 9
+    VERSION_CODE = 6
 with open(_vfile, "w") as _vf: _vf.write(str(VERSION_CODE))
 print(f"Build: versionCode={VERSION_CODE}  versionName={VERSION_NAME}")
 
@@ -399,6 +399,47 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{
                 android.Manifest.permission.ACCESS_FINE_LOCATION,
                 android.Manifest.permission.ACCESS_COARSE_LOCATION}, 2);
+        }
+
+        // ── FusionSolar integration ────────────────────────────────────────
+        @JavascriptInterface
+        public void setFusionSolarCreds(String user, String pass, String host) {
+            // Stores credentials in SharedPreferences so the background service
+            // can authenticate to FusionSolar and fetch real inverter data.
+            // Credentials are stored only on-device, never transmitted elsewhere.
+            SharedPreferences.Editor ed = getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
+            ed.putString("fs_user", user);
+            ed.putString("fs_pass", pass);
+            ed.putString("fs_host", host != null ? host : "https://eu5.fusionsolar.huawei.com");
+            ed.putBoolean("fs_enabled", true);
+            ed.apply();
+            android.util.Log.d("AppBridge", "FusionSolar credentials saved for user: " + user);
+        }
+
+        @JavascriptInterface
+        public void clearFusionSolarCreds() {
+            SharedPreferences.Editor ed = getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
+            ed.remove("fs_user");
+            ed.remove("fs_pass");
+            ed.remove("fs_host");
+            ed.putBoolean("fs_enabled", false);
+            ed.apply();
+            android.util.Log.d("AppBridge", "FusionSolar credentials cleared");
+        }
+
+        @JavascriptInterface
+        public String getFusionSolarStatus() {
+            SharedPreferences prefs = getSharedPreferences("solar_prefs", MODE_PRIVATE);
+            boolean enabled = prefs.getBoolean("fs_enabled", false);
+            String user = prefs.getString("fs_user", "");
+            if (!enabled || user.isEmpty()) return "disconnected";
+            // Return last fetch timestamp if available
+            long lastFetch = prefs.getLong("fs_last_fetch_ms", 0);
+            if (lastFetch > 0) {
+                long ageMin = (System.currentTimeMillis() - lastFetch) / 60000;
+                return "connected:" + ageMin + "min";
+            }
+            return "connected:pending";
         }
     }
 
@@ -882,6 +923,41 @@ public class SolarForegroundService extends Service {
         if (lat == 0f || lon == 0f) {
             android.util.Log.w("SolarFGS", "No GPS available — skipping");
             return;
+        }
+
+        // ── Try FusionSolar first if credentials are configured ────────────
+        // If successful, real inverter data overrides all satellite estimates.
+        FusionSolarClient fsClient = new FusionSolarClient(this);
+        org.json.JSONObject fsData = fsClient.fetchLiveData();
+        if (fsData != null) {
+            double fsPvKw        = fsData.optDouble("pvKw", -1);
+            double fsBattSoc     = fsData.optDouble("battSoc", -1);
+            double fsBattCharge  = fsData.optDouble("battCharge", 0);
+            double fsBattDischarge = fsData.optDouble("battDischarge", 0);
+            double fsGridImport  = fsData.optDouble("gridImport", 0);
+            double fsGridExport  = fsData.optDouble("gridExport", 0);
+            double fsHouseLoad   = fsData.optDouble("houseLoad", 0);
+            double fsPvKwhToday  = fsData.optDouble("pvKwhToday", -1);
+
+            SharedPreferences.Editor fsEd = prefs.edit();
+            if (fsPvKw >= 0)    fsEd.putFloat("pv_kw",   (float) fsPvKw);
+            if (fsBattSoc >= 0) fsEd.putFloat("soc",     (float) (fsBattSoc / 100.0 * 90.0)); // to internal
+            if (fsPvKwhToday > 0) fsEd.putFloat("pv_kwh", (float) fsPvKwhToday);
+            fsEd.putFloat("grid_import_kwh", (float) (prefs.getFloat("grid_import_kwh", 0) + fsGridImport * (30f/60f)));
+            fsEd.putFloat("grid_export_kwh", (float) (prefs.getFloat("grid_export_kwh", 0) + fsGridExport * (30f/60f)));
+            fsEd.apply();
+
+            // Show FusionSolar data in notification
+            float dispSocFs = fsBattSoc >= 0 ? (float)(10 + fsBattSoc * 0.9) : prefs.getFloat("soc", 50f);
+            String battStateFs = fsBattCharge > 0.05 ? "⬆" : fsBattDischarge > 0.05 ? "⬇" : "·";
+            updateNotification(
+                String.format("☀️ %.2f kW  🔋 %.0f%%  ⚡ %.2f kW",
+                    fsPvKw >= 0 ? fsPvKw : prefs.getFloat("pv_kw", 0),
+                    dispSocFs,
+                    fsGridExport > 0 ? fsGridExport : -fsGridImport),
+                "Live · FusionSolar · " + new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(new java.util.Date()));
+            android.util.Log.d("SolarFGS", "FusionSolar data applied: pvKw=" + fsPvKw + " soc=" + fsBattSoc + "%");
+            return; // FusionSolar data is authoritative — skip Open-Meteo estimate
         }
 
         // Fetch weather — skip gracefully if offline, still evolve SOC
@@ -1556,6 +1632,267 @@ public class BootReceiver extends BroadcastReceiver {
 }
 """)
 
+
+write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "FusionSolarClient.java"), """package com.dumitriualxlang.solardasboard;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.util.Log;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import java.io.*;
+import java.net.*;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * FusionSolarClient — fetches real inverter data from the FusionSolar web frontend.
+ *
+ * Uses the same credentials as the FusionSolar mobile/web app (regular account,
+ * no special OpenAPI account required). Authenticates via the eu5 web endpoint
+ * and polls plant real-time data every 5 minutes.
+ *
+ * Data returned: pvKw, battSoc, battCharge, battDischarge, gridImport,
+ *                gridExport, houseLoad, pvKwhToday.
+ */
+public class FusionSolarClient {
+    private static final String TAG        = "FusionSolarClient";
+    private static final int    TIMEOUT_MS = 15000;
+
+    private final Context ctx;
+    private String sessionCookie = null;
+    private long   sessionExpiry = 0;
+
+    public FusionSolarClient(Context ctx) {
+        this.ctx = ctx;
+    }
+
+    // ── Public: fetch all live data, returns JSONObject or null on failure ──
+    public JSONObject fetchLiveData() {
+        SharedPreferences prefs = ctx.getSharedPreferences("solar_prefs", Context.MODE_PRIVATE);
+        if (!prefs.getBoolean("fs_enabled", false)) return null;
+
+        String user = prefs.getString("fs_user", "");
+        String pass = prefs.getString("fs_pass", "");
+        String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
+        if (user.isEmpty() || pass.isEmpty()) return null;
+
+        try {
+            // Authenticate (reuse session if still valid)
+            if (sessionCookie == null || System.currentTimeMillis() > sessionExpiry) {
+                if (!login(host, user, pass)) {
+                    Log.w(TAG, "Login failed");
+                    return null;
+                }
+            }
+
+            // Fetch plant overview
+            JSONObject overview = getPlantOverview(host);
+            if (overview == null) {
+                // Session may have expired — retry once
+                sessionCookie = null;
+                if (!login(host, user, pass)) return null;
+                overview = getPlantOverview(host);
+            }
+
+            if (overview != null) {
+                // Record successful fetch time
+                prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
+            }
+            return overview;
+
+        } catch (Exception e) {
+            Log.e(TAG, "fetchLiveData error: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // ── Login to FusionSolar web frontend ──────────────────────────────────
+    private boolean login(String host, String user, String pass) {
+        try {
+            // Step 1: Get login page to obtain JSESSIONID / initial cookie
+            URL initUrl = new URL(host + "/unisso/login.action");
+            HttpURLConnection initConn = openConn(initUrl);
+            initConn.setRequestMethod("GET");
+            initConn.connect();
+            String initCookie = getCookieFromResponse(initConn);
+            initConn.disconnect();
+
+            // Step 2: POST credentials
+            URL loginUrl = new URL(host + "/unisso/v2/validateUser.action?timeZone=1&service=%2Funisess%2Fv1%2Fauth%3Fservice%3D%252Fnetecowebext%252Fhome%252Findex.html");
+            HttpURLConnection conn = openConn(loginUrl);
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "application/json, text/plain, */*");
+            conn.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+            if (initCookie != null) conn.setRequestProperty("Cookie", initCookie);
+            conn.setDoOutput(true);
+
+            JSONObject body = new JSONObject();
+            body.put("username", user);
+            body.put("value", pass);
+            body.put("timeZone", 1);
+            byte[] bodyBytes = body.toString().getBytes("UTF-8");
+            conn.getOutputStream().write(bodyBytes);
+
+            int code = conn.getResponseCode();
+            String respCookie = getCookieFromResponse(conn);
+            conn.disconnect();
+
+            if (code == 200 && respCookie != null) {
+                sessionCookie = respCookie;
+                sessionExpiry = System.currentTimeMillis() + 25 * 60 * 1000; // 25 min
+                Log.d(TAG, "Login successful");
+                return true;
+            }
+
+            // Some regions use a redirect-based flow
+            if (code == 302 || code == 301) {
+                if (respCookie != null) sessionCookie = respCookie;
+                else if (initCookie != null) sessionCookie = initCookie;
+                sessionExpiry = System.currentTimeMillis() + 25 * 60 * 1000;
+                Log.d(TAG, "Login via redirect, session set");
+                return true;
+            }
+
+            Log.w(TAG, "Login HTTP " + code);
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Login error: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // ── Fetch plant real-time overview ────────────────────────────────────
+    private JSONObject getPlantOverview(String host) {
+        try {
+            // Get plant list first
+            URL plantListUrl = new URL(host + "/rest/pvms/web/station/v1/station/list");
+            HttpURLConnection conn = openConn(plantListUrl);
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Cookie", sessionCookie != null ? sessionCookie : "");
+            conn.setDoOutput(true);
+            conn.getOutputStream().write("{\"pageNo\":1,\"pageSize\":10}".getBytes("UTF-8"));
+
+            int code = conn.getResponseCode();
+            if (code != 200) { conn.disconnect(); return null; }
+
+            String resp = readResponse(conn);
+            conn.disconnect();
+
+            JSONObject listResp = new JSONObject(resp);
+            JSONObject data = listResp.optJSONObject("data");
+            if (data == null) return null;
+            JSONArray list = data.optJSONArray("list");
+            if (list == null || list.length() == 0) return null;
+
+            String stationCode = list.getJSONObject(0).optString("plantCode", "");
+            if (stationCode.isEmpty()) stationCode = list.getJSONObject(0).optString("stationCode", "");
+            if (stationCode.isEmpty()) return null;
+
+            // Get real-time data for the plant
+            URL rtUrl = new URL(host + "/rest/pvms/web/station/v1/overview/queryStationRealKpi");
+            HttpURLConnection rtConn = openConn(rtUrl);
+            rtConn.setRequestMethod("POST");
+            rtConn.setRequestProperty("Content-Type", "application/json");
+            rtConn.setRequestProperty("Cookie", sessionCookie != null ? sessionCookie : "");
+            rtConn.setDoOutput(true);
+            JSONObject rtBody = new JSONObject();
+            rtBody.put("stationCodes", stationCode);
+            rtConn.getOutputStream().write(rtBody.toString().getBytes("UTF-8"));
+
+            int rtCode = rtConn.getResponseCode();
+            if (rtCode == 401 || rtCode == 403) { rtConn.disconnect(); return null; } // session expired
+            String rtResp = readResponse(rtConn);
+            rtConn.disconnect();
+
+            return parseRealKpi(new JSONObject(rtResp));
+
+        } catch (Exception e) {
+            Log.e(TAG, "getPlantOverview error: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // ── Parse real-time KPI response into standardised JSONObject ─────────
+    private JSONObject parseRealKpi(JSONObject raw) throws Exception {
+        // FusionSolar returns data in various structures depending on account/region
+        JSONObject result = new JSONObject();
+        JSONObject dataMap = null;
+
+        // Try data.list[0]
+        JSONObject data = raw.optJSONObject("data");
+        if (data != null) {
+            JSONArray list = data.optJSONArray("list");
+            if (list != null && list.length() > 0) dataMap = list.getJSONObject(0).optJSONObject("dataItemMap");
+            if (dataMap == null) dataMap = data.optJSONObject("dataItemMap");
+        }
+        if (dataMap == null) dataMap = raw.optJSONObject("dataItemMap");
+        if (dataMap == null) {
+            Log.w(TAG, "Could not find dataItemMap in: " + raw.toString().substring(0, Math.min(200, raw.toString().length())));
+            return null;
+        }
+
+        // Extract values — field names vary by region/firmware but these are the common ones
+        result.put("pvKw",        dataMap.optDouble("radiation_intensity",  // W/m² sometimes
+                                  dataMap.optDouble("inverter_power",        // AC output kW
+                                  dataMap.optDouble("theory_power", 0))));
+        result.put("battSoc",     dataMap.optDouble("battery_soc", -1));
+        result.put("battCharge",  dataMap.optDouble("charge_power", 0));     // kW into battery
+        result.put("battDischarge",dataMap.optDouble("discharge_power", 0)); // kW from battery
+        result.put("gridImport",  dataMap.optDouble("bought_power", dataMap.optDouble("grid_consume_power", 0)));
+        result.put("gridExport",  dataMap.optDouble("ongrid_power",  dataMap.optDouble("grid_power", 0)));
+        result.put("houseLoad",   dataMap.optDouble("use_power",     0));
+        result.put("pvKwhToday",  dataMap.optDouble("day_power",     0));
+
+        // Use inverter_power as primary pvKw (AC output, most accurate)
+        double invPower = dataMap.optDouble("inverter_power", -1);
+        if (invPower >= 0) result.put("pvKw", invPower);
+
+        Log.d(TAG, "FusionSolar live: pvKw=" + result.optDouble("pvKw") +
+            " battSoc=" + result.optDouble("battSoc") +
+            " gridImport=" + result.optDouble("gridImport") +
+            " houseLoad=" + result.optDouble("houseLoad"));
+        return result;
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    private HttpURLConnection openConn(URL url) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) url.openConnection();
+        c.setConnectTimeout(TIMEOUT_MS);
+        c.setReadTimeout(TIMEOUT_MS);
+        c.setInstanceFollowRedirects(false);
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 SolarDashboard/1.0");
+        c.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
+        return c;
+    }
+
+    private String getCookieFromResponse(HttpURLConnection conn) {
+        StringBuilder cookies = new StringBuilder();
+        Map<String, java.util.List<String>> headers = conn.getHeaderFields();
+        java.util.List<String> setCookies = headers.get("Set-Cookie");
+        if (setCookies == null) return sessionCookie; // keep existing
+        for (String c : setCookies) {
+            String part = c.split(";")[0];
+            if (cookies.length() > 0) cookies.append("; ");
+            cookies.append(part);
+        }
+        return cookies.length() > 0 ? cookies.toString() : sessionCookie;
+    }
+
+    private String readResponse(HttpURLConnection conn) throws Exception {
+        InputStream is = conn.getResponseCode() < 400 ? conn.getInputStream() : conn.getErrorStream();
+        if (is == null) return "{}";
+        BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = br.readLine()) != null) sb.append(line);
+        br.close();
+        return sb.toString();
+    }
+}
+""")
 
 write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarWorker.java"), """package com.dumitriualxlang.solardasboard;
 
