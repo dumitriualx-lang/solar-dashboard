@@ -859,15 +859,18 @@ function getCachedLocName(lat, lon) {
   try {
     const c = JSON.parse(localStorage.getItem('locCache') || '{}');
     const v = c[_locCacheKey(lat, lon)];
-    if (v && Date.now() - v.ts < 7 * 86400000) return v.name; // 7-day TTL
+    // Reject expired or coordinate-string entries (they contain '°')
+    if (v && Date.now() - v.ts < 7 * 86400000 && v.name && !v.name.includes('\u00b0'))
+      return v.name;
   } catch(e) {}
   return null;
 }
 function setCachedLocName(lat, lon, name) {
+  // Never cache coordinate strings — only real place names
+  if (!name || name.includes('\u00b0')) return;
   try {
     const c = JSON.parse(localStorage.getItem('locCache') || '{}');
     c[_locCacheKey(lat, lon)] = { name, ts: Date.now() };
-    // Keep max 20 locations
     const keys = Object.keys(c);
     if (keys.length > 20) delete c[keys[0]];
     localStorage.setItem('locCache', JSON.stringify(c));
@@ -881,7 +884,7 @@ async function reverseGeocode(lat, lon) {
   if (cached) return cached;
 
   const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), 5000); // 5-second hard timeout
+  const tid  = setTimeout(() => ctrl.abort(), 3000); // 3-second hard timeout
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`;
     const r = await fetch(url, {
@@ -913,8 +916,14 @@ function applyGpsFromNative(lat, lon, name) {
 
   if (resolved) {
     ST.locName = resolved;
-    setGps('ok', '📍 ' + resolved);
+    setGps('ok', '\ud83d\udccd ' + resolved);
+    setCachedLocName(lat, lon, resolved); // keep cache fresh
     try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: resolved })); } catch(e) {}
+    if (ST.apiOk && ST.lastFetch) {
+      setApi('ok', '\u2705 ' + resolved + ' \u00b7 '
+        + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+        + ' \u00b7 \u21bb 1min');
+    }
     if (moved || !ST.apiOk) fetchWeather();
     return;
   }
@@ -925,28 +934,25 @@ function applyGpsFromNative(lat, lon, name) {
   if (moved || !ST.apiOk) fetchWeather();
 
   reverseGeocode(lat, lon).then(city => {
-    const fallback   = lat.toFixed(2) + '\u00b0N ' + lon.toFixed(2) + '\u00b0E';
+    const fallback    = lat.toFixed(2) + '\u00b0N ' + lon.toFixed(2) + '\u00b0E';
     const displayName = city || fallback;
     ST.locName = displayName;
-    setGps('ok', '📍 ' + displayName);
+    setGps('ok', '\ud83d\udccd ' + displayName);
 
-    // Update api bar immediately — no refresh needed
+    // Update api bar regardless of whether weather has loaded yet
     if (ST.apiOk && ST.lastFetch) {
       setApi('ok', '\u2705 ' + displayName + ' \u00b7 '
         + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
         + ' \u00b7 \u21bb 1min');
     }
 
-    // Persist resolved name so next resume uses it instantly
     if (city) {
+      // Only cache and persist real city names — never coordinate strings
       setCachedLocName(lat, lon, city);
       try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
       if (window.AppBridge && AppBridge.saveGps) try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
-    } else {
-      // Geocoding failed — cache the coordinate fallback so we stop retrying every resume
-      setCachedLocName(lat, lon, fallback);
-      try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: fallback })); } catch(e) {}
     }
+    // On failure: do NOT cache — let next resume retry geocoding
   });
 }
 
@@ -992,8 +998,7 @@ function applyPosition(pos) {
       const fallback    = lat.toFixed(2) + '\u00b0N ' + lon.toFixed(2) + '\u00b0E';
       const displayName = city || fallback;
       ST.locName = displayName;
-      setGps('ok', '📍 ' + displayName);
-      // Update api bar — no refresh needed
+      setGps('ok', '\ud83d\udccd ' + displayName);
       if (ST.apiOk && ST.lastFetch) {
         setApi('ok', '\u2705 ' + displayName + ' \u00b7 '
           + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
@@ -1003,9 +1008,6 @@ function applyPosition(pos) {
         setCachedLocName(lat, lon, city);
         try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
         if (window.AppBridge && AppBridge.saveGps) try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
-      } else {
-        setCachedLocName(lat, lon, fallback);
-        try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: fallback })); } catch(e) {}
       }
     });
   } else {
@@ -1966,31 +1968,22 @@ function saveCalibHistory(h) {
 
 function getLearnedFactor(ghi) {
   const h = loadCalibHistory();
-  if (!h.length) return 1.0;
 
-  // ── Migrate legacy readings (stored as pvReal/pvApp = relative) ──────
-  // New readings store pvKwBase and use factor = pvReal/pvKwBase (absolute).
-  // Old readings have no pvKwBase. Approximate: absolute ≈ relative²
-  // (valid when all readings share a similar factor, which they do in practice).
-  let migrated = false;
-  h.forEach(pt => {
-    if (!pt.pvKwBase && pt.pvApp && pt.pvReal && !pt.migrated) {
-      const rel = pt.pvReal / pt.pvApp;
-      pt.factor    = +(rel * rel).toFixed(4);  // approximate absolute factor
-      pt.pvKwBase  = +(pt.pvApp / rel).toFixed(3);
-      pt.migrated  = true;
-      migrated     = true;
-    }
-  });
-  if (migrated) saveCalibHistory(h);
+  // Only use new-format readings that have pvKwBase stored.
+  // Old readings (no pvKwBase) used pvReal/pvApp which is a relative factor —
+  // those values are corrupted and produce wrong corrections. Ignore them.
+  const valid = h.filter(pt => pt.pvKwBase > 0 && pt.pvReal > 0);
+  if (!valid.length) return 1.0;
 
   const now = Date.now();
   let wSum = 0, fSum = 0;
-  h.forEach(pt => {
-    const ghiDist = Math.abs((pt.ghi || 0) - ghi) / Math.max(ghi, 50);
-    const ageDays = (now - (pt.ts || 0)) / 86400000;
-    const w       = Math.exp(-ghiDist * 1.5) * Math.exp(-ageDays * 0.07);
-    wSum += w; fSum += pt.factor * w;
+  valid.forEach(pt => {
+    // Absolute factor for this reading: pvReal / pvKwBase
+    const absFactor = pt.pvReal / pt.pvKwBase;
+    const ghiDist   = Math.abs((pt.ghi || 0) - ghi) / Math.max(ghi, 50);
+    const ageDays   = (now - (pt.ts || 0)) / 86400000;
+    const w         = Math.exp(-ghiDist * 1.5) * Math.exp(-ageDays * 0.07);
+    wSum += w; fSum += absFactor * w;
   });
   const factor = wSum > 0 ? fSum / wSum : 1.0;
   return +Math.max(0.25, Math.min(4.0, factor)).toFixed(3);
