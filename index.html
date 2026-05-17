@@ -1234,17 +1234,7 @@ function applySatelliteRadiation(sat) {
   // Self-calibration was removed: it introduced compounding errors when
   // background service died (stale pvApp values corrupted the learned factor).
   ST.pvKwBase = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac)).toFixed(3);
-  let pvKw    = ST.pvKwBase;
-
-  // ── Rain cap: Open-Meteo satellite GHI is unreliable during precipitation.
-  // WMO codes: 51-67 drizzle/rain, 71-77 snow, 80-82 showers, 95-99 thunderstorm.
-  // Satellite data has 15-30 min lag and regularly overestimates GHI in active rain.
-  const wcode = ST.wxCode || 0;
-  if      (wcode >= 95) pvKw = Math.min(pvKw, acMax * 0.05); // thunderstorm → ≤5%
-  else if (wcode >= 61) pvKw = Math.min(pvKw, acMax * 0.10); // rain/showers → ≤10%
-  else if (wcode >= 51) pvKw = Math.min(pvKw, acMax * 0.20); // drizzle → ≤20%
-  else if (wcode >= 45) pvKw = Math.min(pvKw, acMax * 0.25); // fog → ≤25%
-  pvKw = +pvKw.toFixed(3);
+  let pvKw    = +ST.pvKwBase.toFixed(3);
 
   ST.pvKw      = pvKw;
   ST._satLastMs = Date.now();
