@@ -1926,11 +1926,19 @@ public class FusionSolarClient {
     // ── Parse a JSON field from a string (HTML or JSON body) ──────────────
     private String parseJson(String src, String key) {
         if (src == null || src.isEmpty()) return null;
-        // Match "key":"value" or "key": "value"
-        String pattern = "\"" + key + "\"\\s*:\\s*\"([^\"]+)\"";
-        java.util.regex.Matcher m =
-            java.util.regex.Pattern.compile(pattern).matcher(src);
-        return m.find() ? m.group(1) : null;
+        // Use char code 34 for double-quote to avoid Python triple-quote escaping issues.
+        // Finds: "key":"value" or "key": "value" patterns in JSON/HTML
+        String dq = String.valueOf((char) 34);
+        int ki = src.indexOf(dq + key + dq);
+        if (ki < 0) return null;
+        int ci = src.indexOf(':', ki + key.length() + 2);
+        if (ci < 0) return null;
+        int q1 = src.indexOf((char) 34, ci + 1);
+        if (q1 < 0) return null;
+        int q2 = src.indexOf((char) 34, q1 + 1);
+        if (q2 < 0) return null;
+        String val = src.substring(q1 + 1, q2);
+        return val.isEmpty() ? null : val;
     }
 
     // ── Add session headers to a connection ────────────────────────────────
