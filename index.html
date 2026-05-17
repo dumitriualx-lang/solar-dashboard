@@ -340,7 +340,7 @@ body::before{
 
   <!-- SYSTEM CONFIGURATION -->
   <div class="card">
-    <div class="ct" style="margin-bottom:0;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px" onclick="toggleSection('cfgBody','cfgChevron')">
+    <div class="ct" style="margin-bottom:0;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px" onclick="toggleSection('cfgBody','cfgChevron');onPanelBrandChange()">
       <span>⚙️ System configuration</span>
       <span class="pill p-ok" id="cfgSavedPill" style="display:none">✓ Saved</span>
       <span id="cfgChevron" style="font-size:14px;transition:transform .25s;color:var(--t2)">▼</span>
@@ -3174,6 +3174,8 @@ function restoreBrandSelects() {
     if (pb) document.getElementById('panelBrandHint').textContent = pb.hint;
   }
   updateHdrSysName();
+  // Show/hide FusionSolar section based on restored brand — no onchange fires on programmatic set
+  onPanelBrandChange();
 }
 
 // ═══════════════════════════════════════════════════════════════
