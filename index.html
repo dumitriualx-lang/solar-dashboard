@@ -783,6 +783,15 @@ function isSysConfigured() {
   return !!(cfg && cfg.panelKw && cfg.battGross);
 }
 
+// ── Safe storage — prevents one corrupt key from crashing the whole app ──────
+function safeJson(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch(e) { try { localStorage.removeItem(key); } catch(_) {} return fallback; }
+}
+function safeSet(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch(_) {}
+}
+
 const SYS = {
   panelKw:   savedCfg.panelKw   || null,     // kW peak — must be set by user
   tiltDeg:      savedCfg.tiltDeg      || 30,  // panel tilt angle
@@ -855,7 +864,7 @@ let ST = {
 // Restore today's grid kWh from localStorage (survives app reopen within same day)
 (function() {
   try {
-    const saved = JSON.parse(localStorage.getItem('solarGridKwh') || 'null');
+    const saved = safeJson('solarGridKwh', null);
     const today = new Date().toDateString();
     if (saved && saved.date === today) {
       ST.gridExportKwh = saved.exp || 0;
@@ -866,7 +875,7 @@ let ST = {
 })();
 
 let FORECAST = [];
-const rlog = JSON.parse(localStorage.getItem('solarLog4') || '[]');
+const rlog = safeJson('solarLog4', []);
 let dchart, lastFlowT = Date.now();
 let geoWatchId = null;
 
@@ -912,7 +921,7 @@ function _locCacheKey(lat, lon) {
 }
 function getCachedLocName(lat, lon) {
   try {
-    const c = JSON.parse(localStorage.getItem('locCache') || '{}');
+    const c = safeJson('locCache', {});
     const v = c[_locCacheKey(lat, lon)];
     // Reject expired or coordinate-string entries (they contain '°')
     if (v && Date.now() - v.ts < 7 * 86400000 && v.name && !v.name.includes('\u00b0'))
@@ -924,7 +933,7 @@ function setCachedLocName(lat, lon, name) {
   // Never cache coordinate strings — only real place names
   if (!name || name.includes('\u00b0')) return;
   try {
-    const c = JSON.parse(localStorage.getItem('locCache') || '{}');
+    const c = safeJson('locCache', {});
     c[_locCacheKey(lat, lon)] = { name, ts: Date.now() };
     const keys = Object.keys(c);
     if (keys.length > 20) delete c[keys[0]];
@@ -1029,7 +1038,7 @@ function onRefreshClick() {
   // Clear location name cache for current coords so we re-geocode after move
   if (ST.lat && ST.lon) {
     try {
-      const c = JSON.parse(localStorage.getItem('locCache') || '{}');
+      const c = safeJson('locCache', {});
       const key = (Math.round(ST.lat*100)/100)+','+(Math.round(ST.lon*100)/100);
       delete c[key];
       localStorage.setItem('locCache', JSON.stringify(c));
@@ -2113,8 +2122,7 @@ function connectFusionSolar() {
       setMsg('Credentials saved locally. Update app to enable background sync.', 'var(--am)');
     }
   } else {
-    // AppBridge method not yet in current build — save locally, will be used on next build
-    setMsg('✅ Saved — will activate after next app update.', 'var(--g)');
+    setMsg('⚠️ AppBridge not available — credentials not saved. Use the installed app.', 'var(--am)');
   }
 
   // Clear password field for security
@@ -2245,7 +2253,7 @@ function updateCalibDisplay() {
   SYS.pvCalibFactor = factor;
 
   let socPts = 0;
-  try { socPts = JSON.parse(localStorage.getItem('socCorrHistory') || '[]').length; } catch(e) {}
+  try { socPts = safeJson('socCorrHistory', []).length; } catch(e) {}
   const totalPts = n + socPts;
 
   const labelEl  = document.getElementById('cfgCalibLabel');
@@ -2292,7 +2300,7 @@ function applySocEdit() {
   const isPvOff       = ST.pvKw < 0.1;
 
   try {
-    const socH = JSON.parse(localStorage.getItem('socCorrHistory') || '[]');
+    const socH = safeJson('socCorrHistory', []);
     const entry = {
       ts: Date.now(), hour: hourNow,
       appSoc: +appDisplaySoc.toFixed(1), realSoc: displayPct,
@@ -3883,7 +3891,7 @@ const _REMINDER_LS = 'solarReminderTimers';
 const applianceReminders = new Map(
   (() => {
     try {
-      const obj = JSON.parse(localStorage.getItem(_REMINDER_LS) || '{}');
+      const obj = safeJson(_REMINDER_LS, {});
       // Discard stale entries (already overdue by > 5 min — would confuse user)
       const now = Date.now();
       return Object.entries(obj).filter(([,t]) => t > now - 300000);
@@ -4167,7 +4175,7 @@ initNotifBar();
   }
   if (!lat || !lon) {
     try {
-      const saved = JSON.parse(localStorage.getItem('solarGps') || 'null');
+      const saved = safeJson('solarGps', null);
       if (saved && saved.lat && saved.lon) {
         lat = saved.lat; lon = saved.lon; name = saved.name || '';
       }
@@ -4215,7 +4223,7 @@ initNotifBar();
 setInterval(() => {
   if (!ST.lat || !ST.lon) {
     try {
-      const saved = JSON.parse(localStorage.getItem('solarGps') || 'null');
+      const saved = safeJson('solarGps', null);
       if (saved && saved.lat && saved.lon) {
         ST.lat = saved.lat; ST.lon = saved.lon;
         ST.locName = (saved.name && !saved.name.includes('°')) ? saved.name : 'Locating...';
