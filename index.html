@@ -519,6 +519,11 @@ body::before{
             border-radius:var(--rs);padding:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
             Connect
           </button>
+          <button onclick="testFusionSolar()"
+            style="flex:1;background:rgba(0,200,130,.1);color:var(--g);border:1px solid rgba(0,200,130,.3);
+            border-radius:var(--rs);padding:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+            Test
+          </button>
           <button onclick="disconnectFusionSolar()"
             style="background:none;color:var(--t3);border:1px solid var(--br2);
             border-radius:var(--rs);padding:9px 12px;font-size:12px;cursor:pointer;font-family:inherit">
@@ -527,6 +532,10 @@ body::before{
         </div>
       </div>
       <div id="fsMsg" style="font-size:11px;min-height:14px;margin-top:6px"></div>
+      <!-- Diagnostic log — shows exact login steps and API responses on screen -->
+      <div id="fsLog" style="display:none;margin-top:10px;padding:10px;background:rgba(0,0,0,.4);
+        border-radius:8px;border:1px solid rgba(0,180,255,.15);font-family:monospace;
+        font-size:10px;color:var(--t2);max-height:220px;overflow-y:auto;line-height:1.6"></div>
       <div style="font-size:10px;color:var(--t3);margin-top:8px;line-height:1.4">
         Credentials are stored only on this device. Connection uses the eu5.fusionsolar.huawei.com
         endpoint — the same server your browser uses. Data refreshes every 5 minutes.
@@ -889,6 +898,23 @@ const _notifReady      = () => Date.now() - _appStartMs >= _NOTIF_GRACE_MS;
 // ═══════════════════════════════════════════════════════════════
 // Called by native onResume to restore GPS from SharedPreferences
 // This fires before JS may have read localStorage, ensuring coords are set
+// Called by Java MainActivity every 60s when FusionSolar data is fresh.
+// Overrides NWP/satellite estimates with real inverter readings.
+function applyFsLive(pvKw, battSocPct, gridImportKw, gridExportKw, houseLoadKw, pvKwhToday) {
+  if (pvKw >= 0)        ST.pvKw           = +pvKw.toFixed(3);
+  // battSocPct is raw FusionSolar 0–100% — convert to internal 0–100 scale
+  if (battSocPct >= 0)  ST.battSoc        = +Math.max(0, Math.min(100, (battSocPct - 10) / 90 * 100)).toFixed(1);
+  if (gridImportKw >= 0) ST._fsGridImport = +gridImportKw.toFixed(3);
+  if (gridExportKw >= 0) ST._fsGridExport = +gridExportKw.toFixed(3);
+  if (houseLoadKw >= 0)  ST._fsHouseLoad  = +houseLoadKw.toFixed(3);
+  if (pvKwhToday > 0)    ST.pvKwhToday    = +pvKwhToday.toFixed(2);
+  ST._fsLive   = true;
+  ST._fsLastMs = Date.now();
+  setApi('ok', '✅ ' + (ST.locName||'') + ' · FusionSolar live · '
+    + new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
+  renderAll();
+}
+
 function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) {
   if (panelKw > 0)  { SYS.panelKw   = panelKw; }
   if (battGross > 0){ SYS.battGross  = battGross; SYS.battRes = battRes || 0.10; }
@@ -2095,6 +2121,109 @@ function refreshFsStatus() {
       statusEl.style.color = 'var(--t2)';
       statusEl.style.borderColor = 'var(--br2)';
     }
+  }
+}
+
+async function testFusionSolar() {
+  const log  = document.getElementById('fsLog');
+  const msg  = document.getElementById('fsMsg');
+  if (!log) return;
+  log.style.display = 'block';
+  log.innerHTML = '';
+  const FS_HOST = 'https://eu5.fusionsolar.huawei.com';
+
+  const L = (text, colour) => {
+    const d = document.createElement('div');
+    d.style.color = colour || 'var(--t2)';
+    d.textContent = new Date().toLocaleTimeString() + '  ' + text;
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+  };
+
+  // Read saved credentials
+  let user = '', host = FS_HOST;
+  try {
+    const saved = safeJson('fsCredentials', null);
+    if (saved) { user = saved.user || ''; host = saved.host || FS_HOST; }
+  } catch(e) {}
+  if (!user) { L('✗ No credentials saved — enter username and password first', '#e05a28'); return; }
+  if (msg) { msg.textContent = 'Testing…'; msg.style.color = 'var(--bl)'; }
+  L('▶ Starting connection test to ' + host);
+  L('▶ Account: ' + user);
+
+  try {
+    // Step 1: GET login page — fetch RSA key
+    L('① GET /unisso/login.action …');
+    const initResp = await fetch(host + '/unisso/login.action', {
+      method: 'GET', credentials: 'include',
+      headers: { 'Accept': 'text/html,*/*', 'User-Agent': 'SolarDashboard/1.0' }
+    });
+    L('   HTTP ' + initResp.status + ' ' + initResp.statusText,
+      initResp.ok ? 'var(--g)' : '#e05a28');
+    const html = await initResp.text();
+
+    // Parse RSA key
+    const modMatch = html.match(/"modulus"\s*:\s*"([^"]+)"/);
+    const expMatch = html.match(/"exponent"\s*:\s*"([^"]+)"/);
+    if (modMatch && expMatch) {
+      L('   RSA key found: modulus=' + modMatch[1].slice(0,16) + '…', 'var(--g)');
+    } else {
+      L('   ⚠ RSA key not found in HTML — will try /unisso/pubkey', 'var(--am)');
+    }
+
+    // Step 2: Check if credentials include password — we can only test with AppBridge
+    if (window.AppBridge && typeof AppBridge.getFusionSolarStatus === 'function') {
+      L('② AppBridge available — triggering native login test…', 'var(--g)');
+      try {
+        const status = AppBridge.getFusionSolarStatus();
+        L('   AppBridge status: ' + status,
+          status.startsWith('connected') ? 'var(--g)' : 'var(--am)');
+        if (status.startsWith('connected')) {
+          const mins = status.split(':')[1];
+          L('   Last successful fetch: ' + mins + ' ago', 'var(--g)');
+          if (msg) { msg.textContent = '✅ FusionSolar connected and fetching data'; msg.style.color = 'var(--g)'; }
+        } else {
+          L('   Status: ' + status + ' — new APK with RSA login needed', 'var(--am)');
+          if (msg) { msg.textContent = '⚠ Build new APK to enable live data'; msg.style.color = 'var(--am)'; }
+        }
+      } catch(e) { L('   AppBridge error: ' + e.message, '#e05a28'); }
+    } else {
+      L('② AppBridge not available (browser mode)', 'var(--am)');
+    }
+
+    // Step 3: Test if Huawei server is reachable
+    L('③ Testing connectivity to FusionSolar server…');
+    try {
+      const ping = await fetch(host + '/unisso/login.action', { method: 'HEAD', mode: 'no-cors' });
+      L('   Server reachable ✓', 'var(--g)');
+    } catch(e) {
+      L('   ✗ Server unreachable: ' + e.message, '#e05a28');
+    }
+
+    // Step 4: Check what RSA key the server provides
+    L('④ Checking /unisso/pubkey endpoint…');
+    try {
+      const pk = await fetch(host + '/unisso/pubkey', {
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      L('   HTTP ' + pk.status, pk.ok ? 'var(--g)' : 'var(--am)');
+      if (pk.ok) {
+        const pkJson = await pk.text();
+        L('   Response: ' + pkJson.slice(0, 120), 'var(--g)');
+        const hasMod = pkJson.includes('modulus');
+        L('   Contains RSA modulus: ' + (hasMod ? 'YES ✓' : 'NO ✗'),
+          hasMod ? 'var(--g)' : '#e05a28');
+      }
+    } catch(e) {
+      L('   pubkey fetch error: ' + e.message, '#e05a28');
+    }
+
+    L('─── Test complete. Share this log if issues persist. ───', 'var(--t3)');
+    if (msg) setTimeout(() => { if(msg) msg.textContent = ''; }, 4000);
+
+  } catch(e) {
+    L('✗ Unexpected error: ' + e.message, '#e05a28');
+    if (msg) { msg.textContent = '✗ Test failed — see log'; msg.style.color = '#e05a28'; }
   }
 }
 
