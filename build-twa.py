@@ -403,30 +403,81 @@ public class MainActivity extends Activity {
         // ── FusionSolar integration ────────────────────────────────────────
         @JavascriptInterface
         public String testFusionSolarConnection() {
+            StringBuilder log = new StringBuilder();
             try {
                 android.content.SharedPreferences prefs =
                     getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE);
                 if (!prefs.getBoolean("fs_enabled", false))
-                    return "FAIL: fs_enabled=false — credentials not saved";
+                    return "FAIL: fs_enabled=false";
                 String user = prefs.getString("fs_user", "");
                 String pass = prefs.getString("fs_pass", "");
                 String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
                 if (user.isEmpty()) return "FAIL: no username saved";
                 if (pass.isEmpty()) return "FAIL: no password saved";
+                log.append("user=").append(user).append("\n");
 
-                FusionSolarClient client = new FusionSolarClient(getApplicationContext());
-                org.json.JSONObject result = client.fetchLiveData();
+                // Step 1: GET login page
+                try {
+                    java.net.HttpURLConnection c =
+                        (java.net.HttpURLConnection) new java.net.URL(host + "/unisso/login.action").openConnection();
+                    c.setConnectTimeout(15000); c.setReadTimeout(15000);
+                    c.setInstanceFollowRedirects(false);
+                    c.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; SolarDashboard/1.0)");
+                    c.setRequestProperty("Accept-Encoding", "identity");
+                    int code = c.getResponseCode();
+                    log.append("GET login.action → HTTP ").append(code).append("\n");
 
-                if (result != null) {
-                    double pvKw = result.optDouble("pvKw", -1);
-                    double soc  = result.optDouble("battSoc", -1);
-                    prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
-                    return "OK: pvKw=" + pvKw + " battSoc=" + soc + "%";
-                } else {
-                    return "FAIL: login or data fetch returned null — check credentials or CAPTCHA";
+                    java.io.InputStream is = code < 400 ? c.getInputStream() : c.getErrorStream();
+                    java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is, "UTF-8"));
+                    StringBuilder html = new StringBuilder(); String ln;
+                    while ((ln = br.readLine()) != null) html.append(ln);
+                    br.close(); c.disconnect();
+
+                    // Look for RSA key in multiple formats
+                    String htmlStr = html.toString();
+                    boolean hasMod = htmlStr.contains("modulus");
+                    boolean hasExp = htmlStr.contains("exponent");
+                    log.append("HTML contains 'modulus': ").append(hasMod).append("\n");
+                    log.append("HTML contains 'exponent': ").append(hasExp).append("\n");
+
+                    // Show context around modulus if found
+                    if (hasMod) {
+                        int mi = htmlStr.indexOf("modulus");
+                        int start = Math.max(0, mi - 20);
+                        int end   = Math.min(htmlStr.length(), mi + 60);
+                        log.append("Context: ").append(htmlStr.substring(start, end)).append("\n");
+                    } else {
+                        // Show first 300 chars of HTML to understand structure
+                        log.append("HTML preview: ").append(htmlStr.substring(0, Math.min(300, htmlStr.length()))).append("\n");
+                    }
+                } catch (Exception e) {
+                    log.append("GET login.action FAILED: ").append(e.getMessage()).append("\n");
                 }
+
+                // Step 2: Try pubkey endpoint
+                try {
+                    java.net.HttpURLConnection pk =
+                        (java.net.HttpURLConnection) new java.net.URL(host + "/unisso/pubkey").openConnection();
+                    pk.setConnectTimeout(10000); pk.setReadTimeout(10000);
+                    pk.setRequestProperty("Accept-Encoding", "identity");
+                    int pkCode = pk.getResponseCode();
+                    log.append("GET pubkey → HTTP ").append(pkCode).append("\n");
+                    if (pkCode == 200) {
+                        java.io.BufferedReader br2 = new java.io.BufferedReader(new java.io.InputStreamReader(pk.getInputStream(), "UTF-8"));
+                        StringBuilder pkBody = new StringBuilder(); String l2;
+                        while ((l2 = br2.readLine()) != null) pkBody.append(l2);
+                        br2.close();
+                        String pkStr = pkBody.toString();
+                        log.append("pubkey body: ").append(pkStr.substring(0, Math.min(200, pkStr.length()))).append("\n");
+                    }
+                    pk.disconnect();
+                } catch (Exception e) {
+                    log.append("GET pubkey FAILED: ").append(e.getMessage()).append("\n");
+                }
+
+                return log.toString();
             } catch (Exception e) {
-                return "ERROR: " + e.getMessage();
+                return log.append("ERROR: ").append(e.getMessage()).toString();
             }
         }
 
