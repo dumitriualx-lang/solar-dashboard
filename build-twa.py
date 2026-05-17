@@ -10,7 +10,7 @@ VERSION_NAME = "1.2.0"
 if os.path.exists(_vfile):
     with open(_vfile) as _vf: VERSION_CODE = int(_vf.read().strip()) + 1
 else:
-    VERSION_CODE = 6
+    VERSION_CODE = 10  # fallback — must be above current Play Store version (9)
 with open(_vfile, "w") as _vf: _vf.write(str(VERSION_CODE))
 print(f"Build: versionCode={VERSION_CODE}  versionName={VERSION_NAME}")
 
@@ -604,22 +604,46 @@ public class MainActivity extends Activity {
         double gpsLat = 0, gpsLon = 0;
         String gpsName = "";
         try {
-            // Try Android LocationManager first (most current, no dialog)
             android.location.LocationManager lm =
                 (android.location.LocationManager) getSystemService(android.content.Context.LOCATION_SERVICE);
             android.location.Location loc = null;
             if (lm != null && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
                     == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+
+                // Step 1: Use last known immediately for fast UI response
                 loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
                 if (loc == null)
                     loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
                 if (loc == null)
                     loc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
+
+                // Step 2: Also request a FRESH fix in parallel — fires async when ready
+                // Uses NETWORK provider (fast, battery-friendly) then upgrades to GPS if needed
+                try {
+                    android.location.LocationListener freshListener = location -> {
+                        double fLat = location.getLatitude();
+                        double fLon = location.getLongitude();
+                        prefs.edit()
+                            .putFloat("gps_lat", (float) fLat)
+                            .putFloat("gps_lon", (float) fLon)
+                            .apply();
+                        mainHandler.post(() -> webView.evaluateJavascript(
+                            "if(typeof applyGpsFromNative==='function')" +
+                            "applyGpsFromNative(" + fLat + "," + fLon + ",'');", null));
+                    };
+                    if (lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                        lm.requestSingleUpdate(android.location.LocationManager.NETWORK_PROVIDER,
+                            freshListener, android.os.Looper.getMainLooper());
+                    }
+                    if (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                        lm.requestSingleUpdate(android.location.LocationManager.GPS_PROVIDER,
+                            freshListener, android.os.Looper.getMainLooper());
+                    }
+                } catch (Exception ignored) {}
             }
             if (loc != null) {
                 gpsLat = loc.getLatitude();
                 gpsLon = loc.getLongitude();
-                // Persist for next time
                 prefs.edit().putFloat("gps_lat", (float)gpsLat)
                             .putFloat("gps_lon", (float)gpsLon).apply();
             }
@@ -631,19 +655,20 @@ public class MainActivity extends Activity {
             gpsLon  = prefs.getFloat("gps_lon", 0f);
             gpsName = prefs.getString("gps_name", "");
         } else {
-            // Fresh GPS fix — reuse cached city name if still in same location
-            float storedLat  = prefs.getFloat("gps_lat", 0f);
-            float storedLon  = prefs.getFloat("gps_lon", 0f);
+            // Fresh GPS fix — reuse cached city name only if within 1km
+            float storedLat   = prefs.getFloat("gps_lat", 0f);
+            float storedLon   = prefs.getFloat("gps_lon", 0f);
             String storedName = prefs.getString("gps_name", "");
             if (!storedName.isEmpty()
                     && Math.abs(gpsLat - storedLat) < 0.01f
                     && Math.abs(gpsLon - storedLon) < 0.01f) {
                 gpsName = storedName;
             }
+            // If we moved more than 1km, clear the saved name so JS re-geocodes
         }
 
         if (gpsLat != 0 && gpsLon != 0) {
-            String safeN = gpsName.replace("'", "\'");
+            String safeN = gpsName.replace("'", "\\'");
             webView.evaluateJavascript(
                 "if(typeof applyGpsFromNative==='function')" +
                 "applyGpsFromNative(" + gpsLat + "," + gpsLon + ",'" + safeN + "');", null);
