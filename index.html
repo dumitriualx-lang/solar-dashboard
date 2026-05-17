@@ -4191,9 +4191,13 @@ initNotifBar();
       });
     }
     fetchWeather();
-    // Startup retry: if the first fetch fails silently (AppBridge flaky, GPS just acquired),
-    // retry once after 12 seconds before the 60s interval kicks in.
-    setTimeout(() => { if (!ST.apiOk && !ST._fetchInProgress && ST.lat && ST.lon) fetchWeather(); }, 12000);
+    // Aggressive retry ladder — network may not be ready on fresh install.
+    // 5s: catches immediate network-ready case
+    // 20s: catches slow GPS/network startup
+    // 45s: safety net before 60s interval kicks in
+    setTimeout(() => { if (!ST.apiOk && ST.lat && ST.lon) fetchWeather(); },  5000);
+    setTimeout(() => { if (!ST.apiOk && ST.lat && ST.lon) fetchWeather(); }, 20000);
+    setTimeout(() => { if (!ST.apiOk && ST.lat && ST.lon) fetchWeather(); }, 45000);
     setTimeout(checkForUpdate, 5000);
     setTimeout(() => {
       if (!('geolocation' in navigator)) return;
