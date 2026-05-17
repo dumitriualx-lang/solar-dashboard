@@ -678,6 +678,51 @@ public class MainActivity extends Activity {
                 "applyGpsFromNative(" + gpsLat + "," + gpsLon + ",'" + safeN + "');", null);
         }
 
+        // Start FusionSolar live data injection loop (if FS credentials are configured)
+        startFsInjectionLoop();
+    }
+
+    private android.os.Handler fsHandler;
+    private Runnable fsRunnable;
+
+    private void startFsInjectionLoop() {
+        // Cancel any existing loop before starting a new one
+        if (fsHandler != null && fsRunnable != null) fsHandler.removeCallbacks(fsRunnable);
+        fsHandler  = new android.os.Handler(android.os.Looper.getMainLooper());
+        fsRunnable = new Runnable() {
+            @Override public void run() {
+                injectFsDataIfFresh();
+                fsHandler.postDelayed(this, 60_000L);
+            }
+        };
+        fsHandler.postDelayed(fsRunnable, 8_000L); // first check after 8s
+    }
+
+    private void injectFsDataIfFresh() {
+        try {
+            // FS data is written by SolarForegroundService to "solar_prefs"
+            android.content.SharedPreferences sp =
+                getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE);
+            if (!sp.getBoolean("fs_enabled", false)) return;
+            long lastFetch = sp.getLong("fs_last_fetch_ms", 0L);
+            long ageMs     = System.currentTimeMillis() - lastFetch;
+            if (ageMs > 6 * 60 * 1000L) return; // data older than 6 min — don't inject
+            float pvKw      = sp.getFloat("fs_pv_kw",          -1f);
+            float battSoc   = sp.getFloat("fs_batt_soc",        -1f);
+            float gridImp   = sp.getFloat("fs_grid_import_kw",   0f);
+            float gridExp   = sp.getFloat("fs_grid_export_kw",   0f);
+            float houseLoad = sp.getFloat("fs_house_load_kw",    0f);
+            float pvKwhToday= sp.getFloat("pv_kwh",              0f);
+            if (pvKw < 0) return; // no FS data yet
+            webView.evaluateJavascript(
+                "if(typeof applyFsLive==='function')applyFsLive(" +
+                pvKw + "," + battSoc + "," + gridImp + "," +
+                gridExp + "," + houseLoad + "," + pvKwhToday + ");", null);
+        } catch (Exception e) {
+            android.util.Log.w("MainActivity", "injectFsDataIfFresh: " + e.getMessage());
+        }
+    }
+
         // ── SOC & CONFIG ─────────────────────────────────────────────────────
         // Always inject — not conditional on GPS success
         float soc       = prefs.getFloat("soc",        -1f);
@@ -971,9 +1016,14 @@ public class SolarForegroundService extends Service {
             double fsPvKwhToday  = fsData.optDouble("pvKwhToday", -1);
 
             SharedPreferences.Editor fsEd = prefs.edit();
-            if (fsPvKw >= 0)    fsEd.putFloat("pv_kw",   (float) fsPvKw);
-            if (fsBattSoc >= 0) fsEd.putFloat("soc",     (float) (fsBattSoc / 100.0 * 90.0)); // to internal
-            if (fsPvKwhToday > 0) fsEd.putFloat("pv_kwh", (float) fsPvKwhToday);
+            if (fsPvKw >= 0)      fsEd.putFloat("fs_pv_kw",          (float) fsPvKw);
+            if (fsBattSoc >= 0)   fsEd.putFloat("fs_batt_soc",       (float) fsBattSoc);
+            fsEd.putFloat("fs_grid_import_kw",  (float) fsGridImport);
+            fsEd.putFloat("fs_grid_export_kw",  (float) fsGridExport);
+            fsEd.putFloat("fs_house_load_kw",   (float) fsHouseLoad);
+            if (fsPvKw >= 0)      fsEd.putFloat("pv_kw",             (float) fsPvKw);
+            if (fsBattSoc >= 0)   fsEd.putFloat("soc",               (float) (fsBattSoc / 100.0 * 90.0));
+            if (fsPvKwhToday > 0) fsEd.putFloat("pv_kwh",            (float) fsPvKwhToday);
             fsEd.putFloat("grid_import_kwh", (float) (prefs.getFloat("grid_import_kwh", 0) + fsGridImport * (30f/60f)));
             fsEd.putFloat("grid_export_kwh", (float) (prefs.getFloat("grid_export_kwh", 0) + fsGridExport * (30f/60f)));
             fsEd.apply();
