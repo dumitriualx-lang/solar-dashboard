@@ -1158,12 +1158,14 @@ async function fetchSatelliteRadiation(lat, lon) {
   try {
     // timezone=UTC so returned timestamps are UTC — safe to compare against Date.now()
     // regardless of device timezone or panel location timezone.
+    const today = new Date().toISOString().slice(0, 10);
     const url = 'https://satellite-api.open-meteo.com/v1/archive?'
       + 'latitude=' + lat + '&longitude=' + lon
       + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation'
       + '&models=satellite_radiation_seamless'
       + '&temporal_resolution=native'
-      + '&timezone=UTC&forecast_days=1';
+      + '&start_date=' + today + '&end_date=' + today
+      + '&timezone=UTC';
     const r = await fetch(url, { headers: { 'User-Agent': 'SolarDashboard/1.0' } });
     if (!r.ok) return null;
     const d = await r.json();
@@ -1182,6 +1184,15 @@ async function fetchSatelliteRadiation(lat, lon) {
       }
     }
     if (lastIdx < 0) return null;
+
+    // Reject stale archive data. The satellite_radiation_seamless model blends
+    // EUMETSAT SARAH-3 (15-30 min lag, near-realtime) with ERA5 reanalysis
+    // (2-5 day lag). If the most recent available timestamp is more than 3 hours
+    // behind current time, the archive is serving old ERA5 data — don't let it
+    // overwrite the NWP forecast which is more current.
+    const dataAgeMs = nowMs - new Date(times[lastIdx] + 'Z').getTime();
+    if (dataAgeMs > 3 * 3600 * 1000) return null;
+
     return { swr: swr[lastIdx] || 0, direct: dir[lastIdx] || 0, diffuse: dif[lastIdx] || 0 };
   } catch(e) { return null; }
 }
