@@ -3,16 +3,15 @@ import os, io, base64
 from PIL import Image
 
 # ── Auto version management ───────────────────────────────────────────────────
-# VERSION_CODE increments automatically on every build — no manual editing needed.
-# Only update VERSION_NAME manually when releasing a notable update to users.
-_vfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.txt")
-VERSION_NAME = "1.2.0"
-if os.path.exists(_vfile):
-    with open(_vfile) as _vf: VERSION_CODE = int(_vf.read().strip()) + 1
-else:
-    VERSION_CODE = 11  # fallback — must be above current Play Store version (9)
-with open(_vfile, "w") as _vf: _vf.write(str(VERSION_CODE))
-print(f"Build: versionCode={VERSION_CODE}  versionName={VERSION_NAME}")
+# VERSION_CODE uses GITHUB_RUN_NUMBER (auto-incremented by GitHub Actions on
+# every run — no files, no manual editing, never resets).
+# BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
+# Every subsequent run produces 11, 12, 13 ... automatically.
+BASE_VERSION_CODE = 9   # offset: run N → version code (BASE + N)
+VERSION_NAME      = "1.2.0"
+_run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
+VERSION_CODE = BASE_VERSION_CODE + _run
+print(f"Build: versionCode={VERSION_CODE}  versionName={VERSION_NAME}  (run #{_run})")
 
 HOME = os.path.expanduser("~")
 ROOT = os.path.join(HOME, "twa")
@@ -1669,262 +1668,332 @@ write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "Fu
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Base64;
 import android.util.Log;
 import org.json.JSONObject;
 import org.json.JSONArray;
 import java.io.*;
+import java.math.BigInteger;
 import java.net.*;
-import java.util.HashMap;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.spec.RSAPublicKeySpec;
+import java.util.List;
 import java.util.Map;
+import javax.crypto.Cipher;
 
 /**
- * FusionSolarClient — fetches real inverter data from the FusionSolar web frontend.
+ * FusionSolarClient — authenticates with personal FusionSolar credentials
+ * and fetches live inverter data from the eu5 web frontend.
  *
- * Uses the same credentials as the FusionSolar mobile/web app (regular account,
- * no special OpenAPI account required). Authenticates via the eu5 web endpoint
- * and polls plant real-time data every 5 minutes.
+ * Login flow for personal accounts:
+ *   1. GET /unisso/login.action  — receive RSA public key in HTML
+ *   2. RSA-encrypt password with key (PKCS1v15, hex modulus/exponent)
+ *   3. POST /unisso/v2/validateUser.action — receive session cookie + roarand
+ *   4. All subsequent API calls include Cookie + roarand header
  *
- * Data returned: pvKw, battSoc, battCharge, battDischarge, gridImport,
- *                gridExport, houseLoad, pvKwhToday.
+ * No installer/OpenAPI account needed — same credentials as mobile app.
  */
 public class FusionSolarClient {
     private static final String TAG        = "FusionSolarClient";
     private static final int    TIMEOUT_MS = 15000;
+    private static final String PREFS_NAME = "solar_prefs";
+    private static final long   SESSION_MS = 25 * 60 * 1000L; // 25 min
 
     private final Context ctx;
     private String sessionCookie = null;
-    private long   sessionExpiry = 0;
+    private String roarand       = null;
+    private long   sessionExpiry = 0L;
 
-    public FusionSolarClient(Context ctx) {
-        this.ctx = ctx;
-    }
+    public FusionSolarClient(Context ctx) { this.ctx = ctx; }
 
-    // ── Public: fetch all live data, returns JSONObject or null on failure ──
+    // ── Public entry point ─────────────────────────────────────────────────
     public JSONObject fetchLiveData() {
-        SharedPreferences prefs = ctx.getSharedPreferences("solar_prefs", Context.MODE_PRIVATE);
+        SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         if (!prefs.getBoolean("fs_enabled", false)) return null;
-
         String user = prefs.getString("fs_user", "");
         String pass = prefs.getString("fs_pass", "");
         String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
         if (user.isEmpty() || pass.isEmpty()) return null;
 
         try {
-            // Authenticate (reuse session if still valid)
             if (sessionCookie == null || System.currentTimeMillis() > sessionExpiry) {
-                if (!login(host, user, pass)) {
-                    Log.w(TAG, "Login failed");
-                    return null;
-                }
-            }
-
-            // Fetch plant overview
-            JSONObject overview = getPlantOverview(host);
-            if (overview == null) {
-                // Session may have expired — retry once
-                sessionCookie = null;
                 if (!login(host, user, pass)) return null;
-                overview = getPlantOverview(host);
             }
-
-            if (overview != null) {
-                // Record successful fetch time
+            JSONObject data = getPlantOverview(host);
+            if (data == null) {
+                // Session expired mid-run — re-login once
+                sessionCookie = null; roarand = null;
+                if (!login(host, user, pass)) return null;
+                data = getPlantOverview(host);
+            }
+            if (data != null)
                 prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
-            }
-            return overview;
-
+            return data;
         } catch (Exception e) {
-            Log.e(TAG, "fetchLiveData error: " + e.getMessage());
+            Log.e(TAG, "fetchLiveData: " + e.getMessage());
             return null;
         }
     }
 
-    // ── Login to FusionSolar web frontend ──────────────────────────────────
+    // ── Step 1+2+3: Login with RSA-encrypted password ─────────────────────
     private boolean login(String host, String user, String pass) {
         try {
-            // Step 1: Get login page to obtain JSESSIONID / initial cookie
-            URL initUrl = new URL(host + "/unisso/login.action");
-            HttpURLConnection initConn = openConn(initUrl);
-            initConn.setRequestMethod("GET");
-            initConn.connect();
-            String initCookie = getCookieFromResponse(initConn);
-            initConn.disconnect();
+            // ── 1a. GET login page — obtain RSA key + initial cookie ──────
+            HttpURLConnection init = open(new URL(host + "/unisso/login.action"), "GET");
+            init.connect();
+            String initCookie = cookies(init);
+            String html       = body(init);
+            init.disconnect();
 
-            // Step 2: POST credentials
-            URL loginUrl = new URL(host + "/unisso/v2/validateUser.action?timeZone=1&service=%2Funisess%2Fv1%2Fauth%3Fservice%3D%252Fnetecowebext%252Fhome%252Findex.html");
-            HttpURLConnection conn = openConn(loginUrl);
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Accept", "application/json, text/plain, */*");
-            conn.setRequestProperty("X-Requested-With", "XMLHttpRequest");
-            if (initCookie != null) conn.setRequestProperty("Cookie", initCookie);
-            conn.setDoOutput(true);
-
-            JSONObject body = new JSONObject();
-            body.put("username", user);
-            body.put("value", pass);
-            body.put("timeZone", 1);
-            byte[] bodyBytes = body.toString().getBytes("UTF-8");
-            conn.getOutputStream().write(bodyBytes);
-
-            int code = conn.getResponseCode();
-            String respCookie = getCookieFromResponse(conn);
-            conn.disconnect();
-
-            if (code == 200 && respCookie != null) {
-                sessionCookie = respCookie;
-                sessionExpiry = System.currentTimeMillis() + 25 * 60 * 1000; // 25 min
-                Log.d(TAG, "Login successful");
-                return true;
+            // ── 1b. Parse RSA key from HTML ───────────────────────────────
+            // FusionSolar embeds: {"modulus":"<hex>","exponent":"<hex>"}
+            // or: {"encryptInfo":{"modulus":"<hex>","exponent":"<hex>"}}
+            String modulus  = parseJson(html, "modulus");
+            String exponent = parseJson(html, "exponent");
+            if (modulus == null || exponent == null) {
+                // Fallback: try /unisso/pubkey endpoint
+                HttpURLConnection pkConn = open(new URL(host + "/unisso/pubkey"), "GET");
+                if (initCookie != null) pkConn.setRequestProperty("Cookie", initCookie);
+                pkConn.connect();
+                String pkResp = body(pkConn);
+                pkConn.disconnect();
+                modulus  = parseJson(pkResp, "modulus");
+                exponent = parseJson(pkResp, "exponent");
             }
 
-            // Some regions use a redirect-based flow
-            if (code == 302 || code == 301) {
-                if (respCookie != null) sessionCookie = respCookie;
-                else if (initCookie != null) sessionCookie = initCookie;
-                sessionExpiry = System.currentTimeMillis() + 25 * 60 * 1000;
-                Log.d(TAG, "Login via redirect, session set");
+            // ── 1c. RSA-encrypt password ──────────────────────────────────
+            String encPass = (modulus != null && exponent != null)
+                ? rsaEncrypt(pass, modulus, exponent)
+                : pass; // last-resort: try plaintext (unlikely to work)
+            if (encPass == null) encPass = pass;
+
+            // ── 2. POST credentials ───────────────────────────────────────
+            String service = "/unisess/v1/auth?service=/netecowebext/home/index.html";
+            String query   = "?timeZone=1&service=" + URLEncoder.encode(service, "UTF-8");
+            HttpURLConnection login = open(
+                new URL(host + "/unisso/v2/validateUser.action" + query), "POST");
+            login.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
+            login.setRequestProperty("Accept", "application/json, text/plain, */*");
+            login.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+            if (initCookie != null) login.setRequestProperty("Cookie", initCookie);
+            login.setDoOutput(true);
+
+            JSONObject payload = new JSONObject();
+            payload.put("username",  user);
+            payload.put("value",     encPass);  // encrypted password
+            payload.put("timeZone",  1);
+            payload.put("service",   service);
+            login.getOutputStream().write(payload.toString().getBytes("UTF-8"));
+
+            int    code      = login.getResponseCode();
+            String respBody  = body(login);
+            String respCookie= cookies(login);
+            login.disconnect();
+
+            // ── 3. Extract session cookie and roarand ─────────────────────
+            if (respCookie != null && !respCookie.isEmpty()) sessionCookie = respCookie;
+            else if (initCookie != null)                     sessionCookie = initCookie;
+
+            // roarand is in the response body JSON
+            if (respBody != null && respBody.startsWith("{")) {
+                try {
+                    JSONObject resp = new JSONObject(respBody);
+                    // Try direct field first
+                    String rr = resp.optString("roarand", "");
+                    if (rr.isEmpty()) {
+                        JSONObject d = resp.optJSONObject("data");
+                        if (d != null) rr = d.optString("roarand", "");
+                    }
+                    if (!rr.isEmpty()) roarand = rr;
+                } catch (Exception ignored) {}
+            }
+            // Also check Set-Cookie for roarand
+            if (roarand == null) roarand = cookieValue(login, "roarand");
+
+            // Accept HTTP 200 or redirect (302/301) as success
+            if ((code == 200 || code == 302 || code == 301) && sessionCookie != null) {
+                sessionExpiry = System.currentTimeMillis() + SESSION_MS;
+                Log.d(TAG, "Login OK  code=" + code + "  roarand=" + (roarand != null ? "set" : "missing"));
                 return true;
             }
-
-            Log.w(TAG, "Login HTTP " + code);
+            Log.w(TAG, "Login failed HTTP " + code + " body=" +
+                (respBody != null ? respBody.substring(0, Math.min(200, respBody.length())) : "null"));
             return false;
         } catch (Exception e) {
-            Log.e(TAG, "Login error: " + e.getMessage());
+            Log.e(TAG, "login: " + e.getMessage());
             return false;
         }
     }
 
-    // ── Fetch plant real-time overview ────────────────────────────────────
+    // ── Step 4a: Get plant list, return first station code ─────────────────
+    private String getStationCode(String host) throws Exception {
+        HttpURLConnection c = open(new URL(host + "/rest/pvms/web/station/v1/station/list"), "POST");
+        addSession(c);
+        c.setDoOutput(true);
+        JSONObject b = new JSONObject();
+        b.put("pageNo", 1); b.put("pageSize", 10);
+        c.getOutputStream().write(b.toString().getBytes("UTF-8"));
+        int code = c.getResponseCode();
+        String resp = body(c); c.disconnect();
+        if (code == 401 || code == 403) { sessionCookie = null; return null; }
+        JSONObject obj  = new JSONObject(resp);
+        JSONObject data = obj.optJSONObject("data");
+        if (data == null) { Log.w(TAG, "stationList no data: " + resp.substring(0, Math.min(300, resp.length()))); return null; }
+        JSONArray list  = data.optJSONArray("list");
+        if (list == null || list.length() == 0) return null;
+        JSONObject st = list.getJSONObject(0);
+        // Field name varies by firmware
+        String sc = st.optString("plantCode", st.optString("stationCode", st.optString("dn", "")));
+        return sc.isEmpty() ? null : sc;
+    }
+
+    // ── Step 4b: Get real-time KPI for station ─────────────────────────────
     private JSONObject getPlantOverview(String host) {
         try {
-            // Get plant list first
-            URL plantListUrl = new URL(host + "/rest/pvms/web/station/v1/station/list");
-            HttpURLConnection conn = openConn(plantListUrl);
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Cookie", sessionCookie != null ? sessionCookie : "");
-            conn.setDoOutput(true);
-            JSONObject plantListBody = new JSONObject();
-            plantListBody.put("pageNo", 1);
-            plantListBody.put("pageSize", 10);
-            conn.getOutputStream().write(plantListBody.toString().getBytes("UTF-8"));
+            String sc = getStationCode(host);
+            if (sc == null) { Log.w(TAG, "No station code"); return null; }
 
-            int code = conn.getResponseCode();
-            if (code != 200) { conn.disconnect(); return null; }
-
-            String resp = readResponse(conn);
-            conn.disconnect();
-
-            JSONObject listResp = new JSONObject(resp);
-            JSONObject data = listResp.optJSONObject("data");
-            if (data == null) return null;
-            JSONArray list = data.optJSONArray("list");
-            if (list == null || list.length() == 0) return null;
-
-            String stationCode = list.getJSONObject(0).optString("plantCode", "");
-            if (stationCode.isEmpty()) stationCode = list.getJSONObject(0).optString("stationCode", "");
-            if (stationCode.isEmpty()) return null;
-
-            // Get real-time data for the plant
-            URL rtUrl = new URL(host + "/rest/pvms/web/station/v1/overview/queryStationRealKpi");
-            HttpURLConnection rtConn = openConn(rtUrl);
-            rtConn.setRequestMethod("POST");
-            rtConn.setRequestProperty("Content-Type", "application/json");
-            rtConn.setRequestProperty("Cookie", sessionCookie != null ? sessionCookie : "");
-            rtConn.setDoOutput(true);
-            JSONObject rtBody = new JSONObject();
-            rtBody.put("stationCodes", stationCode);
-            rtConn.getOutputStream().write(rtBody.toString().getBytes("UTF-8"));
-
-            int rtCode = rtConn.getResponseCode();
-            if (rtCode == 401 || rtCode == 403) { rtConn.disconnect(); return null; } // session expired
-            String rtResp = readResponse(rtConn);
-            rtConn.disconnect();
-
-            return parseRealKpi(new JSONObject(rtResp));
-
+            HttpURLConnection c = open(
+                new URL(host + "/rest/pvms/web/station/v1/overview/queryStationRealKpi"), "POST");
+            addSession(c);
+            c.setDoOutput(true);
+            JSONObject b = new JSONObject(); b.put("stationCodes", sc);
+            c.getOutputStream().write(b.toString().getBytes("UTF-8"));
+            int code = c.getResponseCode();
+            if (code == 401 || code == 403) { sessionCookie = null; return null; }
+            String resp = body(c); c.disconnect();
+            return parseKpi(new JSONObject(resp));
         } catch (Exception e) {
-            Log.e(TAG, "getPlantOverview error: " + e.getMessage());
+            Log.e(TAG, "getPlantOverview: " + e.getMessage());
             return null;
         }
     }
 
-    // ── Parse real-time KPI response into standardised JSONObject ─────────
-    private JSONObject parseRealKpi(JSONObject raw) throws Exception {
-        // FusionSolar returns data in various structures depending on account/region
-        JSONObject result = new JSONObject();
-        JSONObject dataMap = null;
-
-        // Try data.list[0]
+    // ── Parse KPI response → standardised JSONObject ───────────────────────
+    private JSONObject parseKpi(JSONObject raw) throws Exception {
+        JSONObject dm = null;
         JSONObject data = raw.optJSONObject("data");
         if (data != null) {
             JSONArray list = data.optJSONArray("list");
-            if (list != null && list.length() > 0) dataMap = list.getJSONObject(0).optJSONObject("dataItemMap");
-            if (dataMap == null) dataMap = data.optJSONObject("dataItemMap");
+            if (list != null && list.length() > 0)
+                dm = list.getJSONObject(0).optJSONObject("dataItemMap");
+            if (dm == null) dm = data.optJSONObject("dataItemMap");
         }
-        if (dataMap == null) dataMap = raw.optJSONObject("dataItemMap");
-        if (dataMap == null) {
-            Log.w(TAG, "Could not find dataItemMap in: " + raw.toString().substring(0, Math.min(200, raw.toString().length())));
+        if (dm == null) dm = raw.optJSONObject("dataItemMap");
+        if (dm == null) {
+            Log.w(TAG, "No dataItemMap. Raw: " + raw.toString().substring(0, Math.min(300, raw.toString().length())));
             return null;
         }
-
-        // Extract values — field names vary by region/firmware but these are the common ones
-        result.put("pvKw",        dataMap.optDouble("radiation_intensity",  // W/m² sometimes
-                                  dataMap.optDouble("inverter_power",        // AC output kW
-                                  dataMap.optDouble("theory_power", 0))));
-        result.put("battSoc",     dataMap.optDouble("battery_soc", -1));
-        result.put("battCharge",  dataMap.optDouble("charge_power", 0));     // kW into battery
-        result.put("battDischarge",dataMap.optDouble("discharge_power", 0)); // kW from battery
-        result.put("gridImport",  dataMap.optDouble("bought_power", dataMap.optDouble("grid_consume_power", 0)));
-        result.put("gridExport",  dataMap.optDouble("ongrid_power",  dataMap.optDouble("grid_power", 0)));
-        result.put("houseLoad",   dataMap.optDouble("use_power",     0));
-        result.put("pvKwhToday",  dataMap.optDouble("day_power",     0));
-
-        // Use inverter_power as primary pvKw (AC output, most accurate)
-        double invPower = dataMap.optDouble("inverter_power", -1);
-        if (invPower >= 0) result.put("pvKw", invPower);
-
-        Log.d(TAG, "FusionSolar live: pvKw=" + result.optDouble("pvKw") +
-            " battSoc=" + result.optDouble("battSoc") +
-            " gridImport=" + result.optDouble("gridImport") +
-            " houseLoad=" + result.optDouble("houseLoad"));
-        return result;
+        JSONObject r = new JSONObject();
+        // inverter_power = AC output kW (primary)
+        double pvKw = dm.optDouble("inverter_power", -1);
+        if (pvKw < 0) pvKw = dm.optDouble("theory_power",   -1);
+        if (pvKw < 0) pvKw = dm.optDouble("radiation_intensity", 0);
+        r.put("pvKw",          Math.max(0, pvKw));
+        r.put("battSoc",       dm.optDouble("battery_soc",     -1));
+        r.put("battCharge",    dm.optDouble("charge_power",      0));
+        r.put("battDischarge", dm.optDouble("discharge_power",   0));
+        r.put("gridImport",    dm.optDouble("bought_power",
+                               dm.optDouble("grid_consume_power", 0)));
+        r.put("gridExport",    dm.optDouble("ongrid_power",
+                               dm.optDouble("grid_power",         0)));
+        r.put("houseLoad",     dm.optDouble("use_power",          0));
+        r.put("pvKwhToday",    dm.optDouble("day_power",
+                               dm.optDouble("day_cap",            0)));
+        Log.d(TAG, "KPI: pvKw=" + r.optDouble("pvKw") + " soc=" + r.optDouble("battSoc")
+            + " export=" + r.optDouble("gridExport") + " house=" + r.optDouble("houseLoad"));
+        return r;
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────
-    private HttpURLConnection openConn(URL url) throws Exception {
+    // ── RSA encrypt password with hex modulus + exponent ──────────────────
+    private String rsaEncrypt(String plaintext, String modHex, String expHex) {
+        try {
+            BigInteger mod = new BigInteger(modHex, 16);
+            BigInteger exp = new BigInteger(expHex, 16);
+            KeyFactory kf  = KeyFactory.getInstance("RSA");
+            PublicKey  pub = kf.generatePublic(new RSAPublicKeySpec(mod, exp));
+            Cipher     c   = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            c.init(Cipher.ENCRYPT_MODE, pub);
+            byte[] enc = c.doFinal(plaintext.getBytes("UTF-8"));
+            return Base64.encodeToString(enc, Base64.NO_WRAP);
+        } catch (Exception e) {
+            Log.e(TAG, "rsaEncrypt: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // ── Parse a JSON field from a string (HTML or JSON body) ──────────────
+    private String parseJson(String src, String key) {
+        if (src == null || src.isEmpty()) return null;
+        // Match "key":"value" or "key": "value"
+        String pattern = "\"" + key + "\"\\s*:\\s*\"([^\"]+)\"";
+        java.util.regex.Matcher m =
+            java.util.regex.Pattern.compile(pattern).matcher(src);
+        return m.find() ? m.group(1) : null;
+    }
+
+    // ── Add session headers to a connection ────────────────────────────────
+    private void addSession(HttpURLConnection c) {
+        c.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
+        c.setRequestProperty("Accept", "application/json, text/plain, */*");
+        if (sessionCookie != null) c.setRequestProperty("Cookie",   sessionCookie);
+        if (roarand       != null) c.setRequestProperty("roarand",  roarand);
+        if (roarand       != null) c.setRequestProperty("X-XSRF-TOKEN", roarand);
+    }
+
+    // ── HTTP helpers ───────────────────────────────────────────────────────
+    private HttpURLConnection open(URL url, String method) throws Exception {
         HttpURLConnection c = (HttpURLConnection) url.openConnection();
-        c.setConnectTimeout(TIMEOUT_MS);
-        c.setReadTimeout(TIMEOUT_MS);
+        c.setConnectTimeout(TIMEOUT_MS); c.setReadTimeout(TIMEOUT_MS);
         c.setInstanceFollowRedirects(false);
-        c.setRequestProperty("User-Agent", "Mozilla/5.0 SolarDashboard/1.0");
-        c.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
+        c.setRequestMethod(method);
+        c.setRequestProperty("User-Agent",       "Mozilla/5.0 (Android; SolarDashboard/1.0)");
+        c.setRequestProperty("Accept-Language",  "en-US,en;q=0.9");
+        c.setRequestProperty("Accept-Encoding",  "identity");
         return c;
     }
 
-    private String getCookieFromResponse(HttpURLConnection conn) {
-        StringBuilder cookies = new StringBuilder();
-        Map<String, java.util.List<String>> headers = conn.getHeaderFields();
-        java.util.List<String> setCookies = headers.get("Set-Cookie");
-        if (setCookies == null) return sessionCookie; // keep existing
-        for (String c : setCookies) {
-            String part = c.split(";")[0];
-            if (cookies.length() > 0) cookies.append("; ");
-            cookies.append(part);
-        }
-        return cookies.length() > 0 ? cookies.toString() : sessionCookie;
+    private String body(HttpURLConnection c) {
+        try {
+            InputStream is = c.getResponseCode() < 400 ? c.getInputStream() : c.getErrorStream();
+            if (is == null) return "";
+            BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+            StringBuilder sb = new StringBuilder(); String ln;
+            while ((ln = br.readLine()) != null) sb.append(ln);
+            br.close(); return sb.toString();
+        } catch (Exception e) { return ""; }
     }
 
-    private String readResponse(HttpURLConnection conn) throws Exception {
-        InputStream is = conn.getResponseCode() < 400 ? conn.getInputStream() : conn.getErrorStream();
-        if (is == null) return "{}";
-        BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+    private String cookies(HttpURLConnection c) {
         StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = br.readLine()) != null) sb.append(line);
-        br.close();
-        return sb.toString();
+        try {
+            Map<String, List<String>> headers = c.getHeaderFields();
+            List<String> setCookies = headers.get("Set-Cookie");
+            if (setCookies == null) return sessionCookie;
+            for (String cookie : setCookies) {
+                String part = cookie.split(";")[0].trim();
+                if (!part.isEmpty()) {
+                    if (sb.length() > 0) sb.append("; ");
+                    sb.append(part);
+                }
+            }
+        } catch (Exception ignored) {}
+        return sb.length() > 0 ? sb.toString() : sessionCookie;
+    }
+
+    private String cookieValue(HttpURLConnection c, String name) {
+        try {
+            Map<String, List<String>> headers = c.getHeaderFields();
+            List<String> setCookies = headers.get("Set-Cookie");
+            if (setCookies == null) return null;
+            for (String cookie : setCookies) {
+                if (cookie.startsWith(name + "=")) {
+                    return cookie.split(";")[0].substring(name.length() + 1);
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 }
 """)
