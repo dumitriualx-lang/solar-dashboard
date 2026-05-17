@@ -1798,7 +1798,10 @@ public class FusionSolarClient {
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Cookie", sessionCookie != null ? sessionCookie : "");
             conn.setDoOutput(true);
-            conn.getOutputStream().write("{\"pageNo\":1,\"pageSize\":10}".getBytes("UTF-8"));
+            JSONObject plantListBody = new JSONObject();
+            plantListBody.put("pageNo", 1);
+            plantListBody.put("pageSize", 10);
+            conn.getOutputStream().write(plantListBody.toString().getBytes("UTF-8"));
 
             int code = conn.getResponseCode();
             if (code != 200) { conn.disconnect(); return null; }
