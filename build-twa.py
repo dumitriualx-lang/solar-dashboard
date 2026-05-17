@@ -436,6 +436,7 @@ public class MainActivity extends Activity {
             // can authenticate to FusionSolar and fetch real inverter data.
             // Credentials are stored only on-device, never transmitted elsewhere.
             android.content.SharedPreferences.Editor ed = getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
+            ed.putString("fs_user", user);
             ed.putString("fs_pass", pass);
             ed.putString("fs_host", host != null ? host : "https://eu5.fusionsolar.huawei.com");
             ed.putBoolean("fs_enabled", true);
