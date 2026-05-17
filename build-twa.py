@@ -1867,7 +1867,6 @@ public class FusionSolarClient {
             init.disconnect();
 
             // Step 2: GET RSA public key from dedicated endpoint
-            // Response: {"version":"00000493","pubKey":"-----BEGIN PUBLIC KEY-----\n..."}
             HttpURLConnection pkConn = open(new URL(host + "/unisso/pubkey"), "GET");
             if (initCookie != null) pkConn.setRequestProperty("Cookie", initCookie);
             pkConn.connect();
