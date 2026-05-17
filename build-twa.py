@@ -407,8 +407,7 @@ public class MainActivity extends Activity {
             // Stores credentials in SharedPreferences so the background service
             // can authenticate to FusionSolar and fetch real inverter data.
             // Credentials are stored only on-device, never transmitted elsewhere.
-            SharedPreferences.Editor ed = getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
-            ed.putString("fs_user", user);
+            android.content.SharedPreferences.Editor ed = getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
             ed.putString("fs_pass", pass);
             ed.putString("fs_host", host != null ? host : "https://eu5.fusionsolar.huawei.com");
             ed.putBoolean("fs_enabled", true);
@@ -418,7 +417,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void clearFusionSolarCreds() {
-            SharedPreferences.Editor ed = getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
+            android.content.SharedPreferences.Editor ed = getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
             ed.remove("fs_user");
             ed.remove("fs_pass");
             ed.remove("fs_host");
@@ -429,7 +428,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getFusionSolarStatus() {
-            SharedPreferences prefs = getSharedPreferences("solar_prefs", MODE_PRIVATE);
+            android.content.SharedPreferences prefs = getSharedPreferences("solar_prefs", MODE_PRIVATE);
             boolean enabled = prefs.getBoolean("fs_enabled", false);
             String user = prefs.getString("fs_user", "");
             if (!enabled || user.isEmpty()) return "disconnected";
@@ -975,12 +974,12 @@ public class SolarForegroundService extends Service {
             // Show FusionSolar data in notification
             float dispSocFs = fsBattSoc >= 0 ? (float)(10 + fsBattSoc * 0.9) : prefs.getFloat("soc", 50f);
             String battStateFs = fsBattCharge > 0.05 ? "⬆" : fsBattDischarge > 0.05 ? "⬇" : "·";
-            updateNotification(
-                String.format("☀️ %.2f kW  🔋 %.0f%%  ⚡ %.2f kW",
+            updateFgNotification(
+                String.format("☀️ %.2f kW  🔋 %.0f%%  ⚡ %.2f kW  · FusionSolar · %s",
                     fsPvKw >= 0 ? fsPvKw : prefs.getFloat("pv_kw", 0),
                     dispSocFs,
-                    fsGridExport > 0 ? fsGridExport : -fsGridImport),
-                "Live · FusionSolar · " + new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(new java.util.Date()));
+                    fsGridExport > 0 ? fsGridExport : -fsGridImport,
+                    new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(new java.util.Date())));
             android.util.Log.d("SolarFGS", "FusionSolar data applied: pvKw=" + fsPvKw + " soc=" + fsBattSoc + "%");
             return; // FusionSolar data is authoritative — skip Open-Meteo estimate
         }
