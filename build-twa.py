@@ -403,6 +403,7 @@ public class MainActivity extends Activity {
         // ── FusionSolar integration ────────────────────────────────────────
         @JavascriptInterface
         public String testFusionSolarConnection() {
+            String nl = String.valueOf((char)10);
             StringBuilder log = new StringBuilder();
             try {
                 android.content.SharedPreferences prefs =
@@ -414,65 +415,62 @@ public class MainActivity extends Activity {
                 String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
                 if (user.isEmpty()) return "FAIL: no username saved";
                 if (pass.isEmpty()) return "FAIL: no password saved";
-                log.append("user=").append(user).append("\n");
+                log.append("user=").append(user).append(nl);
 
-                // Step 1: GET login page
                 try {
-                    java.net.HttpURLConnection c =
-                        (java.net.HttpURLConnection) new java.net.URL(host + "/unisso/login.action").openConnection();
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection)
+                        new java.net.URL(host + "/unisso/login.action").openConnection();
                     c.setConnectTimeout(15000); c.setReadTimeout(15000);
                     c.setInstanceFollowRedirects(false);
                     c.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; SolarDashboard/1.0)");
                     c.setRequestProperty("Accept-Encoding", "identity");
                     int code = c.getResponseCode();
-                    log.append("GET login.action → HTTP ").append(code).append("\n");
-
+                    log.append("GET login.action HTTP ").append(code).append(nl);
                     java.io.InputStream is = code < 400 ? c.getInputStream() : c.getErrorStream();
-                    java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is, "UTF-8"));
+                    java.io.BufferedReader br = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(is, "UTF-8"));
                     StringBuilder html = new StringBuilder(); String ln;
                     while ((ln = br.readLine()) != null) html.append(ln);
                     br.close(); c.disconnect();
-
-                    // Look for RSA key in multiple formats
-                    String htmlStr = html.toString();
-                    boolean hasMod = htmlStr.contains("modulus");
-                    boolean hasExp = htmlStr.contains("exponent");
-                    log.append("HTML contains 'modulus': ").append(hasMod).append("\n");
-                    log.append("HTML contains 'exponent': ").append(hasExp).append("\n");
-
-                    // Show context around modulus if found
+                    String h = html.toString();
+                    boolean hasMod = h.contains("modulus");
+                    boolean hasExp = h.contains("exponent");
+                    log.append("modulus in HTML: ").append(hasMod).append(nl);
+                    log.append("exponent in HTML: ").append(hasExp).append(nl);
                     if (hasMod) {
-                        int mi = htmlStr.indexOf("modulus");
-                        int start = Math.max(0, mi - 20);
-                        int end   = Math.min(htmlStr.length(), mi + 60);
-                        log.append("Context: ").append(htmlStr.substring(start, end)).append("\n");
+                        int mi = h.indexOf("modulus");
+                        log.append("context: ").append(
+                            h.substring(Math.max(0,mi-20), Math.min(h.length(),mi+80))
+                        ).append(nl);
                     } else {
-                        // Show first 300 chars of HTML to understand structure
-                        log.append("HTML preview: ").append(htmlStr.substring(0, Math.min(300, htmlStr.length()))).append("\n");
+                        log.append("html_preview: ").append(
+                            h.substring(0, Math.min(400, h.length()))
+                        ).append(nl);
                     }
                 } catch (Exception e) {
-                    log.append("GET login.action FAILED: ").append(e.getMessage()).append("\n");
+                    log.append("login.action error: ").append(e.getMessage()).append(nl);
                 }
 
-                // Step 2: Try pubkey endpoint
                 try {
-                    java.net.HttpURLConnection pk =
-                        (java.net.HttpURLConnection) new java.net.URL(host + "/unisso/pubkey").openConnection();
+                    java.net.HttpURLConnection pk = (java.net.HttpURLConnection)
+                        new java.net.URL(host + "/unisso/pubkey").openConnection();
                     pk.setConnectTimeout(10000); pk.setReadTimeout(10000);
                     pk.setRequestProperty("Accept-Encoding", "identity");
                     int pkCode = pk.getResponseCode();
-                    log.append("GET pubkey → HTTP ").append(pkCode).append("\n");
+                    log.append("GET pubkey HTTP ").append(pkCode).append(nl);
                     if (pkCode == 200) {
-                        java.io.BufferedReader br2 = new java.io.BufferedReader(new java.io.InputStreamReader(pk.getInputStream(), "UTF-8"));
-                        StringBuilder pkBody = new StringBuilder(); String l2;
-                        while ((l2 = br2.readLine()) != null) pkBody.append(l2);
+                        java.io.BufferedReader br2 = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(pk.getInputStream(), "UTF-8"));
+                        StringBuilder pkB = new StringBuilder(); String l2;
+                        while ((l2 = br2.readLine()) != null) pkB.append(l2);
                         br2.close();
-                        String pkStr = pkBody.toString();
-                        log.append("pubkey body: ").append(pkStr.substring(0, Math.min(200, pkStr.length()))).append("\n");
+                        log.append("pubkey: ").append(
+                            pkB.toString().substring(0, Math.min(250, pkB.length()))
+                        ).append(nl);
                     }
                     pk.disconnect();
                 } catch (Exception e) {
-                    log.append("GET pubkey FAILED: ").append(e.getMessage()).append("\n");
+                    log.append("pubkey error: ").append(e.getMessage()).append(nl);
                 }
 
                 return log.toString();
@@ -480,7 +478,6 @@ public class MainActivity extends Activity {
                 return log.append("ERROR: ").append(e.getMessage()).toString();
             }
         }
-
         @JavascriptInterface
         public void setFusionSolarCreds(String user, String pass, String host) {
             // Stores credentials in SharedPreferences so the background service
