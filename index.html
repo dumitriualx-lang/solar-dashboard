@@ -2752,7 +2752,8 @@ function renderFlow() {
 // ═══════════════════════════════════════════════════════════════
 function renderStrip() {
   if(!FORECAST.length) return;
-  const need=ST.consKw*24;
+  // Use full daily profile total, not current kW × 24 (which gives wrong threshold)
+  const need = getProfileDailyKwh() || (ST.consKw * 24);
   document.getElementById('ws').innerHTML=FORECAST.map((d,i)=>
     '<div class="wd '+(i===0?'today':'')+'" onclick="selectForecastDay('+i+')" style="cursor:pointer" id="wd'+i+'">'+
     '<div class="wi">'+d.icon+'</div>'+
@@ -3780,19 +3781,33 @@ function renderForecastProduction() {
   const today       = FORECAST[0];
   const weekTotal   = FORECAST.reduce((a,d) => a+d.yieldKwh, 0);
   const weekNeed    = dailyNeed * FORECAST.length;
-  const surplus     = today.yieldKwh - dailyNeed;
-  const selfSuffPct = Math.min(100, Math.round((Math.min(today.yieldKwh, dailyNeed) / dailyNeed) * 100));
+
+  // Apply the same rain cap used for live production to today's yield estimate.
+  // The weather model regularly overestimates GHI in precipitation — without this,
+  // a rainy day with 0.5 kW live production still shows "Surplus day".
+  const acMax       = SYS.acMax || (SYS.panelKw || 5) * 0.984;
+  const peakHours   = 8; // effective solar hours in a day
+  const wcode       = ST.wxCode || 0;
+  let todayYield    = today.yieldKwh;
+  if      (wcode >= 95) todayYield = Math.min(todayYield, acMax * 0.05 * peakHours);
+  else if (wcode >= 61) todayYield = Math.min(todayYield, acMax * 0.10 * peakHours);
+  else if (wcode >= 51) todayYield = Math.min(todayYield, acMax * 0.20 * peakHours);
+  else if (wcode >= 45) todayYield = Math.min(todayYield, acMax * 0.25 * peakHours);
+  todayYield = +todayYield.toFixed(2);
+
+  const surplus     = todayYield - dailyNeed;
+  const selfSuffPct = Math.min(100, Math.round((Math.min(todayYield, dailyNeed) / dailyNeed) * 100));
   const pill = document.getElementById('fcProdPill');
   if (!pill) return;
-  pill.textContent = today.yieldKwh >= dailyNeed ? 'Surplus day ✓' : 'Deficit day';
-  pill.className   = today.yieldKwh >= dailyNeed ? 'pill p-ok' : 'pill p-warn';
+  pill.textContent = todayYield >= dailyNeed ? 'Surplus day ✓' : 'Deficit day';
+  pill.className   = todayYield >= dailyNeed ? 'pill p-ok' : 'pill p-warn';
   let peakH = 12, peakKw = 0;
   ST.todayH.forEach(h => { if (h.pvKw > peakKw) { peakKw = h.pvKw; peakH = h.hour; } });
   const _fcb = document.getElementById('fcProdBody'); if (!_fcb) return; _fcb.innerHTML =
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">' +
       '<div style="text-align:center;background:var(--sf2);border-radius:var(--rs);padding:8px 4px">' +
         '<div style="font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Today est.</div>' +
-        '<div style="font-size:14px;font-weight:700;color:'+(today.yieldKwh>=dailyNeed?'var(--g)':'var(--am)')+'">' + f(today.yieldKwh,1) + ' kWh</div>' +
+        '<div style="font-size:14px;font-weight:700;color:'+(todayYield>=dailyNeed?'var(--g)':'var(--am)')+'">' + f(todayYield,1) + ' kWh</div>' +
         '<div style="font-size:9px;color:var(--t2)">' + (surplus>=0?'+':'')+f(surplus,1)+' vs need</div>' +
       '</div>' +
       '<div style="text-align:center;background:var(--sf2);border-radius:var(--rs);padding:8px 4px">' +
