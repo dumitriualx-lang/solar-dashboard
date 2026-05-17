@@ -501,6 +501,11 @@ public class MainActivity extends Activity {
         webView.setBackgroundColor(Color.parseColor("#1D9E75"));
         setContentView(webView);
 
+        // Clear cache on every launch so the latest GitHub Pages index.html
+        // is always fetched. Without this, stale JS with old bugs persists
+        // across installs and updates, causing stuck values and wrong behaviour.
+        webView.clearCache(true);
+
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -513,6 +518,7 @@ public class MainActivity extends Activity {
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
         webView.addJavascriptInterface(new AppBridge(), "AppBridge");
 
@@ -682,7 +688,9 @@ public class MainActivity extends Activity {
         float consKw    = prefs.getFloat("cons_kw",     0f);
         float bgPvKwRaw = prefs.getFloat("pv_kw",      -1f);
         long  bgAge     = System.currentTimeMillis() - prefs.getLong("soc_saved_at_ms", 0L);
-        float bgPvKw    = (bgAge > 0 && bgAge < 90L * 60 * 1000) ? bgPvKwRaw : -1f;
+        // Only inject last-known pvKw if it's less than 15 min old.
+        // 90 min was too long — stale production data locked the display on app open.
+        float bgPvKw    = (bgAge > 0 && bgAge < 15L * 60 * 1000) ? bgPvKwRaw : -1f;
 
         // ── SOC CATCH-UP ─────────────────────────────────────────────────────
         // The alarm fires every 30 min. If the app was closed for only 5 minutes,
