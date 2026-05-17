@@ -669,22 +669,32 @@ body::before{
 
 <div id="pgForecast" class="page" style="padding:14px;padding-bottom:90px">
   <div class="card">
-    <div class="ct">5-day yield forecast <span class="pill p-ok">Live · Open-Meteo</span></div>
+    <div class="ct">7-day solar forecast <span class="pill p-ok" id="fcProdPill">Live · Open-Meteo</span></div>
     <div class="wstrip" id="ws"><div class="empty-log" style="width:100%">Awaiting GPS...</div></div>
-    <div class="chart-sm"><canvas id="fC"></canvas></div>
-    <div class="leg" style="margin-top:8px">
+    <!-- Production bar chart — same card as day strip, matching the app layout -->
+    <div class="chart-wrap" style="margin-top:8px"><canvas id="dayC"></canvas></div>
+    <div class="leg" style="margin-top:6px">
       <span class="li"><span class="lbr" style="background:rgba(0,200,130,.2);border:1px solid var(--g)"></span>Surplus day</span>
       <span class="li"><span class="lbr" style="background:rgba(186,117,23,.4);border:1px solid #d4a820"></span>Deficit day</span>
       <span class="li"><span class="lln" style="background:#D85A30"></span>Daily need</span>
     </div>
   </div>
-  <div class="card" style="margin-top:10px">
-    <div class="ct">Today's generation curve <span class="pill p-info">from live irradiance</span></div>
-    <div class="chart-wrap"><canvas id="dayC"></canvas></div>
-    <div class="leg" style="margin-top:8px">
-      <span class="li"><span class="lln" style="background:#00c882"></span>Solar kW (from API)</span>
-      <span class="li"><span class="lln" style="background:#D85A30;opacity:.7"></span>Consumption kW</span>
-      <span class="li"><span class="lbr" style="background:rgba(55,138,221,.3);border:1px solid #378ADD"></span>Battery charge kW</span>
+  <!-- Today summary metrics -->
+  <div id="fcProdBody" class="card" style="margin-top:10px">
+    <div class="ct">Today estimate</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="background:rgba(0,28,75,.5);border-radius:var(--rs);border:1px solid var(--br2);padding:10px 6px;text-align:center">
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Today est.</div>
+        <div style="font-size:14px;font-weight:700;color:var(--g)" id="fcTodayKwh">— kWh</div>
+      </div>
+      <div style="background:rgba(0,28,75,.5);border-radius:var(--rs);border:1px solid var(--br2);padding:10px 6px;text-align:center">
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Peak hour</div>
+        <div style="font-size:14px;font-weight:700;color:var(--am)" id="fcPeakHour">—:00</div>
+      </div>
+      <div style="background:rgba(0,28,75,.5);border-radius:var(--rs);border:1px solid var(--br2);padding:10px 6px;text-align:center">
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Peak power</div>
+        <div style="font-size:14px;font-weight:700;color:var(--g)" id="fcPeakKw">— kW</div>
+      </div>
     </div>
   </div>
   <div class="card" style="margin-top:10px">
@@ -2810,6 +2820,14 @@ function buildDayChartForDay(dayIdx) {
     batD.push(gen > ST.consKw ? +Math.min(gen - ST.consKw, SYS.battMaxC).toFixed(3) : 0);
   }
 
+  // Populate summary metrics
+  const peakVal = Math.max(...genD);
+  const peakH   = genD.indexOf(peakVal);
+  const setEl = (id, v) => { const e = document.getElementById(id); if(e) e.textContent = v; };
+  setEl('fcTodayKwh', f(d.yieldKwh, 1) + ' kWh');
+  setEl('fcPeakHour', peakH + ':00');
+  setEl('fcPeakKw',   f(peakVal, 2) + ' kW');
+
   dchart = new Chart(document.getElementById('dayC').getContext('2d'), {
     data: { labels: lbls, datasets: [
       { type:'line', data:genD, borderColor:'#00c882', backgroundColor:'rgba(0,200,130,.1)',
@@ -2848,6 +2866,11 @@ function buildDayChart() {
   const nowH=new Date().getHours(), lbls=ST.todayH.map(h=>h.hour+':00');
   const genD=ST.todayH.map(h=>+h.pvKw.toFixed(3)), conD=ST.todayH.map(()=>ST.consKw);
   const batD=genD.map(g=>{const s=g-ST.consKw;return s>0?+Math.min(s,SYS.battMaxC).toFixed(3):0;});
+  const peakVal=Math.max(...genD), peakH=genD.indexOf(peakVal);
+  const setEl2=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  setEl2('fcTodayKwh', f(genD.reduce((a,b)=>a+b,0),1)+' kWh');
+  setEl2('fcPeakHour', peakH+':00');
+  setEl2('fcPeakKw',   f(peakVal,2)+' kW');
   dchart=new Chart(document.getElementById('dayC').getContext('2d'),{
     data:{labels:lbls,datasets:[
       {type:'line',data:genD,borderColor:'#00c882',backgroundColor:'rgba(0,200,130,.1)',fill:true,tension:.4,
