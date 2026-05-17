@@ -1989,16 +1989,24 @@ public class FusionSolarClient {
     // Huawei pubkey endpoint returns this format — not hex modulus/exponent
     private String rsaEncryptPem(String plaintext, String pemKey) {
         try {
-            String keyContent = pemKey
-                .replace("-----BEGIN PUBLIC KEY-----", "")
-                .replace("-----END PUBLIC KEY-----",   "")
-                .replace("\\n", "").replace("\\r", "")
-                .replace("\n",   "").replace("\r",   "")
-                .replaceAll("\\s+", "").replaceAll("\s+", "");
-            byte[]             keyBytes = Base64.decode(keyContent, Base64.DEFAULT);
-            X509EncodedKeySpec spec     = new X509EncodedKeySpec(keyBytes);
-            PublicKey          pub      = KeyFactory.getInstance("RSA").generatePublic(spec);
-            Cipher             cipher   = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            StringBuilder sb = new StringBuilder();
+            boolean skip = false;
+            for (int i = 0; i < pemKey.length(); i++) {
+                char c = pemKey.charAt(i);
+                if (c == 45 && i+1 < pemKey.length() && pemKey.charAt(i+1) == 45) {
+                    skip = !skip; continue;
+                }
+                if (skip) continue;
+                if (c == 92 && i+1 < pemKey.length()) {
+                    char n2 = pemKey.charAt(i+1);
+                    if (n2 == 110 || n2 == 114) { i++; continue; }
+                }
+                if (c > 32) sb.append(c);
+            }
+            byte[] keyBytes = Base64.decode(sb.toString(), Base64.DEFAULT);
+            X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
+            PublicKey pub = KeyFactory.getInstance("RSA").generatePublic(spec);
+            Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
             cipher.init(Cipher.ENCRYPT_MODE, pub);
             return Base64.encodeToString(cipher.doFinal(plaintext.getBytes("UTF-8")), Base64.NO_WRAP);
         } catch (Exception e) { Log.e(TAG, "rsaEncryptPem: " + e.getMessage()); return null; }
