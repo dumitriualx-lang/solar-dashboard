@@ -402,6 +402,35 @@ public class MainActivity extends Activity {
 
         // ── FusionSolar integration ────────────────────────────────────────
         @JavascriptInterface
+        public String testFusionSolarConnection() {
+            try {
+                android.content.SharedPreferences prefs =
+                    getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE);
+                if (!prefs.getBoolean("fs_enabled", false))
+                    return "FAIL: fs_enabled=false — credentials not saved";
+                String user = prefs.getString("fs_user", "");
+                String pass = prefs.getString("fs_pass", "");
+                String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
+                if (user.isEmpty()) return "FAIL: no username saved";
+                if (pass.isEmpty()) return "FAIL: no password saved";
+
+                FusionSolarClient client = new FusionSolarClient(getApplicationContext());
+                org.json.JSONObject result = client.fetchLiveData();
+
+                if (result != null) {
+                    double pvKw = result.optDouble("pvKw", -1);
+                    double soc  = result.optDouble("battSoc", -1);
+                    prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
+                    return "OK: pvKw=" + pvKw + " battSoc=" + soc + "%";
+                } else {
+                    return "FAIL: login or data fetch returned null — check credentials or CAPTCHA";
+                }
+            } catch (Exception e) {
+                return "ERROR: " + e.getMessage();
+            }
+        }
+
+        @JavascriptInterface
         public void setFusionSolarCreds(String user, String pass, String host) {
             // Stores credentials in SharedPreferences so the background service
             // can authenticate to FusionSolar and fetch real inverter data.
