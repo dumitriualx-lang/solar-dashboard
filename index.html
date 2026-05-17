@@ -3687,12 +3687,12 @@ function saveCfgAndApply() {
     lastFlowT  = Date.now();
     saveCfg({ ...loadCfg(), battSoc: soc });
   }
-  if (window.AppBridge && AppBridge.saveSoc) {
-    try { AppBridge.saveSoc(ST.battSoc, panel, gross, res, ST.consKw||0, maxC||2.5, maxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
-  }
   const maxCEl = document.getElementById('cfgBattBrand');
-  const maxC = parseFloat(maxCEl.dataset.maxC) || SYS._battMaxC;
-  const maxD = parseFloat(maxCEl.dataset.maxD) || SYS._battMaxD;
+  const maxC = parseFloat(maxCEl ? maxCEl.dataset.maxC : '') || SYS._battMaxC || 2.5;
+  const maxD = parseFloat(maxCEl ? maxCEl.dataset.maxD : '') || SYS._battMaxD || 2.5;
+  if (window.AppBridge && AppBridge.saveSoc) {
+    try { AppBridge.saveSoc(ST.battSoc, panel, gross, res, ST.consKw||0, maxC, maxD, SYS.panelAzimuth||180); } catch(e) {}
+  }
   SYS._battMaxC = maxC;
   SYS._battMaxD = maxD;
   const azimuth = parseInt(document.getElementById('cfgAzimuth').value) || 180;
