@@ -2125,8 +2125,8 @@ function refreshFsStatus() {
 }
 
 async function testFusionSolar() {
-  const log  = document.getElementById('fsLog');
-  const msg  = document.getElementById('fsMsg');
+  const log = document.getElementById('fsLog');
+  const msg = document.getElementById('fsMsg');
   if (!log) return;
   log.style.display = 'block';
   log.innerHTML = '';
@@ -2140,91 +2140,55 @@ async function testFusionSolar() {
     log.scrollTop = log.scrollHeight;
   };
 
-  // Read saved credentials
-  let user = '', host = FS_HOST;
+  let user = '';
   try {
     const saved = safeJson('fsCredentials', null);
-    if (saved) { user = saved.user || ''; host = saved.host || FS_HOST; }
+    if (saved) user = saved.user || '';
   } catch(e) {}
+
   if (!user) { L('✗ No credentials saved — enter username and password first', '#e05a28'); return; }
   if (msg) { msg.textContent = 'Testing…'; msg.style.color = 'var(--bl)'; }
-  L('▶ Starting connection test to ' + host);
-  L('▶ Account: ' + user);
+  L('Account: ' + user);
 
-  try {
-    // Step 1: GET login page — fetch RSA key
-    L('① GET /unisso/login.action …');
-    const initResp = await fetch(host + '/unisso/login.action', {
-      method: 'GET', credentials: 'include',
-      headers: { 'Accept': 'text/html,*/*', 'User-Agent': 'SolarDashboard/1.0' }
-    });
-    L('   HTTP ' + initResp.status + ' ' + initResp.statusText,
-      initResp.ok ? 'var(--g)' : '#e05a28');
-    const html = await initResp.text();
-
-    // Parse RSA key
-    const modMatch = html.match(/"modulus"\s*:\s*"([^"]+)"/);
-    const expMatch = html.match(/"exponent"\s*:\s*"([^"]+)"/);
-    if (modMatch && expMatch) {
-      L('   RSA key found: modulus=' + modMatch[1].slice(0,16) + '…', 'var(--g)');
-    } else {
-      L('   ⚠ RSA key not found in HTML — will try /unisso/pubkey', 'var(--am)');
-    }
-
-    // Step 2: Check if credentials include password — we can only test with AppBridge
-    if (window.AppBridge && typeof AppBridge.getFusionSolarStatus === 'function') {
-      L('② AppBridge available — triggering native login test…', 'var(--g)');
-      try {
-        const status = AppBridge.getFusionSolarStatus();
-        L('   AppBridge status: ' + status,
-          status.startsWith('connected') ? 'var(--g)' : 'var(--am)');
-        if (status.startsWith('connected')) {
-          const mins = status.split(':')[1];
-          L('   Last successful fetch: ' + mins + ' ago', 'var(--g)');
-          if (msg) { msg.textContent = '✅ FusionSolar connected and fetching data'; msg.style.color = 'var(--g)'; }
-        } else {
-          L('   Status: ' + status + ' — new APK with RSA login needed', 'var(--am)');
-          if (msg) { msg.textContent = '⚠ Build new APK to enable live data'; msg.style.color = 'var(--am)'; }
-        }
-      } catch(e) { L('   AppBridge error: ' + e.message, '#e05a28'); }
-    } else {
-      L('② AppBridge not available (browser mode)', 'var(--am)');
-    }
-
-    // Step 3: Test if Huawei server is reachable
-    L('③ Testing connectivity to FusionSolar server…');
+  // ── Step 1: AppBridge status — most important check ──────────────────
+  L('① Checking AppBridge status…');
+  if (window.AppBridge && typeof AppBridge.getFusionSolarStatus === 'function') {
     try {
-      const ping = await fetch(host + '/unisso/login.action', { method: 'HEAD', mode: 'no-cors' });
-      L('   Server reachable ✓', 'var(--g)');
-    } catch(e) {
-      L('   ✗ Server unreachable: ' + e.message, '#e05a28');
-    }
-
-    // Step 4: Check what RSA key the server provides
-    L('④ Checking /unisso/pubkey endpoint…');
-    try {
-      const pk = await fetch(host + '/unisso/pubkey', {
-        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-      });
-      L('   HTTP ' + pk.status, pk.ok ? 'var(--g)' : 'var(--am)');
-      if (pk.ok) {
-        const pkJson = await pk.text();
-        L('   Response: ' + pkJson.slice(0, 120), 'var(--g)');
-        const hasMod = pkJson.includes('modulus');
-        L('   Contains RSA modulus: ' + (hasMod ? 'YES ✓' : 'NO ✗'),
-          hasMod ? 'var(--g)' : '#e05a28');
+      const status = AppBridge.getFusionSolarStatus();
+      L('   Status: ' + status, status.startsWith('connected') ? 'var(--g)' : 'var(--am)');
+      if (status.startsWith('connected')) {
+        L('   ✓ FusionSolar connected — data is flowing', 'var(--g)');
+        if (msg) { msg.textContent = '✅ Connected and fetching live data'; msg.style.color = 'var(--g)'; }
+      } else {
+        L('   Login failing — credentials saved but authentication unsuccessful', 'var(--am)');
       }
-    } catch(e) {
-      L('   pubkey fetch error: ' + e.message, '#e05a28');
-    }
-
-    L('─── Test complete. Share this log if issues persist. ───', 'var(--t3)');
-    if (msg) setTimeout(() => { if(msg) msg.textContent = ''; }, 4000);
-
-  } catch(e) {
-    L('✗ Unexpected error: ' + e.message, '#e05a28');
-    if (msg) { msg.textContent = '✗ Test failed — see log'; msg.style.color = '#e05a28'; }
+    } catch(e) { L('   AppBridge error: ' + e.message, '#e05a28'); }
+  } else {
+    L('   AppBridge not available in browser mode', 'var(--am)');
   }
+
+  // ── Step 2: Java connection test (requires new APK) ───────────────────
+  L('② Java login test…');
+  if (window.AppBridge && typeof AppBridge.testFusionSolarConnection === 'function') {
+    try {
+      const result = AppBridge.testFusionSolarConnection();
+      L('   ' + result, result.startsWith('OK') ? 'var(--g)' : '#e05a28');
+    } catch(e) { L('   testFusionSolarConnection not available in this APK version', 'var(--t3)'); }
+  } else {
+    L('   testFusionSolarConnection not in this APK — push new build to get detailed diagnostics', 'var(--t3)');
+  }
+
+  // ── Step 3: Server reachability (CORS will block — informational only) ──
+  L('③ Server reachability (CORS may block — informational)…');
+  try {
+    await fetch(FS_HOST + '/unisso/login.action', { method: 'HEAD', mode: 'no-cors' });
+    L('   Server reachable ✓', 'var(--g)');
+  } catch(e) {
+    L('   Server unreachable or CORS blocked (expected in browser): ' + e.message, 'var(--t3)');
+  }
+
+  L('─── Done. The AppBridge status above is the definitive result. ───', 'var(--t3)');
+  if (msg) setTimeout(() => { if(msg) msg.textContent = ''; }, 5000);
 }
 
 function connectFusionSolar() {
