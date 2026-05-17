@@ -451,9 +451,7 @@ body::before{
       </div>
     </div>
 
-    <div class="cfg-grid" style="margin-top:14px">
-      <div class="cfg-group" style="grid-column:span 2">
-        <div class="cfg-lbl">🧠 Self-calibrating production</div>
+    <div class="cfg-grid" style="margin-top:14px;display:none"><!-- calibration section hidden -->
         <!-- Learning status bar -->
         <div id="cfgCalibStatus" style="margin:6px 0 8px;padding:8px 10px;border-radius:var(--rs);
           background:rgba(0,28,75,.5);border:1px solid var(--br2);font-size:11px">
@@ -610,6 +608,9 @@ body::before{
         <span style="font-size:14px">🔋</span>
         <div>
           <div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em" id="battBrandLabel">--</div>
+          <div id="socStaleWarn" style="display:none;font-size:11px;color:var(--am);
+            background:rgba(212,176,32,.08);border:1px solid rgba(212,176,32,.25);
+            border-radius:6px;padding:6px 8px;margin-top:6px;line-height:1.4"></div>
           <div style="display:flex;align-items:baseline;gap:6px;margin-top:1px">
             <span style="font-size:14px;font-weight:700;color:var(--tx)" id="bPct">--%</span>
             <span style="font-size:11px;color:var(--t2)" id="battKwhLbl">-- kWh</span>
@@ -1168,9 +1169,22 @@ function applySatelliteRadiation(sat) {
   const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
   const acMax   = SYS.acMax || panelKw * 0.984;
   // PR = acMax × 0.97 × learned calibration factor for current GHI conditions
-  const learnedF = getLearnedFactor(ghi);
-  ST.pvKwBase   = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac)).toFixed(3);
-  const pvKw    = +(ST.pvKwBase * learnedF).toFixed(3);
+  // Raw formula output — no calibration factor applied.
+  // Self-calibration was removed: it introduced compounding errors when
+  // background service died (stale pvApp values corrupted the learned factor).
+  ST.pvKwBase = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac)).toFixed(3);
+  let pvKw    = ST.pvKwBase;
+
+  // ── Rain cap: Open-Meteo satellite GHI is unreliable during precipitation.
+  // WMO codes: 51-67 drizzle/rain, 71-77 snow, 80-82 showers, 95-99 thunderstorm.
+  // Satellite data has 15-30 min lag and regularly overestimates GHI in active rain.
+  const wcode = ST.wxCode || 0;
+  if      (wcode >= 95) pvKw = Math.min(pvKw, acMax * 0.05); // thunderstorm → ≤5%
+  else if (wcode >= 61) pvKw = Math.min(pvKw, acMax * 0.10); // rain/showers → ≤10%
+  else if (wcode >= 51) pvKw = Math.min(pvKw, acMax * 0.20); // drizzle → ≤20%
+  else if (wcode >= 45) pvKw = Math.min(pvKw, acMax * 0.25); // fog → ≤25%
+  pvKw = +pvKw.toFixed(3);
+
   ST.pvKw      = pvKw;
   ST._satLastMs = Date.now();
   ST.irrWm2    = sat.swr;
@@ -1200,6 +1214,7 @@ async function fetchWeather() {
       + '&current=temperature_2m,cloud_cover,weathercode,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance'
       + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,cloud_cover,temperature_2m,precipitation_probability,weathercode'
       + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
+      + '&models=icon_eu'   // ICON-EU: German Weather Service, 6.5km, best accuracy for Romania
       + '&timezone=auto&forecast_days=7';
 
     let raw;
@@ -1328,6 +1343,7 @@ function processOpenMeteo(d) {
   ST.wxTempC   = +(cur.temperature_2m || 15);
   ST.wxCond    = wxLabel(cur.weathercode || 0);
   ST.wxIcon    = wxIcon(cur.weathercode  || 0, ST.wxTempC);
+  ST.wxCode    = cur.weathercode || 0;  // raw WMO code for rain cap
 
   // Use direct_radiation + diffuse_radiation from Open-Meteo
   // direct_radiation = beam on horizontal surface (drops immediately when clouds block sun)
@@ -1397,7 +1413,7 @@ function processOpenMeteo(d) {
     const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
     const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
     const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
-    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp * getLearnedFactor(ghi))).toFixed(3);
+    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp)).toFixed(3);
     ST.poaWm2 = +poaCur.toFixed(1);
   }
 
@@ -1628,7 +1644,7 @@ function irrToKw(ghi, dni, dhi, cloudCover) {
   ST.cfGHI       = +cfGHI.toFixed(3);
 
   const acMax  = SYS.acMax;
-  const raw    = (corrGHI * 1.10 / 1000) * acMax * 0.97 * tempF * getLearnedFactor(corrGHI);
+  const raw    = (corrGHI * 1.10 / 1000) * acMax * 0.97 * tempF;
   return +Math.max(0, Math.min(acMax, raw)).toFixed(3);
 }
 
@@ -1752,6 +1768,7 @@ function evolveSoc() {
   const now = Date.now();
   const dtH = (now - lastFlowT) / 3600000;   // hours elapsed
   lastFlowT = now;
+  ST._socLastMs = now; // track when SOC was last evolved
   const hardFlr = 0;   // internal 0 = physical 10% — discharge stops here
   const prevSoc = ST.battSoc;
   // Huawei Luna 2000: 96% charge × 96% discharge = 92% round-trip efficiency
@@ -2211,6 +2228,7 @@ function updateCalibDisplay() {
 }
 
 function openSocEdit() {
+  const row = document.getElementById('socEditRow');
   const inp = document.getElementById('socEditInput');
   if (!row || !inp) return;
   inp.value = Math.round(socToDisplay(ST.battSoc));
@@ -2243,17 +2261,14 @@ function applySocEdit() {
       battUsable: +(SYS.battUse || 9).toFixed(2),
     };
 
-    // If no sun and drift is significant, derive actual consumption from SOC drop
-    // e.g. battery dropped 20% overnight (8h): actual cons = 0.20 * 9kWh / 8h = 0.225 kW
+    // If no sun and drift is significant, derive actual consumption from SOC drop (log only)
     if (isPvOff && Math.abs(socDrift) > 3 && socCorrHistory_lastTs) {
       const hoursElapsed = (Date.now() - socCorrHistory_lastTs) / 3600000;
       if (hoursElapsed > 1 && hoursElapsed < 16) {
         const actualConsKw = Math.abs(socDrift) / 100 * (SYS.battUse || 9) / hoursElapsed;
         entry.derivedConsKw = +actualConsKw.toFixed(3);
-        // Blend derived consumption into profile smoothly (EMA α=0.25)
-        if (actualConsKw > 0.05 && actualConsKw < 5.0) {
-          ST.consKw = +(0.75 * (ST.consKw || actualConsKw) + 0.25 * actualConsKw).toFixed(3);
-        }
+        // Do NOT override ST.consKw — profile is the authority.
+        // Background service death makes SOC stale, corrupting derived consumption.
       }
     }
 
@@ -2284,47 +2299,14 @@ function updateClock() {
 }
 
 // ── Energy balance cross-validation ───────────────────────────────
-// Energy law: pvKw = consKw + battCharge + gridExport - gridImport
-// If the balance is consistently violated, one of the estimates is wrong.
-// We use the log history to detect systematic drift.
+// NOTE: SOC-drift-based consKw nudging is intentionally disabled.
+// When the background service dies (Samsung kill), SOC becomes stale
+// and the apparent drift is huge — causing consKw to spiral away from
+// the consumption profile. Profile is more reliable than drift estimation.
+// Re-enable only when FusionSolar provides real SOC data.
 let _balanceCheck = { lastRun: 0, drift: 0 };
 function crossValidateEnergyBalance() {
-  const now = Date.now();
-  if (now - _balanceCheck.lastRun < 300000) return; // run every 5 min
-  _balanceCheck.lastRun = now;
-
-  // Need at least 10 log entries and active production
-  if (rlog.length < 10 || !ST.pvKw || ST.pvKw < 0.5) return;
-
-  // Sample recent 20 entries where solar was producing
-  const recent = rlog.slice(-20).filter(e => (e.pvKw || 0) > 0.3);
-  if (recent.length < 5) return;
-
-  // For each entry: balance = pvKw - (consKw + battFlow + netGrid)
-  // battFlow and netGrid are in the log as 'batt' and 'grd'
-  // We don't have consKw in the log directly, use current ST.consKw as proxy
-  // Instead: look at the GHI→pvKw calibration history for correlation with SOC corrections
-
-  // Simple check: if SOC corrections consistently show app overestimating
-  // AND production calibration has < 3 readings, suggest entering a reading
-  try {
-    const socH = JSON.parse(localStorage.getItem('socCorrHistory') || '[]');
-    if (socH.length >= 3) {
-      const avgDrift = socH.slice(-5).reduce((s, e) => s + e.drift, 0) / Math.min(5, socH.length);
-      _balanceCheck.drift = avgDrift;
-      // If battery consistently lower than expected, pvKw is likely overestimated
-      // or consKw is underestimated. Nudge consKw slightly.
-      if (avgDrift < -5 && ST.consKw > 0.1) {
-        // Battery lower than app thinks → app underestimates consumption
-        const nudge = Math.min(0.05, Math.abs(avgDrift) / 100 * (SYS.battUse || 9) / 8);
-        ST.consKw = +(ST.consKw + nudge * 0.1).toFixed(3); // gentle 10% nudge
-      } else if (avgDrift > 5 && ST.consKw > 0.15) {
-        // Battery higher than app thinks → app overestimates consumption
-        const nudge = Math.min(0.05, Math.abs(avgDrift) / 100 * (SYS.battUse || 9) / 8);
-        ST.consKw = +(ST.consKw - nudge * 0.1).toFixed(3);
-      }
-    }
-  } catch(e) {}
+  // No-op until FusionSolar live data is available
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2402,6 +2384,21 @@ function renderIrr() {
 // RENDER — BATTERY
 // ═══════════════════════════════════════════════════════════════
 function renderBattery() {
+  // ── SOC staleness warning ──────────────────────────────────────────
+  const socAgeMs  = Date.now() - (ST._socLastMs || Date.now());
+  const socAgeH   = socAgeMs / 3600000;
+  const staleWarn = socAgeH > 1.5; // stale if not updated in 90+ min
+  if (staleWarn) {
+    const ageLabel = socAgeH > 3 ? Math.round(socAgeH) + 'h' : Math.round(socAgeH * 60) + 'min';
+    const warnEl = document.getElementById('socStaleWarn');
+    if (warnEl) {
+      warnEl.textContent = '⚠️ SOC estimate is ' + ageLabel + ' old — background service may be inactive. Use Edit SOC to correct.';
+      warnEl.style.display = 'block';
+    }
+  } else {
+    const warnEl = document.getElementById('socStaleWarn');
+    if (warnEl) warnEl.style.display = 'none';
+  }
   const fl  = calcFlow(), soc = Math.round(ST.battSoc), st = stored(), dispSoc = socToDisplay(ST.battSoc);
   const chr = fl.battFlow > 0.01, dis = fl.battFlow < -0.01;
   const bkp = f(st / Math.max(0.01, ST.consKw), 1);
@@ -3992,8 +3989,9 @@ function getProfileDailyKwh() {
 }
 
 function applyAutoConsumption() {
+  // Always reset to profile — never let nudges accumulate.
+  // The profile is the only reliable consumption source without FusionSolar.
   const kw = getProfileConsKw(new Date().getHours());
-  if (Math.abs((ST.consKw || 0) - kw) < 0.005) return;
   ST.consKw = kw;
 }
 
