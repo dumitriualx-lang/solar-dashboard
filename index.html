@@ -530,6 +530,12 @@ body::before{
             Disconnect
           </button>
         </div>
+        <button onclick="openFsWebLogin()"
+          style="width:100%;margin-top:8px;background:rgba(0,180,230,.08);color:var(--bl);
+          border:1px solid rgba(0,180,230,.25);border-radius:var(--rs);padding:9px;font-size:12px;
+          font-weight:700;cursor:pointer;font-family:inherit">
+          🌐 Login with FusionSolar browser (bypasses CAPTCHA)
+        </button>
       </div>
       <div id="fsMsg" style="font-size:11px;min-height:14px;margin-top:6px"></div>
       <!-- Diagnostic log — shows exact login steps and API responses on screen -->
@@ -2231,6 +2237,21 @@ async function testFusionSolar() {
 }
 
 // Called when AppBridge status is 'captcha' — shows CAPTCHA image + input
+function openFsWebLogin() {
+  if (window.AppBridge && typeof AppBridge.openFusionSolarWebLogin === 'function') {
+    const msg = document.getElementById('fsMsg');
+    if (msg) { msg.textContent = 'Opening FusionSolar login…'; msg.style.color = 'var(--bl)'; }
+    try {
+      AppBridge.openFusionSolarWebLogin();
+    } catch(e) {
+      if (msg) { msg.textContent = 'Error: ' + e.message; msg.style.color = '#e05a28'; }
+    }
+  } else {
+    const msg = document.getElementById('fsMsg');
+    if (msg) { msg.textContent = '⚠ Update app to use browser login'; msg.style.color = 'var(--am)'; }
+  }
+}
+
 function showFsCaptcha() {
   const log = document.getElementById('fsLog');
   const msg = document.getElementById('fsMsg');
