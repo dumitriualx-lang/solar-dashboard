@@ -460,6 +460,72 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void openFusionSolarWebLogin() {
+            mainHandler.post(() -> {
+                android.content.SharedPreferences prefs =
+                    getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE);
+                String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
+
+                android.webkit.WebView loginView = new android.webkit.WebView(MainActivity.this);
+                loginView.getSettings().setJavaScriptEnabled(true);
+                loginView.getSettings().setDomStorageEnabled(true);
+                loginView.getSettings().setLoadWithOverviewMode(true);
+                loginView.getSettings().setUseWideViewPort(true);
+                android.webkit.CookieManager.getInstance().setAcceptCookie(true);
+                android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(loginView, true);
+
+                android.widget.LinearLayout layout = new android.widget.LinearLayout(MainActivity.this);
+                layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+                layout.setBackgroundColor(android.graphics.Color.parseColor("#050a14"));
+
+                // Close button at top
+                android.widget.Button closeBtn = new android.widget.Button(MainActivity.this);
+                closeBtn.setText("✕  Cancel");
+                closeBtn.setTextColor(android.graphics.Color.parseColor("#c8e0ff"));
+                closeBtn.setBackgroundColor(android.graphics.Color.parseColor("#0a1428"));
+                closeBtn.setPadding(32, 24, 32, 24);
+
+                layout.addView(closeBtn);
+                layout.addView(loginView, new android.widget.LinearLayout.LayoutParams(-1, -1));
+
+                android.app.Dialog dialog = new android.app.Dialog(
+                    MainActivity.this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+                dialog.setContentView(layout);
+                closeBtn.setOnClickListener(v -> dialog.dismiss());
+
+                loginView.setWebViewClient(new android.webkit.WebViewClient() {
+                    @Override
+                    public void onPageFinished(android.webkit.WebView view, String url) {
+                        // Detect successful login by redirect to dashboard URL
+                        if (url != null && (url.contains("/netecowebext/home")
+                                || url.contains("/pvmswebsite")
+                                || url.contains("/unisess/v1/auth")
+                                || (url.contains("fusionsolar") && url.contains("home")))) {
+                            // Extract session cookie from WebView's cookie store
+                            String cookieStr = android.webkit.CookieManager.getInstance()
+                                .getCookie("https://eu5.fusionsolar.huawei.com");
+                            if (cookieStr != null && !cookieStr.isEmpty()) {
+                                prefs.edit()
+                                    .putString("fs_session_cookie", cookieStr)
+                                    .putString("fs_last_error", "")
+                                    .putLong("fs_last_fetch_ms", 0)
+                                    .apply();
+                                android.util.Log.d("AppBridge", "WebLogin: session cookie saved");
+                            }
+                            dialog.dismiss();
+                            // Notify JS to refresh status
+                            webView.evaluateJavascript(
+                                "if(typeof refreshFsStatus==='function')refreshFsStatus();" +
+                                "if(typeof setApi==='function')setApi('ok','FusionSolar session established');", null);
+                        }
+                    }
+                });
+                loginView.loadUrl(host + "/unisso/login.action");
+                dialog.show();
+            });
+        }
+
+        @JavascriptInterface
         public String getFusionSolarStatus() {
             android.content.SharedPreferences prefs = getSharedPreferences("solar_prefs", MODE_PRIVATE);
             boolean enabled = prefs.getBoolean("fs_enabled", false);
