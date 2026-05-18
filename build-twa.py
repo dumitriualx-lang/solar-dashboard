@@ -460,13 +460,70 @@ public class MainActivity extends Activity {
             boolean enabled = prefs.getBoolean("fs_enabled", false);
             String user = prefs.getString("fs_user", "");
             if (!enabled || user.isEmpty()) return "disconnected";
-            // Return last fetch timestamp if available
+            String lastError = prefs.getString("fs_last_error", "");
+            if ("CAPTCHA".equals(lastError)) return "captcha";
             long lastFetch = prefs.getLong("fs_last_fetch_ms", 0);
             if (lastFetch > 0) {
                 long ageMin = (System.currentTimeMillis() - lastFetch) / 60000;
                 return "connected:" + ageMin + "min";
             }
             return "connected:pending";
+        }
+
+        // Fetches the CAPTCHA image as base64 so JS can display it in an <img> tag
+        @JavascriptInterface
+        public String getFusionSolarCaptchaBase64() {
+            try {
+                android.content.SharedPreferences prefs = getSharedPreferences("solar_prefs", MODE_PRIVATE);
+                String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
+                String cookie = prefs.getString("fs_session_cookie", "");
+                // Generate random token for this CAPTCHA session
+                String random = String.valueOf(System.currentTimeMillis());
+                prefs.edit().putString("fs_captcha_random", random).apply();
+                long ts = System.currentTimeMillis();
+                String url = host + "/unisso/verifyCode?random=" + random + "&timeStamp=" + ts;
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                c.setConnectTimeout(10000); c.setReadTimeout(10000);
+                c.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; SolarDashboard/1.0)");
+                if (!cookie.isEmpty()) c.setRequestProperty("Cookie", cookie);
+                c.connect();
+                java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                java.io.InputStream is = c.getInputStream();
+                byte[] buf = new byte[4096]; int n;
+                while ((n = is.read(buf)) != -1) baos.write(buf, 0, n);
+                is.close(); c.disconnect();
+                return android.util.Base64.encodeToString(baos.toByteArray(), android.util.Base64.NO_WRAP);
+            } catch (Exception e) {
+                android.util.Log.e("AppBridge", "getCaptcha: " + e.getMessage());
+                return "";
+            }
+        }
+
+        // Retries login with the user-supplied CAPTCHA code
+        @JavascriptInterface
+        public String submitFusionSolarWithCaptcha(String captchaCode) {
+            try {
+                android.content.SharedPreferences prefs = getSharedPreferences("solar_prefs", MODE_PRIVATE);
+                String user   = prefs.getString("fs_user", "");
+                String pass   = prefs.getString("fs_pass", "");
+                String host   = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
+                String random = prefs.getString("fs_captcha_random", "");
+                if (user.isEmpty() || pass.isEmpty()) return "FAIL: no credentials";
+                // Run full login with captchaCode injected
+                FusionSolarClient client = new FusionSolarClient(getApplicationContext());
+                org.json.JSONObject result = client.fetchLiveDataWithCaptcha(user, pass, host, captchaCode, random);
+                if (result != null) {
+                    prefs.edit()
+                        .putLong("fs_last_fetch_ms", System.currentTimeMillis())
+                        .putString("fs_last_error", "")
+                        .apply();
+                    return "OK: pvKw=" + result.optDouble("pvKw", -1)
+                        + " soc=" + result.optDouble("battSoc", -1) + "%";
+                }
+                return "FAIL: login still rejected — check the code and try again";
+            } catch (Exception e) {
+                return "ERROR: " + e.getMessage();
+            }
         }
     }
 
@@ -2022,6 +2079,64 @@ public class FusionSolarClient {
             }
         } catch (Exception ignored) {}
         return sb.length() > 0 ? sb.toString() : sessionCookie;
+    }
+
+    public JSONObject fetchLiveDataWithCaptcha(String user, String pass, String host, String captchaCode, String random) {
+        try {
+            android.content.SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
+            // Fresh login with CAPTCHA code
+            sessionCookie = null; roarand = null;
+            if (!loginWithCaptcha(host, user, pass, captchaCode, random)) return null;
+            // Save session cookie for CAPTCHA image requests
+            prefs.edit().putString("fs_session_cookie", sessionCookie != null ? sessionCookie : "").apply();
+            JSONObject data = getPlantOverview(host);
+            if (data != null) prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
+            return data;
+        } catch (Exception e) { Log.e(TAG, "fetchLiveDataWithCaptcha: " + e.getMessage()); return null; }
+    }
+
+    private boolean loginWithCaptcha(String host, String user, String pass, String captchaCode, String random) {
+        try {
+            HttpURLConnection init = open(new URL(host + "/unisso/login.action"), "GET");
+            init.connect(); String initCookie = cookies(init); body(init); init.disconnect();
+            HttpURLConnection pk = open(new URL(host + "/unisso/pubkey"), "GET");
+            if (initCookie != null) pk.setRequestProperty("Cookie", initCookie);
+            pk.connect(); String pkResp = body(pk); pk.disconnect();
+            String pemKey = parseJsonStr(pkResp, "pubKey");
+            if (pemKey == null) return false;
+            String encPass = rsaEncryptPem(pass, pemKey);
+            if (encPass == null) return false;
+            String service = "/unisess/v1/auth?service=/netecowebext/home/index.html";
+            String query = "?timeZone=1&service=" + URLEncoder.encode(service, "UTF-8");
+            HttpURLConnection conn = open(new URL(host + "/unisso/v2/validateUser.action" + query), "POST");
+            conn.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
+            conn.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+            if (initCookie != null) conn.setRequestProperty("Cookie", initCookie);
+            conn.setDoOutput(true);
+            JSONObject payload = new JSONObject();
+            payload.put("username", user); payload.put("value", encPass);
+            payload.put("timeZone", 1); payload.put("service", service);
+            payload.put("verifyCode", captchaCode);
+            payload.put("random", random);
+            conn.getOutputStream().write(payload.toString().getBytes("UTF-8"));
+            int code = conn.getResponseCode();
+            String respBody = body(conn); String respCookie = cookies(conn); conn.disconnect();
+            if (respCookie != null && !respCookie.isEmpty()) sessionCookie = respCookie;
+            else if (initCookie != null) sessionCookie = initCookie;
+            if (respBody != null && respBody.startsWith("{")) {
+                try {
+                    JSONObject resp = new JSONObject(respBody);
+                    String rr = resp.optString("roarand", "");
+                    if (rr.isEmpty()) { JSONObject d = resp.optJSONObject("data"); if (d != null) rr = d.optString("roarand", ""); }
+                    if (!rr.isEmpty()) roarand = rr;
+                } catch (Exception ignored) {}
+            }
+            boolean ok = (code == 200 || code == 302 || code == 301) && sessionCookie != null
+                && (respBody == null || !respBody.contains("411"));
+            if (ok) sessionExpiry = System.currentTimeMillis() + SESSION_MS;
+            Log.d(TAG, "loginWithCaptcha HTTP " + code + " ok=" + ok);
+            return ok;
+        } catch (Exception e) { Log.e(TAG, "loginWithCaptcha: " + e.getMessage()); return false; }
     }
 
     public String diagnose(String host, String user, String pass) {
