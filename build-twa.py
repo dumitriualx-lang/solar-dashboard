@@ -2026,21 +2026,20 @@ public class FusionSolarClient {
 
     public String diagnose(String host, String user, String pass) {
         StringBuilder r = new StringBuilder();
+        char NL = (char)10;
         try {
             java.net.HttpURLConnection init = open(new java.net.URL(host + "/unisso/login.action"), "GET");
             init.connect();
-            String initCookie = cookies(init);
-            body(init); init.disconnect();
-            r.append("cookie: ").append(initCookie != null ? "set" : "null").append("\n");
+            String initCookie = cookies(init); body(init); init.disconnect();
+            r.append("cookie: ").append(initCookie != null ? "set" : "null").append(NL);
             java.net.HttpURLConnection pk = open(new java.net.URL(host + "/unisso/pubkey"), "GET");
             if (initCookie != null) pk.setRequestProperty("Cookie", initCookie);
-            pk.connect();
-            String pkResp = body(pk); pk.disconnect();
+            pk.connect(); String pkResp = body(pk); pk.disconnect();
             String pemKey = parseJsonStr(pkResp, "pubKey");
-            r.append("pubKey: ").append(pemKey != null ? "found len=" + pemKey.length() : "NULL").append("\n");
+            r.append("pubKey: ").append(pemKey != null ? "found len=" + pemKey.length() : "NULL").append(NL);
             if (pemKey == null) return r.toString();
             String encPass = rsaEncryptPem(pass, pemKey);
-            r.append("RSA: ").append(encPass != null ? "OK len=" + encPass.length() : "FAILED").append("\n");
+            r.append("RSA: ").append(encPass != null ? "OK len=" + encPass.length() : "FAILED").append(NL);
             if (encPass == null) return r.toString();
             String service = "/unisess/v1/auth?service=/netecowebext/home/index.html";
             String query = "?timeZone=1&service=" + java.net.URLEncoder.encode(service, "UTF-8");
@@ -2055,11 +2054,12 @@ public class FusionSolarClient {
             conn.getOutputStream().write(pl.toString().getBytes("UTF-8"));
             int code = conn.getResponseCode();
             String respBody = body(conn); conn.disconnect();
-            r.append("POST HTTP: ").append(code).append("\n");
-            r.append("body: ").append(respBody.substring(0, Math.min(300, respBody.length()))).append("\n");
+            r.append("POST HTTP: ").append(code).append(NL);
+            r.append("body: ").append(respBody.substring(0, Math.min(300, respBody.length())));
         } catch (Exception e) { r.append("ERR: ").append(e.getMessage()); }
         return r.toString();
     }
+
 
     private String cookieValue(HttpURLConnection c, String name) {
         try {
