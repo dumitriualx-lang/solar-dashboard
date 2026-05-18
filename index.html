@@ -2202,8 +2202,17 @@ async function testFusionSolar() {
   if (window.AppBridge && typeof AppBridge.testFusionSolarConnection === 'function') {
     try {
       const result = AppBridge.testFusionSolarConnection();
-      L('   ' + result, result.startsWith('OK') ? 'var(--g)' : '#e05a28');
-    } catch(e) { L('   testFusionSolarConnection not available in this APK version', 'var(--t3)'); }
+      if (result.startsWith('OK')) {
+        L('   ' + result, 'var(--g)');
+        if (msg) { msg.textContent = '✅ FusionSolar live'; msg.style.color = 'var(--g)'; }
+      } else if (result.includes('411') || result.includes('verification code') || result.includes('CAPTCHA')) {
+        L('   ⚠ CAPTCHA required — solve below', 'var(--am)');
+        L('   ' + result.substring(0, 120), 'var(--t2)');
+        showFsCaptcha();
+      } else {
+        L('   ' + result, '#e05a28');
+      }
+    } catch(e) { L('   testFusionSolarConnection not in this APK', 'var(--t3)'); }
   } else {
     L('   testFusionSolarConnection not in this APK — push new build to get detailed diagnostics', 'var(--t3)');
   }
