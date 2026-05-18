@@ -406,34 +406,55 @@ public class MainActivity extends Activity {
             try {
                 android.content.SharedPreferences prefs =
                     getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE);
-                if (!prefs.getBoolean("fs_enabled", false)) return "FAIL: fs_enabled=false";
-                String user = prefs.getString("fs_user", "");
-                String pass = prefs.getString("fs_pass", "");
-                String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
-                if (user.isEmpty()) return "FAIL: no username saved";
-                if (pass.isEmpty()) return "FAIL: no password saved";
+                String cookie = prefs.getString("fs_session_cookie", "");
+                String rr     = prefs.getString("fs_roarand", "");
+                String host   = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
+                String user   = prefs.getString("fs_user", "");
+                String pass   = prefs.getString("fs_pass", "");
 
-                // Run the full login flow and report each step
-                FusionSolarClient client = new FusionSolarClient(getApplicationContext());
-                org.json.JSONObject result = client.fetchLiveData();
-                if (result != null) {
-                    prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
-                    return "OK: pvKw=" + result.optDouble("pvKw", -1)
-                        + " battSoc=" + result.optDouble("battSoc", -1)
-                        + "% export=" + result.optDouble("gridExport", 0)
-                        + " house=" + result.optDouble("houseLoad", 0);
+                StringBuilder log = new StringBuilder();
+                char NL = (char)10;
+                log.append("cookie: ").append(cookie.isEmpty() ? "NONE" : "set (" + cookie.length() + " chars)").append(NL);
+                log.append("roarand: ").append(rr.isEmpty() ? "MISSING" : "set (" + rr.length() + " chars)").append(NL);
+
+                if (cookie.isEmpty()) {
+                    log.append("No WebView session saved - use browser login button");
+                    return log.toString();
                 }
-                // Login failed — get diagnostic detail from a fresh attempt
-                String diagResult = client.diagnose(host, user, pass);
-                // If CAPTCHA required, flag it so UI can show the CAPTCHA solver
-                if (diagResult.contains("411")) {
-                    prefs.edit().putString("fs_last_error", "CAPTCHA").apply();
+
+                // Test the station list API directly with saved session (non-destructive)
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection)
+                    new java.net.URL(host + "/rest/pvms/web/station/v1/station/list").openConnection();
+                c.setConnectTimeout(15000); c.setReadTimeout(15000);
+                c.setRequestMethod("POST");
+                c.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
+                c.setRequestProperty("Accept", "application/json, text/plain, */*");
+                c.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; SolarDashboard/1.0)");
+                c.setRequestProperty("Cookie", cookie);
+                if (!rr.isEmpty()) {
+                    c.setRequestProperty("roarand", rr);
+                    c.setRequestProperty("X-XSRF-TOKEN", rr);
                 }
-                return diagResult;
+                c.setDoOutput(true);
+                org.json.JSONObject body = new org.json.JSONObject();
+                body.put("pageNo", 1); body.put("pageSize", 10);
+                c.getOutputStream().write(body.toString().getBytes("UTF-8"));
+                int code = c.getResponseCode();
+                java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(
+                        code < 400 ? c.getInputStream() : c.getErrorStream(), "UTF-8"));
+                StringBuilder sb = new StringBuilder(); String ln;
+                while ((ln = br.readLine()) != null) sb.append(ln);
+                br.close(); c.disconnect();
+                String resp = sb.toString();
+                log.append("stationList HTTP: ").append(code).append(NL);
+                log.append("response: ").append(resp.substring(0, Math.min(300, resp.length())));
+                return log.toString();
             } catch (Exception e) {
                 return "ERROR: " + e.getMessage();
             }
         }
+
         @JavascriptInterface
         public void setFusionSolarCreds(String user, String pass, String host) {
             // Stores credentials in SharedPreferences so the background service
@@ -1993,12 +2014,16 @@ public class FusionSolarClient {
                 return data;
             }
             // API call failed - session likely expired on server side
-            Log.d(TAG, "getPlantOverview returned null, attempting re-login");
+            // API failed - if we had a WebView cookie, keep it and just return null
+            // The cookie might still be valid; roarand might be missing
+            // Background service will retry in 30 min
+            if (!webCookie.isEmpty()) {
+                Log.w(TAG, "API failed with WebView session - will retry");
+                return null;
+            }
+            // No WebView cookie - try RSA login
             sessionCookie = null; roarand = null;
-            // Try RSA login first (works if no CAPTCHA lockout)
             if (login(host, user, pass)) {
-                // RSA login worked - clear stale WebView cookie
-                prefs.edit().putString("fs_session_cookie", "").apply();
                 data = getPlantOverview(host);
                 if (data != null) {
                     prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis())
@@ -2006,7 +2031,6 @@ public class FusionSolarClient {
                 }
                 return data;
             }
-            // RSA login failed (CAPTCHA or network) - signal browser re-login needed
             prefs.edit().putString("fs_last_error", "CAPTCHA").apply();
             return null;
         } catch (Exception e) {
