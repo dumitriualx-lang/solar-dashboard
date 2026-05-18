@@ -2103,24 +2103,54 @@ function loadFsCredentials() {
 }
 
 function refreshFsStatus() {
-  const creds = loadFsCredentials();
+  const creds   = loadFsCredentials();
   const statusEl = document.getElementById('fsStatus');
   const userEl   = document.getElementById('cfgFsUser');
+  if (userEl && !userEl.value && creds && creds.user) userEl.value = creds.user;
+  if (!statusEl) return;
+
+  // Use AppBridge as source of truth — localStorage only shows saved credentials, not actual connection
+  if (window.AppBridge && typeof AppBridge.getFusionSolarStatus === 'function') {
+    try {
+      const status = AppBridge.getFusionSolarStatus();
+      if (status === 'captcha') {
+        statusEl.textContent = '⚠ CAPTCHA required';
+        statusEl.style.background = 'rgba(212,168,32,.12)';
+        statusEl.style.color = 'var(--am)';
+        statusEl.style.borderColor = 'rgba(212,168,32,.3)';
+        showFsCaptcha();
+        return;
+      } else if (status.startsWith('connected')) {
+        const mins = status.split(':')[1] || '';
+        statusEl.textContent = '● Live' + (mins ? ' · ' + mins + ' ago' : '');
+        statusEl.style.background = 'rgba(0,200,130,.15)';
+        statusEl.style.color = 'var(--g)';
+        statusEl.style.borderColor = 'rgba(0,200,130,.3)';
+      } else if (creds && creds.user) {
+        statusEl.textContent = '⚠ Credentials saved — tap Test';
+        statusEl.style.background = 'rgba(212,168,32,.1)';
+        statusEl.style.color = 'var(--am)';
+        statusEl.style.borderColor = 'rgba(212,168,32,.3)';
+      } else {
+        statusEl.textContent = 'Not connected';
+        statusEl.style.background = 'rgba(0,80,160,.3)';
+        statusEl.style.color = 'var(--t2)';
+        statusEl.style.borderColor = 'var(--br2)';
+      }
+      return;
+    } catch(e) {}
+  }
+  // Fallback when AppBridge not available
   if (creds && creds.user) {
-    if (statusEl) {
-      statusEl.textContent = '● Connected';
-      statusEl.style.background = 'rgba(0,200,130,.15)';
-      statusEl.style.color = 'var(--g)';
-      statusEl.style.borderColor = 'rgba(0,200,130,.3)';
-    }
-    if (userEl && !userEl.value) userEl.value = creds.user;
+    statusEl.textContent = '● Saved';
+    statusEl.style.background = 'rgba(0,200,130,.15)';
+    statusEl.style.color = 'var(--g)';
+    statusEl.style.borderColor = 'rgba(0,200,130,.3)';
   } else {
-    if (statusEl) {
-      statusEl.textContent = 'Not connected';
-      statusEl.style.background = 'rgba(0,80,160,.3)';
-      statusEl.style.color = 'var(--t2)';
-      statusEl.style.borderColor = 'var(--br2)';
-    }
+    statusEl.textContent = 'Not connected';
+    statusEl.style.background = 'rgba(0,80,160,.3)';
+    statusEl.style.color = 'var(--t2)';
+    statusEl.style.borderColor = 'var(--br2)';
   }
 }
 
@@ -2189,6 +2219,61 @@ async function testFusionSolar() {
 
   L('─── Done. The AppBridge status above is the definitive result. ───', 'var(--t3)');
   if (msg) setTimeout(() => { if(msg) msg.textContent = ''; }, 5000);
+}
+
+// Called when AppBridge status is 'captcha' — shows CAPTCHA image + input
+function showFsCaptcha() {
+  const log = document.getElementById('fsLog');
+  const msg = document.getElementById('fsMsg');
+  if (log) log.style.display = 'block';
+  if (msg) { msg.textContent = '⚠ CAPTCHA required — solve below then tap Verify'; msg.style.color = 'var(--am)'; }
+
+  // Fetch CAPTCHA image from Java
+  if (!window.AppBridge || typeof AppBridge.getFusionSolarCaptchaBase64 !== 'function') {
+    if (log) log.innerHTML = '<div style="color:var(--am)">Update app to handle CAPTCHA</div>';
+    return;
+  }
+  if (log) log.innerHTML = '<div style="color:var(--t2)">Loading CAPTCHA image…</div>';
+  setTimeout(() => {
+    try {
+      const b64 = AppBridge.getFusionSolarCaptchaBase64();
+      if (!b64) { if (log) log.innerHTML = '<div style="color:#e05a28">Failed to load CAPTCHA image</div>'; return; }
+      if (log) log.innerHTML =
+        '<div style="margin-bottom:8px"><img src="data:image/png;base64,' + b64 + '" style="border-radius:6px;max-width:100%"></div>' +
+        '<input id="fsCaptchaInput" type="text" placeholder="Enter code from image above" ' +
+        'style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(0,180,230,.4);' +
+        'background:rgba(0,20,60,.8);color:var(--tx);font-size:14px;box-sizing:border-box;margin-bottom:8px">' +
+        '<button onclick="submitFsCaptcha()" style="width:100%;padding:10px;background:rgba(0,200,130,.15);' +
+        'color:var(--g);border:1px solid rgba(0,200,130,.4);border-radius:8px;font-size:13px;font-weight:700;' +
+        'cursor:pointer;font-family:inherit">✓ Verify CAPTCHA</button>';
+    } catch(e) {
+      if (log) log.innerHTML = '<div style="color:#e05a28">Error: ' + e.message + '</div>';
+    }
+  }, 100);
+}
+
+function submitFsCaptcha() {
+  const inp = document.getElementById('fsCaptchaInput');
+  const msg = document.getElementById('fsMsg');
+  if (!inp || !inp.value.trim()) { if (msg) { msg.textContent = 'Enter the CAPTCHA code first'; msg.style.color = 'var(--am)'; } return; }
+  if (!window.AppBridge || typeof AppBridge.submitFusionSolarWithCaptcha !== 'function') return;
+  if (msg) { msg.textContent = 'Verifying…'; msg.style.color = 'var(--bl)'; }
+  setTimeout(() => {
+    try {
+      const result = AppBridge.submitFusionSolarWithCaptcha(inp.value.trim());
+      if (msg) {
+        msg.textContent = result.startsWith('OK') ? '✅ Connected! ' + result : '✗ ' + result;
+        msg.style.color = result.startsWith('OK') ? 'var(--g)' : '#e05a28';
+      }
+      if (result.startsWith('OK')) {
+        const log = document.getElementById('fsLog');
+        if (log) { log.style.display = 'none'; log.innerHTML = ''; }
+        refreshFsStatus();
+      }
+    } catch(e) {
+      if (msg) { msg.textContent = 'Error: ' + e.message; msg.style.color = '#e05a28'; }
+    }
+  }, 100);
 }
 
 function connectFusionSolar() {
