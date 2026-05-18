@@ -470,60 +470,86 @@ public class MainActivity extends Activity {
                 lv.getSettings().setDomStorageEnabled(true);
                 lv.getSettings().setLoadWithOverviewMode(true);
                 lv.getSettings().setUseWideViewPort(true);
+                lv.getSettings().setBuiltInZoomControls(true);
+                lv.getSettings().setDisplayZoomControls(false);
                 android.webkit.CookieManager.getInstance().setAcceptCookie(true);
                 android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(lv, true);
+
+                // Keep ALL navigation inside the WebView - prevent any external browser launch
+                lv.setWebViewClient(new android.webkit.WebViewClient() {
+                    @Override
+                    public boolean shouldOverrideUrlLoading(android.webkit.WebView view,
+                            android.webkit.WebResourceRequest request) {
+                        view.loadUrl(request.getUrl().toString());
+                        return true;
+                    }
+                });
+
+                android.widget.LinearLayout header = new android.widget.LinearLayout(MainActivity.this);
+                header.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                header.setBackgroundColor(android.graphics.Color.parseColor("#0a1428"));
+                header.setPadding(24, 20, 24, 20);
+                android.widget.TextView hint = new android.widget.TextView(MainActivity.this);
+                hint.setText("Log in, then tap Save when dashboard loads");
+                hint.setTextColor(android.graphics.Color.parseColor("#8ab4e0"));
+                hint.setTextSize(13);
+                header.addView(hint, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
+                android.widget.Button doneBtn = new android.widget.Button(MainActivity.this);
+                doneBtn.setText("Save & Close");
+                doneBtn.setTextColor(android.graphics.Color.parseColor("#1D9E75"));
+                doneBtn.setBackgroundColor(android.graphics.Color.parseColor("#0a1428"));
+                header.addView(doneBtn);
+
                 android.widget.LinearLayout layout = new android.widget.LinearLayout(MainActivity.this);
                 layout.setOrientation(android.widget.LinearLayout.VERTICAL);
-                layout.setBackgroundColor(android.graphics.Color.parseColor("#050a14"));
-                android.widget.Button doneBtn = new android.widget.Button(MainActivity.this);
-                doneBtn.setText("Done / Cancel");
-                doneBtn.setTextColor(android.graphics.Color.parseColor("#c8e0ff"));
-                doneBtn.setBackgroundColor(android.graphics.Color.parseColor("#0a1428"));
-                doneBtn.setPadding(32, 24, 32, 24);
-                layout.addView(doneBtn);
+                layout.addView(header);
                 layout.addView(lv, new android.widget.LinearLayout.LayoutParams(-1, -1));
+
                 android.app.Dialog dialog = new android.app.Dialog(
                     MainActivity.this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
                 dialog.setContentView(layout);
-                doneBtn.setOnClickListener(v -> dialog.dismiss());
+                dialog.setCancelable(false); // only Save & Close button can dismiss
+
                 String JS_RR = "(function(){var m=document.cookie.match(/roarand=([^;]+)/);if(m)return m[1];return '';})()";
-                lv.setWebViewClient(new android.webkit.WebViewClient() {
-                    @Override
-                    public void onPageFinished(android.webkit.WebView view, String url) {
-                        if (url == null) return;
-                        boolean ok = url.contains("/netecowebext/home")
-                            || url.contains("/pvmswebsite")
-                            || (url.contains("fusionsolar") && url.contains("index"));
-                        if (!ok) return;
-                        String ck = android.webkit.CookieManager.getInstance()
-                            .getCookie("https://eu5.fusionsolar.huawei.com");
-                        if (ck == null) ck = "";
-                        final String fck = ck;
-                        view.evaluateJavascript(JS_RR, rrVal -> {
-                            String rr = rrVal != null ? rrVal.replace(String.valueOf((char)34), "").trim() : "";
-                            if (rr.isEmpty() || rr.equals("null")) {
-                                for (String p : fck.split(";")) {
-                                    String t = p.trim();
-                                    if (t.startsWith("roarand=")) { rr = t.substring(8).trim(); break; }
-                                }
-                            }
-                            final String frr = rr;
-                            android.util.Log.d("AppBridge", "WebLogin ok cookie=" +
-                                (fck.isEmpty()?"empty":"set") + " roarand=" + (frr.isEmpty()?"missing":"set"));
-                            prefs.edit()
-                                .putString("fs_session_cookie", fck)
-                                .putString("fs_roarand", frr)
-                                .putString("fs_last_error", "")
-                                .putLong("fs_last_fetch_ms", 0)
-                                .apply();
-                            mainHandler.post(() -> {
-                                dialog.dismiss();
-                                webView.evaluateJavascript(
-                                    "if(typeof refreshFsStatus==='function')refreshFsStatus();", null);
-                            });
-                        });
+
+                doneBtn.setOnClickListener(v -> {
+                    String ck = android.webkit.CookieManager.getInstance()
+                        .getCookie("https://eu5.fusionsolar.huawei.com");
+                    if (ck == null) ck = "";
+                    final String fck = ck;
+                    if (fck.isEmpty()) {
+                        android.widget.Toast.makeText(MainActivity.this,
+                            "No session found - please log in first", android.widget.Toast.LENGTH_LONG).show();
+                        return;
                     }
+                    lv.evaluateJavascript(JS_RR, rrVal -> {
+                        String rr = (rrVal != null)
+                            ? rrVal.replace(String.valueOf((char)34), "").trim() : "";
+                        if (rr.isEmpty() || rr.equals("null")) {
+                            for (String p : fck.split(";")) {
+                                String t = p.trim();
+                                if (t.startsWith("roarand=")) { rr = t.substring(8).trim(); break; }
+                            }
+                        }
+                        final String frr = rr;
+                        android.util.Log.d("AppBridge", "WebLogin saved cookie=set roarand="
+                            + (frr.isEmpty() ? "missing" : "set"));
+                        prefs.edit()
+                            .putString("fs_session_cookie", fck)
+                            .putString("fs_roarand", frr)
+                            .putString("fs_last_error", "")
+                            .putLong("fs_last_fetch_ms", 0)
+                            .apply();
+                        mainHandler.post(() -> {
+                            android.widget.Toast.makeText(MainActivity.this,
+                                "Session saved! FusionSolar data loading...", android.widget.Toast.LENGTH_SHORT).show();
+                            dialog.dismiss();
+                            webView.evaluateJavascript(
+                                "if(typeof refreshFsStatus==='function')refreshFsStatus();", null);
+                        });
+                    });
                 });
+
                 lv.loadUrl(host + "/unisso/login.action");
                 dialog.show();
             });
