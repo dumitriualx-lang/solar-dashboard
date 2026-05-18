@@ -403,79 +403,30 @@ public class MainActivity extends Activity {
         // ── FusionSolar integration ────────────────────────────────────────
         @JavascriptInterface
         public String testFusionSolarConnection() {
-            String nl = String.valueOf((char)10);
-            StringBuilder log = new StringBuilder();
             try {
                 android.content.SharedPreferences prefs =
                     getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE);
-                if (!prefs.getBoolean("fs_enabled", false))
-                    return "FAIL: fs_enabled=false";
+                if (!prefs.getBoolean("fs_enabled", false)) return "FAIL: fs_enabled=false";
                 String user = prefs.getString("fs_user", "");
                 String pass = prefs.getString("fs_pass", "");
                 String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
                 if (user.isEmpty()) return "FAIL: no username saved";
                 if (pass.isEmpty()) return "FAIL: no password saved";
-                log.append("user=").append(user).append(nl);
 
-                try {
-                    java.net.HttpURLConnection c = (java.net.HttpURLConnection)
-                        new java.net.URL(host + "/unisso/login.action").openConnection();
-                    c.setConnectTimeout(15000); c.setReadTimeout(15000);
-                    c.setInstanceFollowRedirects(false);
-                    c.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; SolarDashboard/1.0)");
-                    c.setRequestProperty("Accept-Encoding", "identity");
-                    int code = c.getResponseCode();
-                    log.append("GET login.action HTTP ").append(code).append(nl);
-                    java.io.InputStream is = code < 400 ? c.getInputStream() : c.getErrorStream();
-                    java.io.BufferedReader br = new java.io.BufferedReader(
-                        new java.io.InputStreamReader(is, "UTF-8"));
-                    StringBuilder html = new StringBuilder(); String ln;
-                    while ((ln = br.readLine()) != null) html.append(ln);
-                    br.close(); c.disconnect();
-                    String h = html.toString();
-                    boolean hasMod = h.contains("modulus");
-                    boolean hasExp = h.contains("exponent");
-                    log.append("modulus in HTML: ").append(hasMod).append(nl);
-                    log.append("exponent in HTML: ").append(hasExp).append(nl);
-                    if (hasMod) {
-                        int mi = h.indexOf("modulus");
-                        log.append("context: ").append(
-                            h.substring(Math.max(0,mi-20), Math.min(h.length(),mi+80))
-                        ).append(nl);
-                    } else {
-                        log.append("html_preview: ").append(
-                            h.substring(0, Math.min(400, h.length()))
-                        ).append(nl);
-                    }
-                } catch (Exception e) {
-                    log.append("login.action error: ").append(e.getMessage()).append(nl);
+                // Run the full login flow and report each step
+                FusionSolarClient client = new FusionSolarClient(getApplicationContext());
+                org.json.JSONObject result = client.fetchLiveData();
+                if (result != null) {
+                    prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
+                    return "OK: pvKw=" + result.optDouble("pvKw", -1)
+                        + " battSoc=" + result.optDouble("battSoc", -1)
+                        + "% export=" + result.optDouble("gridExport", 0)
+                        + " house=" + result.optDouble("houseLoad", 0);
                 }
-
-                try {
-                    java.net.HttpURLConnection pk = (java.net.HttpURLConnection)
-                        new java.net.URL(host + "/unisso/pubkey").openConnection();
-                    pk.setConnectTimeout(10000); pk.setReadTimeout(10000);
-                    pk.setRequestProperty("Accept-Encoding", "identity");
-                    int pkCode = pk.getResponseCode();
-                    log.append("GET pubkey HTTP ").append(pkCode).append(nl);
-                    if (pkCode == 200) {
-                        java.io.BufferedReader br2 = new java.io.BufferedReader(
-                            new java.io.InputStreamReader(pk.getInputStream(), "UTF-8"));
-                        StringBuilder pkB = new StringBuilder(); String l2;
-                        while ((l2 = br2.readLine()) != null) pkB.append(l2);
-                        br2.close();
-                        log.append("pubkey: ").append(
-                            pkB.toString().substring(0, Math.min(250, pkB.length()))
-                        ).append(nl);
-                    }
-                    pk.disconnect();
-                } catch (Exception e) {
-                    log.append("pubkey error: ").append(e.getMessage()).append(nl);
-                }
-
-                return log.toString();
+                // Login failed — get diagnostic detail from a fresh attempt
+                return client.diagnose(host, user, pass);
             } catch (Exception e) {
-                return log.append("ERROR: ").append(e.getMessage()).toString();
+                return "ERROR: " + e.getMessage();
             }
         }
         @JavascriptInterface
@@ -2071,6 +2022,43 @@ public class FusionSolarClient {
             }
         } catch (Exception ignored) {}
         return sb.length() > 0 ? sb.toString() : sessionCookie;
+    }
+
+    public String diagnose(String host, String user, String pass) {
+        StringBuilder r = new StringBuilder();
+        try {
+            java.net.HttpURLConnection init = open(new java.net.URL(host + "/unisso/login.action"), "GET");
+            init.connect();
+            String initCookie = cookies(init);
+            body(init); init.disconnect();
+            r.append("cookie: ").append(initCookie != null ? "set" : "null").append("\n");
+            java.net.HttpURLConnection pk = open(new java.net.URL(host + "/unisso/pubkey"), "GET");
+            if (initCookie != null) pk.setRequestProperty("Cookie", initCookie);
+            pk.connect();
+            String pkResp = body(pk); pk.disconnect();
+            String pemKey = parseJsonStr(pkResp, "pubKey");
+            r.append("pubKey: ").append(pemKey != null ? "found len=" + pemKey.length() : "NULL").append("\n");
+            if (pemKey == null) return r.toString();
+            String encPass = rsaEncryptPem(pass, pemKey);
+            r.append("RSA: ").append(encPass != null ? "OK len=" + encPass.length() : "FAILED").append("\n");
+            if (encPass == null) return r.toString();
+            String service = "/unisess/v1/auth?service=/netecowebext/home/index.html";
+            String query = "?timeZone=1&service=" + java.net.URLEncoder.encode(service, "UTF-8");
+            java.net.HttpURLConnection conn = open(new java.net.URL(host + "/unisso/v2/validateUser.action" + query), "POST");
+            conn.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
+            conn.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+            if (initCookie != null) conn.setRequestProperty("Cookie", initCookie);
+            conn.setDoOutput(true);
+            org.json.JSONObject pl = new org.json.JSONObject();
+            pl.put("username", user); pl.put("value", encPass);
+            pl.put("timeZone", 1); pl.put("service", service);
+            conn.getOutputStream().write(pl.toString().getBytes("UTF-8"));
+            int code = conn.getResponseCode();
+            String respBody = body(conn); conn.disconnect();
+            r.append("POST HTTP: ").append(code).append("\n");
+            r.append("body: ").append(respBody.substring(0, Math.min(300, respBody.length()))).append("\n");
+        } catch (Exception e) { r.append("ERR: ").append(e.getMessage()); }
+        return r.toString();
     }
 
     private String cookieValue(HttpURLConnection c, String name) {
