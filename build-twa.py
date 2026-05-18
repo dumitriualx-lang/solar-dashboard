@@ -424,7 +424,12 @@ public class MainActivity extends Activity {
                         + " house=" + result.optDouble("houseLoad", 0);
                 }
                 // Login failed — get diagnostic detail from a fresh attempt
-                return client.diagnose(host, user, pass);
+                String diagResult = client.diagnose(host, user, pass);
+                // If CAPTCHA required, flag it so UI can show the CAPTCHA solver
+                if (diagResult.contains("411")) {
+                    prefs.edit().putString("fs_last_error", "CAPTCHA").apply();
+                }
+                return diagResult;
             } catch (Exception e) {
                 return "ERROR: " + e.getMessage();
             }
