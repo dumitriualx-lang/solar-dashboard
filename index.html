@@ -2253,58 +2253,17 @@ function openFsWebLogin() {
 }
 
 function showFsCaptcha() {
+  // CAPTCHA image approach was unreliable - guide user to browser login instead
   const log = document.getElementById('fsLog');
   const msg = document.getElementById('fsMsg');
-  if (log) log.style.display = 'block';
-  if (msg) { msg.textContent = '⚠ CAPTCHA required — solve below then tap Verify'; msg.style.color = 'var(--am)'; }
-
-  // Fetch CAPTCHA image from Java
-  if (!window.AppBridge || typeof AppBridge.getFusionSolarCaptchaBase64 !== 'function') {
-    if (log) log.innerHTML = '<div style="color:var(--am)">Update app to handle CAPTCHA</div>';
-    return;
+  if (msg) { msg.textContent = '⚠ Login required — tap the button below'; msg.style.color = 'var(--am)'; }
+  if (log) {
+    log.style.display = 'block';
+    log.innerHTML = '<div style="color:var(--am);padding:8px 0">Huawei requires browser login (CAPTCHA). Tap <b>🌐 Login with FusionSolar browser</b> below — log in normally in the page that opens, then tap Done.</div>';
   }
-  if (log) log.innerHTML = '<div style="color:var(--t2)">Loading CAPTCHA image…</div>';
-  setTimeout(() => {
-    try {
-      const b64 = AppBridge.getFusionSolarCaptchaBase64();
-      if (!b64) { if (log) log.innerHTML = '<div style="color:#e05a28">Failed to load CAPTCHA image</div>'; return; }
-      if (log) log.innerHTML =
-        '<div style="margin-bottom:8px"><img src="data:image/png;base64,' + b64 + '" style="border-radius:6px;max-width:100%"></div>' +
-        '<input id="fsCaptchaInput" type="text" placeholder="Enter code from image above" ' +
-        'style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(0,180,230,.4);' +
-        'background:rgba(0,20,60,.8);color:var(--tx);font-size:14px;box-sizing:border-box;margin-bottom:8px">' +
-        '<button onclick="submitFsCaptcha()" style="width:100%;padding:10px;background:rgba(0,200,130,.15);' +
-        'color:var(--g);border:1px solid rgba(0,200,130,.4);border-radius:8px;font-size:13px;font-weight:700;' +
-        'cursor:pointer;font-family:inherit">✓ Verify CAPTCHA</button>';
-    } catch(e) {
-      if (log) log.innerHTML = '<div style="color:#e05a28">Error: ' + e.message + '</div>';
-    }
-  }, 100);
 }
 
-function submitFsCaptcha() {
-  const inp = document.getElementById('fsCaptchaInput');
-  const msg = document.getElementById('fsMsg');
-  if (!inp || !inp.value.trim()) { if (msg) { msg.textContent = 'Enter the CAPTCHA code first'; msg.style.color = 'var(--am)'; } return; }
-  if (!window.AppBridge || typeof AppBridge.submitFusionSolarWithCaptcha !== 'function') return;
-  if (msg) { msg.textContent = 'Verifying…'; msg.style.color = 'var(--bl)'; }
-  setTimeout(() => {
-    try {
-      const result = AppBridge.submitFusionSolarWithCaptcha(inp.value.trim());
-      if (msg) {
-        msg.textContent = result.startsWith('OK') ? '✅ Connected! ' + result : '✗ ' + result;
-        msg.style.color = result.startsWith('OK') ? 'var(--g)' : '#e05a28';
-      }
-      if (result.startsWith('OK')) {
-        const log = document.getElementById('fsLog');
-        if (log) { log.style.display = 'none'; log.innerHTML = ''; }
-        refreshFsStatus();
-      }
-    } catch(e) {
-      if (msg) { msg.textContent = 'Error: ' + e.message; msg.style.color = '#e05a28'; }
-    }
-  }, 100);
-}
+function submitFsCaptcha() { showFsCaptcha(); }
 
 function connectFusionSolar() {
   const user = (document.getElementById('cfgFsUser')?.value || '').trim();
