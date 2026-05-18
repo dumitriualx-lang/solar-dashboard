@@ -475,9 +475,13 @@ public class MainActivity extends Activity {
             ed.remove("fs_user");
             ed.remove("fs_pass");
             ed.remove("fs_host");
+            ed.remove("fs_session_cookie");
+            ed.remove("fs_roarand");
+            ed.remove("fs_last_error");
+            ed.remove("fs_last_fetch_ms");
             ed.putBoolean("fs_enabled", false);
             ed.apply();
-            android.util.Log.d("AppBridge", "FusionSolar credentials cleared");
+            android.util.Log.d("AppBridge", "FusionSolar session cleared");
         }
 
         @JavascriptInterface
@@ -580,10 +584,12 @@ public class MainActivity extends Activity {
         public String getFusionSolarStatus() {
             android.content.SharedPreferences prefs = getSharedPreferences("solar_prefs", MODE_PRIVATE);
             boolean enabled = prefs.getBoolean("fs_enabled", false);
-            String user = prefs.getString("fs_user", "");
-            if (!enabled || user.isEmpty()) return "disconnected";
+            String cookie = prefs.getString("fs_session_cookie", "");
+            // Connected if we have a session cookie (from WebView login)
+            if (!enabled && cookie.isEmpty()) return "disconnected";
             String lastError = prefs.getString("fs_last_error", "");
-            if ("CAPTCHA".equals(lastError)) return "captcha";
+            if ("CAPTCHA".equals(lastError) && cookie.isEmpty()) return "captcha";
+            if (cookie.isEmpty()) return "disconnected";
             long lastFetch = prefs.getLong("fs_last_fetch_ms", 0);
             if (lastFetch > 0) {
                 long ageMin = (System.currentTimeMillis() - lastFetch) / 60000;
