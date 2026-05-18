@@ -1988,24 +1988,28 @@ public class FusionSolarClient {
     // Huawei pubkey endpoint returns this format — not hex modulus/exponent
     private String rsaEncryptPem(String plaintext, String pemKey) {
         try {
+            char[] hc = {45,45,45,45,45,66,69,71,73,78,32,80,85,66,76,73,67,32,75,69,89,45,45,45,45,45};
+            char[] fc = {45,45,45,45,45,69,78,68,32,80,85,66,76,73,67,32,75,69,89,45,45,45,45,45};
+            String header = new String(hc);
+            String footer = new String(fc);
+            int hs = pemKey.indexOf(header);
+            if (hs >= 0) pemKey = pemKey.substring(hs + header.length());
+            int fs = pemKey.indexOf(footer);
+            if (fs >= 0) pemKey = pemKey.substring(0, fs);
             StringBuilder sb = new StringBuilder();
-            boolean skip = false;
             for (int i = 0; i < pemKey.length(); i++) {
                 char c = pemKey.charAt(i);
-                if (c == 45 && i+1 < pemKey.length() && pemKey.charAt(i+1) == 45) {
-                    skip = !skip; continue;
-                }
-                if (skip) continue;
                 if (c == 92 && i+1 < pemKey.length()) {
                     char n2 = pemKey.charAt(i+1);
                     if (n2 == 110 || n2 == 114) { i++; continue; }
                 }
-                if (c > 32) sb.append(c);
+                if (c == 32 || c == 9 || c == 10 || c == 13) continue;
+                sb.append(c);
             }
-            byte[] keyBytes = Base64.decode(sb.toString(), Base64.DEFAULT);
-            X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
-            PublicKey pub = KeyFactory.getInstance("RSA").generatePublic(spec);
-            Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            byte[]             keyBytes = Base64.decode(sb.toString(), Base64.DEFAULT);
+            X509EncodedKeySpec spec     = new X509EncodedKeySpec(keyBytes);
+            PublicKey          pub      = KeyFactory.getInstance("RSA").generatePublic(spec);
+            Cipher             cipher   = Cipher.getInstance("RSA/ECB/PKCS1Padding");
             cipher.init(Cipher.ENCRYPT_MODE, pub);
             return Base64.encodeToString(cipher.doFinal(plaintext.getBytes("UTF-8")), Base64.NO_WRAP);
         } catch (Exception e) { Log.e(TAG, "rsaEncryptPem: " + e.getMessage()); return null; }
