@@ -481,19 +481,35 @@ public class MainActivity extends Activity {
             try {
                 android.content.SharedPreferences prefs = getSharedPreferences("solar_prefs", MODE_PRIVATE);
                 String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
-                String cookie = prefs.getString("fs_session_cookie", "");
-                // Generate random token for this CAPTCHA session
+                // Step 1: GET login page for fresh session cookie (required for CAPTCHA image)
+                java.net.HttpURLConnection init = (java.net.HttpURLConnection) new java.net.URL(host + "/unisso/login.action").openConnection();
+                init.setConnectTimeout(10000); init.setReadTimeout(10000);
+                init.setInstanceFollowRedirects(false);
+                init.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; SolarDashboard/1.0)");
+                init.setRequestProperty("Accept-Encoding", "identity");
+                init.connect();
+                StringBuilder cookieSb = new StringBuilder();
+                java.util.List<String> sc = init.getHeaderFields().get("Set-Cookie");
+                if (sc != null) for (String s : sc) { String p = s.split(";")[0].trim(); if (!p.isEmpty()) { if (cookieSb.length() > 0) cookieSb.append("; "); cookieSb.append(p); } }
+                try { init.getInputStream().close(); } catch (Exception ignored) {}
+                init.disconnect();
+                String sessionCookie = cookieSb.toString();
+                prefs.edit().putString("fs_captcha_cookie", sessionCookie).apply();
+                // Step 2: fetch CAPTCHA image with session cookie
                 String random = String.valueOf(System.currentTimeMillis());
                 prefs.edit().putString("fs_captcha_random", random).apply();
-                long ts = System.currentTimeMillis();
-                String url = host + "/unisso/verifyCode?random=" + random + "&timeStamp=" + ts;
+                String url = host + "/unisso/verifyCode?random=" + random + "&timeStamp=" + random;
                 java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
                 c.setConnectTimeout(10000); c.setReadTimeout(10000);
                 c.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; SolarDashboard/1.0)");
-                if (!cookie.isEmpty()) c.setRequestProperty("Cookie", cookie);
+                c.setRequestProperty("Accept", "image/*, */*");
+                if (!sessionCookie.isEmpty()) c.setRequestProperty("Cookie", sessionCookie);
                 c.connect();
+                int imgCode = c.getResponseCode();
+                android.util.Log.d("AppBridge", "CAPTCHA HTTP " + imgCode + " type=" + c.getContentType());
+                java.io.InputStream is = imgCode < 400 ? c.getInputStream() : c.getErrorStream();
+                if (is == null) { c.disconnect(); return ""; }
                 java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-                java.io.InputStream is = c.getInputStream();
                 byte[] buf = new byte[4096]; int n;
                 while ((n = is.read(buf)) != -1) baos.write(buf, 0, n);
                 is.close(); c.disconnect();
@@ -503,6 +519,7 @@ public class MainActivity extends Activity {
                 return "";
             }
         }
+
 
         // Retries login with the user-supplied CAPTCHA code
         @JavascriptInterface
@@ -2098,6 +2115,18 @@ public class FusionSolarClient {
             if (data != null) prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
             return data;
         } catch (Exception e) { Log.e(TAG, "fetchLiveDataWithCaptcha: " + e.getMessage()); return null; }
+    }
+
+    public JSONObject fetchLiveDataWithCaptchaSession(String user, String pass, String host, String captchaCode, String random, String captchaCookie) {
+        try {
+            sessionCookie = captchaCookie.isEmpty() ? null : captchaCookie; roarand = null;
+            if (!loginWithCaptcha(host, user, pass, captchaCode, random)) return null;
+            android.content.SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
+            prefs.edit().putString("fs_session_cookie", sessionCookie != null ? sessionCookie : "").apply();
+            JSONObject data = getPlantOverview(host);
+            if (data != null) prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
+            return data;
+        } catch (Exception e) { Log.e(TAG, "fetchLiveDataWithCaptchaSession: " + e.getMessage()); return null; }
     }
 
     private boolean loginWithCaptcha(String host, String user, String pass, String captchaCode, String random) {
