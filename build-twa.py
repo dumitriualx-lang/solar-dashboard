@@ -1917,7 +1917,7 @@ public class FusionSolarClient {
     private static final String TAG        = "FusionSolarClient";
     private static final int    TIMEOUT_MS = 15000;
     private static final String PREFS_NAME = "solar_prefs";
-    private static final long   SESSION_MS = 25 * 60 * 1000L;
+    private static final long   SESSION_MS = 55 * 60 * 1000L;
 
     private final Context ctx;
     private String sessionCookie = null;
@@ -1934,18 +1934,46 @@ public class FusionSolarClient {
         String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
         if (user.isEmpty() || pass.isEmpty()) return null;
         try {
-            if (sessionCookie == null || System.currentTimeMillis() > sessionExpiry) {
+            // Load WebView session cookie if we have one
+            // Never expire it locally - let the server tell us via 401/403
+            String webCookie = prefs.getString("fs_session_cookie", "");
+            if (!webCookie.isEmpty()) {
+                sessionCookie = webCookie;
+                if (roarand == null) {
+                    for (String part : webCookie.split(";")) {
+                        String t = part.trim();
+                        if (t.startsWith("roarand=")) { roarand = t.substring(8).trim(); break; }
+                    }
+                }
+                sessionExpiry = Long.MAX_VALUE; // server controls the timeout
+            } else if (sessionCookie == null || System.currentTimeMillis() > sessionExpiry) {
+                // No WebView cookie - fall back to RSA login
                 if (!login(host, user, pass)) return null;
             }
+            // Attempt API call
             JSONObject data = getPlantOverview(host);
-            if (data == null) {
-                sessionCookie = null; roarand = null;
-                if (!login(host, user, pass)) return null;
-                data = getPlantOverview(host);
+            if (data != null) {
+                prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis())
+                    .putString("fs_last_error", "").apply();
+                return data;
             }
-            if (data != null)
-                prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
-            return data;
+            // API call failed - session likely expired on server side
+            Log.d(TAG, "getPlantOverview returned null, attempting re-login");
+            sessionCookie = null; roarand = null;
+            // Try RSA login first (works if no CAPTCHA lockout)
+            if (login(host, user, pass)) {
+                // RSA login worked - clear stale WebView cookie
+                prefs.edit().putString("fs_session_cookie", "").apply();
+                data = getPlantOverview(host);
+                if (data != null) {
+                    prefs.edit().putLong("fs_last_fetch_ms", System.currentTimeMillis())
+                        .putString("fs_last_error", "").apply();
+                }
+                return data;
+            }
+            // RSA login failed (CAPTCHA or network) - signal browser re-login needed
+            prefs.edit().putString("fs_last_error", "CAPTCHA").apply();
+            return null;
         } catch (Exception e) {
             Log.e(TAG, "fetchLiveData: " + e.getMessage());
             return null;
