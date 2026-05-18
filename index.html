@@ -502,40 +502,27 @@ body::before{
       </div>
       <p style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">
         Connect with your regular FusionSolar app credentials to get <strong style="color:var(--tx)">real inverter data</strong>
-        instead of satellite estimates. No special account needed — same username and password as the mobile app.
+        instead of satellite estimates. Log in with your regular FusionSolar app credentials — same account as the mobile app.
       </p>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <div class="cfg-inp-wrap">
-          <input type="email" id="cfgFsUser" inputmode="email" placeholder="FusionSolar username (email)"
-            style="text-align:left;font-size:13px" autocomplete="username">
-        </div>
-        <div class="cfg-inp-wrap">
-          <input type="password" id="cfgFsPass" placeholder="FusionSolar password"
-            style="text-align:left;font-size:13px" autocomplete="current-password">
-        </div>
+        <button onclick="openFsWebLogin()"
+          style="width:100%;background:rgba(0,180,230,.15);color:var(--bl);
+          border:1px solid rgba(0,180,230,.4);border-radius:var(--rs);padding:12px;font-size:14px;
+          font-weight:700;cursor:pointer;font-family:inherit">
+          🌐 Login with FusionSolar
+        </button>
         <div style="display:flex;gap:8px">
-          <button onclick="connectFusionSolar()"
-            style="flex:1;background:rgba(0,180,230,.15);color:var(--bl);border:1px solid rgba(0,180,230,.4);
-            border-radius:var(--rs);padding:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-            Connect
-          </button>
           <button onclick="testFusionSolar()"
             style="flex:1;background:rgba(0,200,130,.1);color:var(--g);border:1px solid rgba(0,200,130,.3);
             border-radius:var(--rs);padding:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
             Test
           </button>
           <button onclick="disconnectFusionSolar()"
-            style="background:none;color:var(--t3);border:1px solid var(--br2);
-            border-radius:var(--rs);padding:9px 12px;font-size:12px;cursor:pointer;font-family:inherit">
+            style="flex:1;background:none;color:var(--t3);border:1px solid var(--br2);
+            border-radius:var(--rs);padding:9px;font-size:12px;cursor:pointer;font-family:inherit">
             Disconnect
           </button>
         </div>
-        <button onclick="openFsWebLogin()"
-          style="width:100%;margin-top:8px;background:rgba(0,180,230,.08);color:var(--bl);
-          border:1px solid rgba(0,180,230,.25);border-radius:var(--rs);padding:9px;font-size:12px;
-          font-weight:700;cursor:pointer;font-family:inherit">
-          🌐 Login with FusionSolar browser (bypasses CAPTCHA)
-        </button>
       </div>
       <div id="fsMsg" style="font-size:11px;min-height:14px;margin-top:6px"></div>
       <!-- Diagnostic log — shows exact login steps and API responses on screen -->
@@ -2304,10 +2291,6 @@ function disconnectFusionSolar() {
   if (window.AppBridge && typeof AppBridge.clearFusionSolarCreds === 'function') {
     try { AppBridge.clearFusionSolarCreds(); } catch(e) {}
   }
-  const userEl = document.getElementById('cfgFsUser');
-  const passEl = document.getElementById('cfgFsPass');
-  if (userEl) userEl.value = '';
-  if (passEl) passEl.value = '';
   const msg = document.getElementById('fsMsg');
   if (msg) { msg.textContent = 'Disconnected — using satellite estimates.'; msg.style.color = 'var(--t2)'; }
   setTimeout(() => { if(msg) msg.textContent = ''; }, 4000);
