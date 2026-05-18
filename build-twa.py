@@ -500,7 +500,7 @@ public class MainActivity extends Activity {
                         if (ck == null) ck = "";
                         final String fck = ck;
                         view.evaluateJavascript(JS_RR, rrVal -> {
-                            String rr = rrVal != null ? rrVal.replace("\"","").trim() : "";
+                            String rr = rrVal != null ? rrVal.replace(String.valueOf((char)34), "").trim() : "";
                             if (rr.isEmpty() || rr.equals("null")) {
                                 for (String p : fck.split(";")) {
                                     String t = p.trim();
