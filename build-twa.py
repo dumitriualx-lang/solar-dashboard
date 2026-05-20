@@ -409,23 +409,19 @@ public class MainActivity extends Activity {
                 String cookie = prefs.getString("fs_session_cookie", "");
                 String rr     = prefs.getString("fs_roarand", "");
                 String host   = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
-                String user   = prefs.getString("fs_user", "");
-                String pass   = prefs.getString("fs_pass", "");
-
-                StringBuilder log = new StringBuilder();
                 char NL = (char)10;
-                log.append("cookie: ").append(cookie.isEmpty() ? "NONE" : "set (" + cookie.length() + " chars)").append(NL);
-                log.append("roarand: ").append(rr.isEmpty() ? "MISSING" : "set (" + rr.length() + " chars)").append(NL);
+                StringBuilder log = new StringBuilder();
+                log.append("cookie_len=").append(cookie.length()).append(NL);
+                // Show first 120 chars of cookie so we can see cookie names
+                log.append("cookie_preview=").append(cookie.length() > 0 ? cookie.substring(0, Math.min(120, cookie.length())) : "EMPTY").append(NL);
+                log.append("roarand=").append(rr.isEmpty() ? "MISSING" : "set(" + rr.length() + ")").append(NL);
+                if (cookie.isEmpty()) return log.append("No session - use browser login").toString();
 
-                if (cookie.isEmpty()) {
-                    log.append("No WebView session saved - use browser login button");
-                    return log.toString();
-                }
-
-                // Test the station list API directly with saved session (non-destructive)
+                // Try station list with no-redirect + Referer header
                 java.net.HttpURLConnection c = (java.net.HttpURLConnection)
                     new java.net.URL(host + "/rest/pvms/web/station/v1/station/list").openConnection();
                 c.setConnectTimeout(15000); c.setReadTimeout(15000);
+                c.setInstanceFollowRedirects(false);
                 c.setRequestMethod("POST");
                 c.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
                 c.setRequestProperty("Accept", "application/json, text/plain, */*");
@@ -441,165 +437,18 @@ public class MainActivity extends Activity {
                 body.put("pageNo", 1); body.put("pageSize", 10);
                 c.getOutputStream().write(body.toString().getBytes("UTF-8"));
                 int code = c.getResponseCode();
-                java.io.BufferedReader br = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(
-                        code < 400 ? c.getInputStream() : c.getErrorStream(), "UTF-8"));
+                String location = c.getHeaderField("Location");
+                log.append("HTTP: ").append(code).append(NL);
+                if (location != null) log.append("Redirect->").append(location).append(NL);
+                java.io.InputStream is = code < 400 ? c.getInputStream() : c.getErrorStream();
+                java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is, "UTF-8"));
                 StringBuilder sb = new StringBuilder(); String ln;
                 while ((ln = br.readLine()) != null) sb.append(ln);
                 br.close(); c.disconnect();
                 String resp = sb.toString();
-                log.append("stationList HTTP: ").append(code).append(NL);
-                log.append("response: ").append(resp.substring(0, Math.min(300, resp.length())));
+                log.append("resp=").append(resp.substring(0, Math.min(250, resp.length())));
                 return log.toString();
-            } catch (Exception e) {
-                return "ERROR: " + e.getMessage();
-            }
-        }
-
-        @JavascriptInterface
-        public void setFusionSolarCreds(String user, String pass, String host) {
-            // Stores credentials in SharedPreferences so the background service
-            // can authenticate to FusionSolar and fetch real inverter data.
-            // Credentials are stored only on-device, never transmitted elsewhere.
-            android.content.SharedPreferences.Editor ed = getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
-            ed.putString("fs_user", user);
-            ed.putString("fs_pass", pass);
-            ed.putString("fs_host", host != null ? host : "https://eu5.fusionsolar.huawei.com");
-            ed.putBoolean("fs_enabled", true);
-            ed.apply();
-            android.util.Log.d("AppBridge", "FusionSolar credentials saved for user: " + user);
-        }
-
-        @JavascriptInterface
-        public void clearFusionSolarCreds() {
-            android.content.SharedPreferences.Editor ed = getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
-            ed.remove("fs_user");
-            ed.remove("fs_pass");
-            ed.remove("fs_host");
-            ed.remove("fs_session_cookie");
-            ed.remove("fs_roarand");
-            ed.remove("fs_last_error");
-            ed.remove("fs_last_fetch_ms");
-            ed.putBoolean("fs_enabled", false);
-            ed.apply();
-            android.util.Log.d("AppBridge", "FusionSolar session cleared");
-        }
-
-        @JavascriptInterface
-        public void openFusionSolarWebLogin() {
-            mainHandler.post(() -> {
-                android.content.SharedPreferences prefs =
-                    getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE);
-                String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
-                android.webkit.WebView lv = new android.webkit.WebView(MainActivity.this);
-                lv.getSettings().setJavaScriptEnabled(true);
-                lv.getSettings().setDomStorageEnabled(true);
-                lv.getSettings().setLoadWithOverviewMode(true);
-                lv.getSettings().setUseWideViewPort(true);
-                lv.getSettings().setBuiltInZoomControls(true);
-                lv.getSettings().setDisplayZoomControls(false);
-                android.webkit.CookieManager.getInstance().setAcceptCookie(true);
-                android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(lv, true);
-
-                String JS_RR = "(function(){"
-                    + "var m=document.cookie.match(/roarand=([^;]+)/);" 
-                    + "if(m)return m[1];"
-                    + "try{var s=sessionStorage.getItem('roarand');if(s)return s;}catch(e){}"
-                    + "if(window._fs_roarand)return window._fs_roarand;"
-                    + "return '';" + "})()";
-                String JS_INJECT = "(function(){"
-                    + "if(window._fs_xhr_patched)return;window._fs_xhr_patched=true;"
-                    + "var orig=XMLHttpRequest.prototype.send;"
-                    + "XMLHttpRequest.prototype.send=function(d){"
-                    + "this.addEventListener('load',function(){"
-                    + "try{var r=JSON.parse(this.responseText);"
-                    + "if(r&&r.roarand){window._fs_roarand=r.roarand;try{AppBridge.saveRoarand(r.roarand);}catch(e){}}"
-                    + "if(r&&r.data&&r.data.roarand){window._fs_roarand=r.data.roarand;try{AppBridge.saveRoarand(r.data.roarand);}catch(e){}}"
-                    + "}catch(e){}});orig.apply(this,arguments);};})()";
-                // Keep ALL navigation inside the WebView - prevent any external browser launch
-                lv.setWebViewClient(new android.webkit.WebViewClient() {
-                    @Override
-                    public boolean shouldOverrideUrlLoading(android.webkit.WebView view,
-                            android.webkit.WebResourceRequest request) {
-                        view.loadUrl(request.getUrl().toString());
-                        return true;
-                    }
-                    @Override
-                    public void onPageFinished(android.webkit.WebView view, String url) {
-                        // Inject XHR interceptor on every page to capture roarand
-                        view.evaluateJavascript(JS_INJECT, null);
-                    }
-                });
-
-                android.widget.LinearLayout header = new android.widget.LinearLayout(MainActivity.this);
-                header.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-                header.setBackgroundColor(android.graphics.Color.parseColor("#0a1428"));
-                header.setPadding(24, 20, 24, 20);
-                android.widget.TextView hint = new android.widget.TextView(MainActivity.this);
-                hint.setText("Log in, then tap Save when dashboard loads");
-                hint.setTextColor(android.graphics.Color.parseColor("#8ab4e0"));
-                hint.setTextSize(13);
-                header.addView(hint, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
-                android.widget.Button doneBtn = new android.widget.Button(MainActivity.this);
-                doneBtn.setText("Save & Close");
-                doneBtn.setTextColor(android.graphics.Color.parseColor("#1D9E75"));
-                doneBtn.setBackgroundColor(android.graphics.Color.parseColor("#0a1428"));
-                header.addView(doneBtn);
-
-                android.widget.LinearLayout layout = new android.widget.LinearLayout(MainActivity.this);
-                layout.setOrientation(android.widget.LinearLayout.VERTICAL);
-                layout.addView(header);
-                layout.addView(lv, new android.widget.LinearLayout.LayoutParams(-1, -1));
-
-                android.app.Dialog dialog = new android.app.Dialog(
-                    MainActivity.this, android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen);
-                dialog.setContentView(layout);
-                dialog.setCancelable(false); // only Save & Close button can dismiss
-
-                // XHR interceptor injected on every page load to capture roarand from login response
-
-                doneBtn.setOnClickListener(v -> {
-                    String ck = android.webkit.CookieManager.getInstance()
-                        .getCookie("https://eu5.fusionsolar.huawei.com");
-                    if (ck == null) ck = "";
-                    final String fck = ck;
-                    if (fck.isEmpty()) {
-                        android.widget.Toast.makeText(MainActivity.this,
-                            "No session found - please log in first", android.widget.Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    lv.evaluateJavascript(JS_RR, rrVal -> {
-                        String rr = (rrVal != null)
-                            ? rrVal.replace(String.valueOf((char)34), "").trim() : "";
-                        if (rr.isEmpty() || rr.equals("null")) {
-                            for (String p : fck.split(";")) {
-                                String t = p.trim();
-                                if (t.startsWith("roarand=")) { rr = t.substring(8).trim(); break; }
-                            }
-                        }
-                        final String frr = rr;
-                        android.util.Log.d("AppBridge", "WebLogin saved cookie=set roarand="
-                            + (frr.isEmpty() ? "missing" : "set"));
-                        prefs.edit()
-                            .putString("fs_session_cookie", fck)
-                            .putString("fs_roarand", frr)
-                            .putString("fs_last_error", "")
-                            .putBoolean("fs_enabled", true)
-                            .putLong("fs_last_fetch_ms", 0)
-                            .apply();
-                        mainHandler.post(() -> {
-                            android.widget.Toast.makeText(MainActivity.this,
-                                "Session saved! FusionSolar data loading...", android.widget.Toast.LENGTH_SHORT).show();
-                            dialog.dismiss();
-                            webView.evaluateJavascript(
-                                "if(typeof refreshFsStatus==='function')refreshFsStatus();", null);
-                        });
-                    });
-                });
-
-                lv.loadUrl(host + "/unisso/login.action");
-                dialog.show();
-            });
+            } catch (Exception e) { return "ERROR: " + e.getMessage(); }
         }
 
         @JavascriptInterface
@@ -627,6 +476,139 @@ public class MainActivity extends Activity {
             }
             return "connected:pending";
         }
+
+        @JavascriptInterface
+        public void clearFusionSolarCreds() {
+            android.content.SharedPreferences.Editor ed = getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
+            ed.remove("fs_user"); ed.remove("fs_pass"); ed.remove("fs_host");
+            ed.remove("fs_session_cookie"); ed.remove("fs_roarand");
+            ed.remove("fs_last_error"); ed.remove("fs_last_fetch_ms");
+            ed.putBoolean("fs_enabled", false); ed.apply();
+            android.util.Log.d("AppBridge", "FusionSolar session cleared");
+        }
+
+        @JavascriptInterface
+        public void saveRoarand(String rr) {
+            if (rr == null || rr.isEmpty()) return;
+            getSharedPreferences("solar_prefs", MODE_PRIVATE).edit()
+                .putString("fs_roarand", rr).apply();
+            android.util.Log.d("AppBridge", "Roarand saved: " + rr.length() + " chars");
+        }
+
+        @JavascriptInterface
+        public void onStationData(String json) {
+            android.util.Log.d("AppBridge", "onStationData: " + json.substring(0, Math.min(100, json.length())));
+            if (json.startsWith("ERR:") || json.startsWith("<!")) { android.util.Log.w("AppBridge", "onStationData ignored: " + json.substring(0, Math.min(80, json.length()))); return; }
+            try {
+                org.json.JSONObject obj = new org.json.JSONObject(json);
+                org.json.JSONObject data = obj.optJSONObject("data");
+                if (data == null) return;
+                org.json.JSONArray list = data.optJSONArray("list");
+                if (list == null || list.length() == 0) return;
+                String sc = list.getJSONObject(0).optString("plantCode",
+                    list.getJSONObject(0).optString("stationCode", ""));
+                if (sc.isEmpty()) return;
+                getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE).edit()
+                    .putString("fs_station_code", sc)
+                    .putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
+                android.util.Log.d("AppBridge", "Station code: " + sc);
+            } catch (Exception e) { android.util.Log.e("AppBridge", "onStationData: " + e.getMessage()); }
+        }
+
+        @JavascriptInterface
+        public void openFusionSolarWebLogin() {
+            mainHandler.post(() -> {
+                android.content.SharedPreferences prefs =
+                    getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE);
+                String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
+                android.webkit.WebView lv = new android.webkit.WebView(MainActivity.this);
+                lv.getSettings().setJavaScriptEnabled(true);
+                lv.getSettings().setDomStorageEnabled(true);
+                lv.getSettings().setLoadWithOverviewMode(true);
+                lv.getSettings().setUseWideViewPort(true);
+                android.webkit.CookieManager.getInstance().setAcceptCookie(true);
+                android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(lv, true);
+                lv.addJavascriptInterface(new AppBridge(), "AppBridge");
+                // JS to capture roarand from XHR responses
+                String JS_INJ = "(function(){if(window._fs_xhr_patched)return;window._fs_xhr_patched=true;var orig=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(d){this.addEventListener('load',function(){try{var r=JSON.parse(this.responseText);if(r&&r.roarand){window._fs_roarand=r.roarand;try{AppBridge.saveRoarand(r.roarand);}catch(e){}}if(r&&r.data&&r.data.roarand){window._fs_roarand=r.data.roarand;try{AppBridge.saveRoarand(r.data.roarand);}catch(e){}}}catch(e){}});orig.apply(this,arguments);};})()";
+                // JS to read back captured roarand
+                String JS_RR  = "(function(){if(window._fs_roarand)return window._fs_roarand;var m=document.cookie.match(/roarand=([^;]+)/);if(m)return m[1];try{var s=sessionStorage.getItem('roarand');if(s)return s;}catch(e){}return '';})()";
+                // Keep ALL navigation inside the WebView
+                lv.setWebViewClient(new android.webkit.WebViewClient() {
+                    @Override
+                    public boolean shouldOverrideUrlLoading(android.webkit.WebView view,
+                            android.webkit.WebResourceRequest request) {
+                        view.loadUrl(request.getUrl().toString()); return true;
+                    }
+                    @Override
+                    public void onPageFinished(android.webkit.WebView view, String url) {
+                        view.evaluateJavascript(JS_INJ, null);
+                    }
+                });
+                android.widget.LinearLayout header = new android.widget.LinearLayout(MainActivity.this);
+                header.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                header.setBackgroundColor(android.graphics.Color.parseColor("#0a1428"));
+                header.setPadding(24, 20, 24, 20);
+                android.widget.TextView hint = new android.widget.TextView(MainActivity.this);
+                hint.setText("Log in, then tap Save when dashboard loads");
+                hint.setTextColor(android.graphics.Color.parseColor("#8ab4e0"));
+                hint.setTextSize(13);
+                header.addView(hint, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
+                android.widget.Button doneBtn = new android.widget.Button(MainActivity.this);
+                doneBtn.setText("Save & Close");
+                doneBtn.setTextColor(android.graphics.Color.parseColor("#1D9E75"));
+                doneBtn.setBackgroundColor(android.graphics.Color.parseColor("#0a1428"));
+                header.addView(doneBtn);
+                android.widget.LinearLayout layout = new android.widget.LinearLayout(MainActivity.this);
+                layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+                layout.addView(header);
+                layout.addView(lv, new android.widget.LinearLayout.LayoutParams(-1, -1));
+                android.app.Dialog dialog = new android.app.Dialog(
+                    MainActivity.this, android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen);
+                dialog.setContentView(layout);
+                dialog.setCancelable(false);
+                doneBtn.setOnClickListener(v -> {
+                    String ck = android.webkit.CookieManager.getInstance()
+                        .getCookie("https://eu5.fusionsolar.huawei.com");
+                    if (ck == null) ck = "";
+                    final String fck = ck;
+                    if (fck.isEmpty()) {
+                        android.widget.Toast.makeText(MainActivity.this,
+                            "No session found - please log in first", android.widget.Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    lv.evaluateJavascript(JS_RR, rrVal -> {
+                        String rr = (rrVal != null)
+                            ? rrVal.replace(String.valueOf((char)34), "").trim() : "";
+                        if (rr.isEmpty() || rr.equals("null")) {
+                            for (String p : fck.split(";")) {
+                                String t = p.trim();
+                                if (t.startsWith("roarand=")) { rr = t.substring(8).trim(); break; }
+                            }
+                        }
+                        final String frr = rr;
+                        android.util.Log.d("AppBridge", "Save: cookie=" + fck.length() + " roarand=" + (frr.isEmpty()?"missing":"set("+frr.length()+")"));
+                        prefs.edit()
+                            .putString("fs_session_cookie", fck)
+                            .putString("fs_roarand", frr)
+                            .putString("fs_last_error", "")
+                            .putBoolean("fs_enabled", true)
+                            .putLong("fs_last_fetch_ms", 0)
+                            .apply();
+                        mainHandler.post(() -> {
+                            android.widget.Toast.makeText(MainActivity.this,
+                                "Session saved! Loading data...", android.widget.Toast.LENGTH_SHORT).show();
+                            dialog.dismiss();
+                            webView.evaluateJavascript(
+                                "if(typeof refreshFsStatus==='function')refreshFsStatus();", null);
+                        });
+                    });
+                });
+                lv.loadUrl(host + "/unisso/login.action");
+                dialog.show();
+            });
+        }
+
 
         // Fetches the CAPTCHA image as base64 so JS can display it in an <img> tag
         @JavascriptInterface
