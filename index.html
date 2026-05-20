@@ -2163,31 +2163,25 @@ async function testFusionSolar() {
     log.scrollTop = log.scrollHeight;
   };
 
-  let user = '';
-  try {
-    const saved = safeJson('fsCredentials', null);
-    if (saved) user = saved.user || '';
-  } catch(e) {}
-
-  if (!user) { L('✗ No credentials saved — enter username and password first', '#e05a28'); return; }
   if (msg) { msg.textContent = 'Testing…'; msg.style.color = 'var(--bl)'; }
-  L('Account: ' + user);
 
-  // ── Step 1: AppBridge status — most important check ──────────────────
-  L('① Checking AppBridge status…');
+  // ── Step 1: AppBridge status ──────────────────────────────────────────
+  L('① AppBridge status…');
   if (window.AppBridge && typeof AppBridge.getFusionSolarStatus === 'function') {
     try {
       const status = AppBridge.getFusionSolarStatus();
-      L('   Status: ' + status, status.startsWith('connected') ? 'var(--g)' : 'var(--am)');
       if (status.startsWith('connected')) {
-        L('   ✓ FusionSolar connected — data is flowing', 'var(--g)');
-        if (msg) { msg.textContent = '✅ Connected and fetching live data'; msg.style.color = 'var(--g)'; }
+        L('   Status: ' + status, 'var(--g)');
+        if (msg) { msg.textContent = '✅ Connected'; msg.style.color = 'var(--g)'; }
+      } else if (status === 'disconnected') {
+        L('   No session — tap 🌐 Login with FusionSolar first', 'var(--am)');
+        if (msg) { msg.textContent = 'Login required'; msg.style.color = 'var(--am)'; }
       } else {
-        L('   Login failing — credentials saved but authentication unsuccessful', 'var(--am)');
+        L('   Status: ' + status, 'var(--am)');
       }
     } catch(e) { L('   AppBridge error: ' + e.message, '#e05a28'); }
   } else {
-    L('   AppBridge not available in browser mode', 'var(--am)');
+    L('   AppBridge not available — use installed app', 'var(--am)');
   }
 
   // ── Step 2: Java connection test (requires new APK) ───────────────────
