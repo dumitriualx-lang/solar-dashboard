@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 12   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 9   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -531,7 +531,7 @@ public class MainActivity extends Activity {
                 layout.addView(lv, new android.widget.LinearLayout.LayoutParams(-1, -1));
 
                 android.app.Dialog dialog = new android.app.Dialog(
-                    MainActivity.this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+                    MainActivity.this, android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen);
                 dialog.setContentView(layout);
                 dialog.setCancelable(false); // only Save & Close button can dismiss
 
@@ -563,6 +563,7 @@ public class MainActivity extends Activity {
                             .putString("fs_session_cookie", fck)
                             .putString("fs_roarand", frr)
                             .putString("fs_last_error", "")
+                            .putBoolean("fs_enabled", true)
                             .putLong("fs_last_fetch_ms", 0)
                             .apply();
                         mainHandler.post(() -> {
@@ -720,7 +721,9 @@ public class MainActivity extends Activity {
         createNotificationChannel();
         scheduleBackgroundWork();              // WorkManager — tertiary backup
         SolarAlarmReceiver.schedule(this);    // AlarmManager — secondary backup
-        SolarForegroundService.start(this);   // Foreground Service — PRIMARY (Samsung-safe)
+        try { SolarForegroundService.start(this); } catch (Exception e) {
+            android.util.Log.w("MainActivity", "FGS start failed: " + e.getMessage());
+        } // Foreground Service - PRIMARY (Samsung-safe)
         requestBatteryOptimizationExemption();
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -1003,7 +1006,8 @@ public class MainActivity extends Activity {
         try {
             android.content.SharedPreferences sp =
                 getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE);
-            if (!sp.getBoolean("fs_enabled", false)) return;
+            boolean hasCookie = !sp.getString("fs_session_cookie", "").isEmpty();
+            if (!sp.getBoolean("fs_enabled", false) && !hasCookie) return;
             long ageMs = System.currentTimeMillis() - sp.getLong("fs_last_fetch_ms", 0L);
             if (ageMs > 6 * 60 * 1000L) return;
             float pvKw       = sp.getFloat("fs_pv_kw",          -1f);
@@ -1119,7 +1123,12 @@ public class SolarForegroundService extends Service {
         super.onCreate();
         handler = new Handler(Looper.getMainLooper());
         createChannels();
-        startForeground(FG_NOTIF_ID, buildFgNotification("☀️ Solar monitoring active"));
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            startForeground(FG_NOTIF_ID, buildFgNotification("Solar monitoring active"),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+        } else {
+            startForeground(FG_NOTIF_ID, buildFgNotification("Solar monitoring active"));
+        }
         android.util.Log.d("SolarFGS", "Service created — starting 30-min check loop");
     }
 
@@ -1130,17 +1139,17 @@ public class SolarForegroundService extends Service {
         if (checker == null) {
             checker = new Runnable() {
                 @Override public void run() {
-                    try {
-                        doSolarCheck();
-                    } catch (Exception e) {
-                        android.util.Log.e("SolarFGS", "Check error: " + e.getMessage());
-                    }
-                    // Re-schedule next run in 30 minutes — this is the self-chaining loop
+                    new Thread(() -> {
+                        try { doSolarCheck(); }
+                        catch (Exception e) {
+                            android.util.Log.e("SolarFGS", "Check error: " + e.getMessage());
+                        }
+                    }).start();
                     handler.postDelayed(this, INTERVAL_MS);
                 }
             };
-            // First run after 5 seconds (let the service settle), then every 30 min
             handler.postDelayed(checker, 5000);
+
         }
         // START_STICKY: if the service is killed (rare), restart it automatically
         return START_STICKY;
@@ -1629,7 +1638,16 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
         android.util.Log.d("SolarAlarm", "Alarm fired: " + intent.getAction());
         // Always restart the foreground service — it may have been killed by Samsung
         // battery optimisation. Starting an already-running service is a no-op.
-        SolarForegroundService.start(ctx);
+        try { SolarForegroundService.start(ctx); } catch (Exception e) {
+            // On Android 12+, starting FGS from background may be restricted
+            // Schedule via WorkManager as fallback
+            android.util.Log.w("SolarAlarm", "FGS start restricted: " + e.getMessage());
+            try {
+                androidx.work.OneTimeWorkRequest wr =
+                    new androidx.work.OneTimeWorkRequest.Builder(SolarWorker.class).build();
+                androidx.work.WorkManager.getInstance(ctx).enqueue(wr);
+            } catch (Exception ignored) {}
+        }
 
         // RESTART_FGS action is only for reviving the service — no solar check needed
         if ("com.dumitriualxlang.solardasboard.RESTART_FGS".equals(intent.getAction())) {
@@ -1638,7 +1656,8 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
         }
 
         createChannel(ctx);
-        doSolarCheck(ctx);
+        final Context fctx = ctx;
+        new Thread(() -> doSolarCheck(fctx)).start();
         schedule(ctx);
     }
 
@@ -1985,11 +2004,12 @@ public class FusionSolarClient {
 
     public JSONObject fetchLiveData() {
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        if (!prefs.getBoolean("fs_enabled", false)) return null;
+        boolean hasCookie = !prefs.getString("fs_session_cookie", "").isEmpty();
+        if (!prefs.getBoolean("fs_enabled", false) && !hasCookie) return null;
         String user = prefs.getString("fs_user", "");
         String pass = prefs.getString("fs_pass", "");
         String host = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
-        if (user.isEmpty() || pass.isEmpty()) return null;
+        if (user.isEmpty() && pass.isEmpty() && !hasCookie) return null;
         try {
             // Load WebView session cookie if we have one
             // Never expire it locally - let the server tell us via 401/403
