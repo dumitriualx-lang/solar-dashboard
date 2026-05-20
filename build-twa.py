@@ -501,6 +501,21 @@ public class MainActivity extends Activity {
                 android.webkit.CookieManager.getInstance().setAcceptCookie(true);
                 android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(lv, true);
 
+                String JS_RR = "(function(){"
+                    + "var m=document.cookie.match(/roarand=([^;]+)/);" 
+                    + "if(m)return m[1];"
+                    + "try{var s=sessionStorage.getItem('roarand');if(s)return s;}catch(e){}"
+                    + "if(window._fs_roarand)return window._fs_roarand;"
+                    + "return '';" + "})()";
+                String JS_INJECT = "(function(){"
+                    + "if(window._fs_xhr_patched)return;window._fs_xhr_patched=true;"
+                    + "var orig=XMLHttpRequest.prototype.send;"
+                    + "XMLHttpRequest.prototype.send=function(d){"
+                    + "this.addEventListener('load',function(){"
+                    + "try{var r=JSON.parse(this.responseText);"
+                    + "if(r&&r.roarand){window._fs_roarand=r.roarand;try{AppBridge.saveRoarand(r.roarand);}catch(e){}}"
+                    + "if(r&&r.data&&r.data.roarand){window._fs_roarand=r.data.roarand;try{AppBridge.saveRoarand(r.data.roarand);}catch(e){}}"
+                    + "}catch(e){}});orig.apply(this,arguments);};})()";
                 // Keep ALL navigation inside the WebView - prevent any external browser launch
                 lv.setWebViewClient(new android.webkit.WebViewClient() {
                     @Override
@@ -547,22 +562,7 @@ public class MainActivity extends Activity {
                 dialog.setContentView(layout);
                 dialog.setCancelable(false); // only Save & Close button can dismiss
 
-                String JS_RR = "(function(){"
-                    + "var m=document.cookie.match(/roarand=([^;]+)/);" 
-                    + "if(m)return m[1];"
-                    + "try{var s=sessionStorage.getItem('roarand');if(s)return s;}catch(e){}"
-                    + "if(window._fs_roarand)return window._fs_roarand;"
-                    + "return '';" + "})()";
                 // XHR interceptor injected on every page load to capture roarand from login response
-                String JS_INJECT = "(function(){"
-                    + "if(window._fs_xhr_patched)return;window._fs_xhr_patched=true;"
-                    + "var orig=XMLHttpRequest.prototype.send;"
-                    + "XMLHttpRequest.prototype.send=function(d){"
-                    + "this.addEventListener('load',function(){"
-                    + "try{var r=JSON.parse(this.responseText);"
-                    + "if(r&&r.roarand){window._fs_roarand=r.roarand;try{AppBridge.saveRoarand(r.roarand);}catch(e){}}"
-                    + "if(r&&r.data&&r.data.roarand){window._fs_roarand=r.data.roarand;try{AppBridge.saveRoarand(r.data.roarand);}catch(e){}}"
-                    + "}catch(e){}});orig.apply(this,arguments);};})()";
 
                 doneBtn.setOnClickListener(v -> {
                     String ck = android.webkit.CookieManager.getInstance()
