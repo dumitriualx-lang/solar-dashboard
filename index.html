@@ -2096,10 +2096,7 @@ function loadFsCredentials() {
 }
 
 function refreshFsStatus() {
-  const creds   = loadFsCredentials();
   const statusEl = document.getElementById('fsStatus');
-  const userEl   = document.getElementById('cfgFsUser');
-  if (userEl && !userEl.value && creds && creds.user) userEl.value = creds.user;
   if (!statusEl) return;
 
   // Use AppBridge as source of truth — localStorage only shows saved credentials, not actual connection
