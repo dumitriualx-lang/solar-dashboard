@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 9   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 12   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -451,13 +451,6 @@ public class MainActivity extends Activity {
             } catch (Exception e) { return "ERROR: " + e.getMessage(); }
         }
 
-        @JavascriptInterface
-        public void saveRoarand(String rr) {
-            if (rr == null || rr.isEmpty()) return;
-            getSharedPreferences("solar_prefs", MODE_PRIVATE).edit()
-                .putString("fs_roarand", rr).apply();
-            android.util.Log.d("AppBridge", "Roarand saved: " + rr.length() + " chars");
-        }
 
         @JavascriptInterface
         public String getFusionSolarStatus() {
