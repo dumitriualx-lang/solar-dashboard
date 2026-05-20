@@ -528,12 +528,6 @@ public class MainActivity extends Activity {
                     public void onPageFinished(android.webkit.WebView view, String url) {
                         // Inject XHR interceptor on every page to capture roarand
                         view.evaluateJavascript(JS_INJECT, null);
-                        // Detect dashboard loaded - update hint text
-                        if (url != null && (url.contains("/netecowebext/home")
-                                || url.contains("/pvmswebsite")
-                                || url.contains("overview"))) {
-                            mainHandler.post(() -> hint.setText("Dashboard loaded! Tap Save & Close"));
-                        }
                     }
                 });
 
