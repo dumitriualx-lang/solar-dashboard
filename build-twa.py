@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 13   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 9   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -550,7 +550,7 @@ public class MainActivity extends Activity {
                     + "var rr=r&&(r.roarand||(r.data&&r.data.roarand));"
                     + "if(rr){window._fs_rr=rr;try{AppBridge.saveRoarand(rr);}catch(e){}}"
                     + "}).catch(function(){});return resp;});}}" 
-                    + "})();
+                    + "})();";
                 // JS to read back captured roarand
                 String JS_RR  = "(function(){"
                     + "var rr=window._fs_rr||window._fs_roarand||'';" 
