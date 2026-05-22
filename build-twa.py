@@ -409,9 +409,14 @@ public class MainActivity extends Activity {
                     getSharedPreferences("solar_prefs", android.content.Context.MODE_PRIVATE);
                 String cookie = prefs.getString("fs_session_cookie", "");
                 String rr     = prefs.getString("fs_roarand", "");
-                String host   = prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com");
+                // Use the real host the user logged into (uni003eu5, etc.) - not hardcoded eu5
+                String host   = prefs.getString("fs_real_host",
+                    prefs.getString("fs_host", "https://eu5.fusionsolar.huawei.com"));
+                String stationId = prefs.getString("fs_station_id", "");
                 char NL = (char)10;
                 StringBuilder log = new StringBuilder();
+                log.append("host=").append(host).append(NL);
+                log.append("station_id=").append(stationId.isEmpty() ? "NOT_CAPTURED" : stationId).append(NL);
                 log.append("cookie_len=").append(cookie.length()).append(NL);
                 // Show first 120 chars of cookie so we can see cookie names
                 log.append("cookie_preview=").append(cookie.length() > 0 ? cookie.substring(0, Math.min(120, cookie.length())) : "EMPTY").append(NL);
@@ -456,6 +461,15 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String getFusionSolarStatus() {
             android.content.SharedPreferences prefs = getSharedPreferences("solar_prefs", MODE_PRIVATE);
+            String kioskUrl = prefs.getString("fs_kiosk_url", "");
+            if (!kioskUrl.isEmpty()) {
+                long lastFetch = prefs.getLong("fs_last_fetch_ms", 0);
+                if (lastFetch > 0) {
+                    long ageMin = (System.currentTimeMillis() - lastFetch) / 60000;
+                    return "connected:" + ageMin + "min";
+                }
+                return "connected:pending";
+            }
             boolean enabled = prefs.getBoolean("fs_enabled", false);
             String cookie = prefs.getString("fs_session_cookie", "");
             // Connected if we have a session cookie (from WebView login)
@@ -507,6 +521,78 @@ public class MainActivity extends Activity {
                     .putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
                 android.util.Log.d("AppBridge", "Station code: " + sc);
             } catch (Exception e) { android.util.Log.e("AppBridge", "onStationData: " + e.getMessage()); }
+        }
+
+        @JavascriptInterface
+        public void setKioskUrl(String url) {
+            if (url == null) url = "";
+            getSharedPreferences("solar_prefs", MODE_PRIVATE).edit()
+                .putString("fs_kiosk_url", url.trim())
+                .putLong("fs_last_fetch_ms", 0)
+                .putString("fs_last_error", "")
+                .apply();
+            android.util.Log.d("AppBridge", "Kiosk URL saved (" + url.length() + " chars)");
+        }
+
+        @JavascriptInterface
+        public String getKioskUrl() {
+            return getSharedPreferences("solar_prefs", MODE_PRIVATE).getString("fs_kiosk_url", "");
+        }
+
+        @JavascriptInterface
+        public void clearKioskUrl() {
+            getSharedPreferences("solar_prefs", MODE_PRIVATE).edit()
+                .remove("fs_kiosk_url").remove("fs_last_fetch_ms")
+                .remove("fs_last_error").apply();
+        }
+
+        @JavascriptInterface
+        public void openKioskView() {
+            String url = getSharedPreferences("solar_prefs", MODE_PRIVATE).getString("fs_kiosk_url", "");
+            if (url.isEmpty()) return;
+            final String fUrl = url;
+            mainHandler.post(() -> {
+                android.webkit.WebView kv = new android.webkit.WebView(MainActivity.this);
+                kv.getSettings().setJavaScriptEnabled(true);
+                kv.getSettings().setDomStorageEnabled(true);
+                kv.getSettings().setLoadWithOverviewMode(true);
+                kv.getSettings().setUseWideViewPort(true);
+                kv.getSettings().setSupportZoom(true);
+                kv.getSettings().setBuiltInZoomControls(true);
+                kv.getSettings().setDisplayZoomControls(false);
+                kv.setWebViewClient(new android.webkit.WebViewClient() {
+                    @Override
+                    public boolean shouldOverrideUrlLoading(android.webkit.WebView v,
+                            android.webkit.WebResourceRequest r) {
+                        v.loadUrl(r.getUrl().toString()); return true;
+                    }
+                });
+                android.widget.LinearLayout header = new android.widget.LinearLayout(MainActivity.this);
+                header.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                header.setBackgroundColor(android.graphics.Color.parseColor("#0a1428"));
+                header.setPadding(24, 20, 24, 20);
+                android.widget.TextView title = new android.widget.TextView(MainActivity.this);
+                title.setText("FusionSolar Live View");
+                title.setTextColor(android.graphics.Color.parseColor("#c8e0ff"));
+                title.setTextSize(15);
+                title.setTypeface(null, android.graphics.Typeface.BOLD);
+                header.addView(title, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
+                android.widget.Button closeBtn = new android.widget.Button(MainActivity.this);
+                closeBtn.setText("Close");
+                closeBtn.setTextColor(android.graphics.Color.parseColor("#1D9E75"));
+                closeBtn.setBackgroundColor(android.graphics.Color.parseColor("#0a1428"));
+                header.addView(closeBtn);
+                android.widget.LinearLayout layout = new android.widget.LinearLayout(MainActivity.this);
+                layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+                layout.addView(header);
+                layout.addView(kv, new android.widget.LinearLayout.LayoutParams(-1, -1));
+                android.app.Dialog dialog = new android.app.Dialog(
+                    MainActivity.this, android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen);
+                dialog.setContentView(layout);
+                closeBtn.setOnClickListener(v -> dialog.dismiss());
+                kv.loadUrl(fUrl);
+                dialog.show();
+            });
         }
 
         @JavascriptInterface
@@ -567,7 +653,32 @@ public class MainActivity extends Activity {
                     public void onPageFinished(android.webkit.WebView view, String url) {
                         view.evaluateJavascript(JS_INJ, null);
                         if (url == null) return;
-                        if (url.contains("/netecowebext/") || url.contains("/pvmswebsite")) {
+                        // Detect dashboard URL on ANY subdomain (uni003eu5, eu5, intl, etc.)
+                        if (url.contains("/uniportal/") || url.contains("/netecowebext/") 
+                                || url.contains("/pvmswebsite") || url.contains("cloud.html")) {
+                            // Capture REAL host the user landed on (different from login portal)
+                            try {
+                                java.net.URL parsed = new java.net.URL(url);
+                                String realHost = parsed.getProtocol() + "://" + parsed.getHost();
+                                android.content.SharedPreferences sp =
+                                    getSharedPreferences("solar_prefs", MODE_PRIVATE);
+                                sp.edit().putString("fs_real_host", realHost).apply();
+                                android.util.Log.d("AppBridge", "FS real host: " + realHost);
+                                // Capture cookies for the REAL host (where API calls go)
+                                String realCookie = android.webkit.CookieManager.getInstance().getCookie(realHost);
+                                if (realCookie != null && realCookie.length() > 50) {
+                                    sp.edit().putString("fs_session_cookie", realCookie).apply();
+                                    android.util.Log.d("AppBridge", "Real cookies saved (" + realCookie.length() + " chars)");
+                                }
+                                // Extract station ID from URL like #/view/station/NE=138668769/overview
+                                java.util.regex.Matcher m = java.util.regex.Pattern.compile("NE=(\\d+)").matcher(url);
+                                if (m.find()) {
+                                    sp.edit().putString("fs_station_id", m.group(1)).apply();
+                                    android.util.Log.d("AppBridge", "Station ID: " + m.group(1));
+                                }
+                            } catch (Exception e) {
+                                android.util.Log.e("AppBridge", "host parse error: " + e.getMessage());
+                            }
                             // Dashboard loaded: try JS fetch from authenticated page context
                             // Same-origin fetch - JSESSIONID included automatically, CSRF may be skipped
                             mainHandler.postDelayed(() -> {
