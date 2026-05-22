@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 9   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 13   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -566,6 +566,26 @@ public class MainActivity extends Activity {
                     @Override
                     public void onPageFinished(android.webkit.WebView view, String url) {
                         view.evaluateJavascript(JS_INJ, null);
+                        if (url == null) return;
+                        if (url.contains("/netecowebext/") || url.contains("/pvmswebsite")) {
+                            // Dashboard loaded: try JS fetch from authenticated page context
+                            // Same-origin fetch - JSESSIONID included automatically, CSRF may be skipped
+                            mainHandler.postDelayed(() -> {
+                                String fetchSrc =
+                                    "(function(){" +
+                                    "var rr=window._fs_rr||window._fs_roarand||'';" +
+                                    "try{rr=rr||window.axios.defaults.headers.common['roarand'];}catch(e){}" +
+                                    "var h={'Content-Type':'application/json;charset=UTF-8'};" +
+                                    "if(rr){h.roarand=rr;h['X-XSRF-TOKEN']=rr;}" +
+                                    "fetch('/rest/pvms/web/station/v1/station/list'," +
+                                    "{method:'POST',headers:h,credentials:'include'," +
+                                    "body:'{"pageNo":1,"pageSize":10}'})" +
+                                    ".then(r=>r.text())" +
+                                    "  .then(d=>{try{AppBridge.onStationData(d);}catch(e){}})" +
+                                    ".catch(function(){});})()";
+                                view.evaluateJavascript(fetchSrc, null);
+                            }, 1500);
+                        }
                     }
                 });
                 android.widget.LinearLayout header = new android.widget.LinearLayout(MainActivity.this);
@@ -775,7 +795,17 @@ public class MainActivity extends Activity {
         // Clear cache on every launch so the latest GitHub Pages index.html
         // is always fetched. Without this, stale JS with old bugs persists
         // across installs and updates, causing stuck values and wrong behaviour.
-        webView.clearCache(true);
+        // Only clear cache when app version changes - prevents spurious update prompts
+        try {
+            android.content.SharedPreferences bp =
+                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
+            int lastVer = bp.getInt("last_cached_version", 0);
+            int curVer  = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+            if (lastVer != curVer) {
+                webView.clearCache(true);
+                bp.edit().putInt("last_cached_version", curVer).apply();
+            }
+        } catch (Exception e) { webView.clearCache(true); }
 
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -1242,8 +1272,8 @@ public class SolarForegroundService extends Service {
         prefs.edit().putLong("fgs_last_run_ms", nowMs).apply();
 
         // Read config
-        float soc      = prefs.getFloat("soc",       50f);
-        float panelKw  = prefs.getFloat("panel_kw",   5f);
+        float soc      = prefs.getFloat("soc",       -1f);
+        float panelKw  = prefs.getFloat("panel_kw",   0f);
         float battGross= prefs.getFloat("batt_gross", 0f);
         float battRes  = prefs.getFloat("batt_res",   0.1f);
         float consKw   = prefs.getFloat("cons_kw",    0f);
@@ -1251,6 +1281,12 @@ public class SolarForegroundService extends Service {
         float battMaxD = prefs.getFloat("batt_max_d", 2.5f);
         float lat      = prefs.getFloat("gps_lat",    0f);
         float lon      = prefs.getFloat("gps_lon",    0f);
+        // Skip if system not configured - prevents fake data on fresh install
+        if (panelKw <= 0 || battGross <= 0) {
+            android.util.Log.d("SolarFGS", "System not configured - skipping");
+            return;
+        }
+        if (soc < 0) soc = 50f; // default only after system is configured
 
         // GPS fallback via LocationManager
         if (lat == 0f || lon == 0f) {
@@ -1460,8 +1496,8 @@ public class SolarForegroundService extends Service {
                 double storedKwh = battUse * (newSoc / 100.0);
                 // Use the JS-saved SOC for display — JS has real Open-Meteo data,
                 // more accurate than the Java simulation's newSoc.
-                float  jsSoc     = prefs.getFloat("soc", (float) newSoc);
-                double dispSoc   = 10.0 + (jsSoc / 100.0) * 90.0;
+                // Use newSoc consistently - jsSoc can be stale causing notification mismatch
+                double dispSoc   = 10.0 + (newSoc / 100.0) * 90.0;
 
                 // Rule 1: Solar surplus ≥ 2kW — run appliances
                 if (surplus >= 2.0 && (nowMs - lHigh) > now1H) {
@@ -1707,8 +1743,8 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
         if (dtH <= 0 || dtH > 1.0) dtH = 0.5;
         prefs.edit().putLong("last_alarm_run_ms", nowMs).apply();
 
-        float soc       = prefs.getFloat("soc",        50f);
-        float panelKw   = prefs.getFloat("panel_kw",    5f);
+        float soc       = prefs.getFloat("soc",        -1f);
+        float panelKw   = prefs.getFloat("panel_kw",    0f);
         float battGross = prefs.getFloat("batt_gross",  0f);
         float battRes   = prefs.getFloat("batt_res",    0.1f);
         float consKw    = prefs.getFloat("cons_kw",     0f);
@@ -1716,6 +1752,8 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
         float battMaxD  = prefs.getFloat("batt_max_d",  2.5f);
         float lat       = prefs.getFloat("gps_lat",     0f);
         float lon       = prefs.getFloat("gps_lon",     0f);
+        if (panelKw <= 0 || battGross <= 0) return;
+        if (soc < 0) soc = 50f;
 
         if (lat == 0f || lon == 0f) {
             try {
@@ -1856,8 +1894,7 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
                 long now30M   = 30L * 60 * 1000, now1H = 60L * 60 * 1000, now2H = 2L * 60 * 60 * 1000, now12H = 12L * 60 * 60 * 1000;
                 double surplus   = pvKw - (double) consKw;
                 double storedKwh = battUse * (newSoc / 100.0);
-                float  jsSoc2    = prefs.getFloat("soc", (float) newSoc);
-                double dispSoc   = 10.0 + (jsSoc2 / 100.0) * 90.0;
+                double dispSoc   = 10.0 + (newSoc / 100.0) * 90.0;
                 if (surplus >= 2.0 && (nowMs - lHigh) > now1H) {
                     sendNotif(ctx, "Solar surplus — run large appliances",
                         String.format("+%.1f kW surplus. Battery: %.0f%%.", surplus, dispSoc));
@@ -2679,8 +2716,7 @@ public class SolarWorker extends Worker {
                 long now12H   = 12L * 60 * 60 * 1000;
                 double surplus   = pvKw - (double) consKw;
                 double storedKwh = battUse * (newSoc / 100.0);
-                float  jsSoc3    = prefs.getFloat("soc", (float) newSoc);
-                double dispSoc   = 10.0 + (jsSoc3 / 100.0) * 90.0;
+                double dispSoc   = 10.0 + (newSoc / 100.0) * 90.0;
 
                 // Rule 1: Solar surplus ≥ 2kW — run appliances
                 if (surplus >= 2.0 && (nowMs - lHigh) > now1H) {
