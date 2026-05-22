@@ -501,8 +501,8 @@ body::before{
           background:rgba(0,80,160,.3);color:var(--t2);border:1px solid var(--br2)">Not connected</div>
       </div>
       <p style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">
-        Connect with your regular FusionSolar app credentials to get <strong style="color:var(--tx)">real inverter data</strong>
-        instead of satellite estimates. Log in with your regular FusionSolar app credentials — same account as the mobile app.
+        Log in with your <strong style="color:var(--tx)">FusionSolar app credentials</strong> to pull
+        real inverter data. Same account as the mobile app.
       </p>
       <div style="display:flex;flex-direction:column;gap:8px">
         <button onclick="openFsWebLogin()"
@@ -523,6 +523,20 @@ body::before{
             Disconnect
           </button>
         </div>
+        <details style="margin-top:6px">
+          <summary style="font-size:11px;color:var(--t3);cursor:pointer;padding:4px">Advanced: paste Kiosk URL instead</summary>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+            <input type="url" id="kioskUrlInput" placeholder="https://...fusionsolar.huawei.com/.../#/kiosk?kk=..."
+              style="width:100%;background:rgba(0,20,50,.5);color:var(--tx);border:1px solid var(--br2);
+              border-radius:var(--rs);padding:9px;font-size:11px;font-family:monospace;box-sizing:border-box">
+            <div style="display:flex;gap:6px">
+              <button onclick="saveKioskUrl()" style="flex:1;background:rgba(0,180,230,.1);color:var(--bl);
+                border:1px solid rgba(0,180,230,.3);border-radius:var(--rs);padding:7px;font-size:11px;cursor:pointer;font-family:inherit">Save Kiosk URL</button>
+              <button onclick="openKioskView()" style="flex:1;background:rgba(0,200,130,.05);color:var(--g);
+                border:1px solid rgba(0,200,130,.2);border-radius:var(--rs);padding:7px;font-size:11px;cursor:pointer;font-family:inherit">View Live</button>
+            </div>
+          </div>
+        </details>
       </div>
       <div id="fsMsg" style="font-size:11px;min-height:14px;margin-top:6px"></div>
       <!-- Diagnostic log — shows exact login steps and API responses on screen -->
@@ -1374,7 +1388,8 @@ function wxIcon(code, tempC) {
 
 function calcPV(poaWm2) {
   if (!poaWm2 || isNaN(poaWm2) || poaWm2 <= 0) return 0;
-  const pkw     = SYS.panelKw || 5;   // use 5kW estimate if not configured
+  if (!isSysConfigured()) return 0; // No fake data until user configures system
+  const pkw     = SYS.panelKw;
   const tempC   = ST.wxTempC  || 25;
   const tCell   = tempC + (SYS.noct - 20) / 800 * poaWm2;
   const tFactor = 1 - SYS.tempCoeff * Math.max(0, tCell - 25);
@@ -2214,6 +2229,67 @@ async function testFusionSolar() {
   if (msg) setTimeout(() => { if(msg) msg.textContent = ''; }, 5000);
 }
 
+// ── FusionSolar Kiosk URL approach ──────────────────────────────────────
+function saveKioskUrl() {
+  const inp = document.getElementById('kioskUrlInput');
+  const msg = document.getElementById('fsMsg');
+  if (!inp) return;
+  const url = (inp.value || '').trim();
+  if (!url) {
+    if (msg) { msg.textContent = '⚠ Paste a kiosk URL first'; msg.style.color = '#e05a28'; }
+    return;
+  }
+  if (!url.includes('fusionsolar.huawei.com') || !url.includes('kiosk')) {
+    if (msg) { msg.textContent = '⚠ Not a valid FusionSolar kiosk URL'; msg.style.color = '#e05a28'; }
+    return;
+  }
+  if (window.AppBridge && typeof AppBridge.setKioskUrl === 'function') {
+    try {
+      AppBridge.setKioskUrl(url);
+      localStorage.setItem('fsKioskUrl', url);
+      if (msg) { msg.textContent = '✓ Connected — data will load shortly'; msg.style.color = 'var(--g)'; }
+      refreshFsStatus();
+    } catch(e) {
+      if (msg) { msg.textContent = 'Error: ' + e.message; msg.style.color = '#e05a28'; }
+    }
+  }
+}
+
+function openKioskView() {
+  if (window.AppBridge && typeof AppBridge.openKioskView === 'function') {
+    try { AppBridge.openKioskView(); } catch(e) {}
+  } else {
+    const u = localStorage.getItem('fsKioskUrl');
+    if (u) window.open(u, '_blank');
+  }
+}
+
+function disconnectKiosk() {
+  const msg = document.getElementById('fsMsg');
+  const inp = document.getElementById('kioskUrlInput');
+  if (window.AppBridge && typeof AppBridge.clearKioskUrl === 'function') {
+    try { AppBridge.clearKioskUrl(); } catch(e) {}
+  }
+  localStorage.removeItem('fsKioskUrl');
+  if (inp) inp.value = '';
+  if (msg) { msg.textContent = 'Disconnected'; msg.style.color = 'var(--t2)'; }
+  refreshFsStatus();
+}
+
+// Restore saved URL on page load
+(function loadSavedKioskUrl() {
+  const inp = document.getElementById('kioskUrlInput');
+  if (!inp) return;
+  let url = '';
+  if (window.AppBridge && typeof AppBridge.getKioskUrl === 'function') {
+    try { url = AppBridge.getKioskUrl() || ''; } catch(e) {}
+  }
+  if (!url) {
+    try { url = localStorage.getItem('fsKioskUrl') || ''; } catch(e) {}
+  }
+  if (url) inp.value = url;
+})();
+
 // Called when AppBridge status is 'captcha' — shows CAPTCHA image + input
 function openFsWebLogin() {
   if (window.AppBridge && typeof AppBridge.openFusionSolarWebLogin === 'function') {
@@ -2242,40 +2318,6 @@ function showFsCaptcha() {
 }
 
 function submitFsCaptcha() { showFsCaptcha(); }
-
-function connectFusionSolar() {
-  const user = (document.getElementById('cfgFsUser')?.value || '').trim();
-  const pass = (document.getElementById('cfgFsPass')?.value || '');
-  const msg  = document.getElementById('fsMsg');
-  const setMsg = (t, c) => { if(msg){ msg.textContent=t; msg.style.color=c; } };
-
-  if (!user || !pass) { setMsg('Enter your FusionSolar username and password.', 'var(--am)'); return; }
-
-  setMsg('Connecting…', 'var(--bl)');
-
-  // Store credentials for Java background service
-  try {
-    localStorage.setItem('fsCredentials', JSON.stringify({ user, host: FS_HOST }));
-  } catch(e) {}
-
-  // Pass to Android native layer so background service can use them
-  if (window.AppBridge && typeof AppBridge.setFusionSolarCreds === 'function') {
-    try {
-      AppBridge.setFusionSolarCreds(user, pass, FS_HOST);
-      setMsg('✅ Credentials saved — background service will fetch live data every 5 min.', 'var(--g)');
-    } catch(e) {
-      setMsg('Credentials saved locally. Update app to enable background sync.', 'var(--am)');
-    }
-  } else {
-    setMsg('⚠️ AppBridge not available — credentials not saved. Use the installed app.', 'var(--am)');
-  }
-
-  // Clear password field for security
-  const passEl = document.getElementById('cfgFsPass');
-  if (passEl) passEl.value = '';
-  refreshFsStatus();
-  setTimeout(() => { if(msg) msg.textContent = ''; }, 6000);
-}
 
 function disconnectFusionSolar() {
   localStorage.removeItem('fsCredentials');
