@@ -671,7 +671,7 @@ public class MainActivity extends Activity {
                                     android.util.Log.d("AppBridge", "Real cookies saved (" + realCookie.length() + " chars)");
                                 }
                                 // Extract station ID from URL like #/view/station/NE=138668769/overview
-                                java.util.regex.Matcher m = java.util.regex.Pattern.compile("NE=(\\d+)").matcher(url);
+                                java.util.regex.Matcher m = java.util.regex.Pattern.compile("NE=(\\\\d+)").matcher(url);
                                 if (m.find()) {
                                     sp.edit().putString("fs_station_id", m.group(1)).apply();
                                     android.util.Log.d("AppBridge", "Station ID: " + m.group(1));
