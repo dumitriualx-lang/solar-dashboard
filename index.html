@@ -2247,12 +2247,33 @@ function saveKioskUrl() {
     try {
       AppBridge.setKioskUrl(url);
       localStorage.setItem('fsKioskUrl', url);
-      if (msg) { msg.textContent = '✓ Connected — data will load shortly'; msg.style.color = 'var(--g)'; }
+      if (msg) { msg.textContent = '✓ Connected — fetching data (10–15s)…'; msg.style.color = 'var(--g)'; }
       refreshFsStatus();
     } catch(e) {
       if (msg) { msg.textContent = 'Error: ' + e.message; msg.style.color = '#e05a28'; }
     }
   }
+}
+
+// Called by Java when background WebView extracts data from kiosk page
+function applyFsBgData(data) {
+  if (!data) return;
+  if (typeof data.power === 'number' && data.power >= 0) {
+    ST.pvKw = data.power;
+    ST.pvSource = 'fusionsolar-live';
+  }
+  if (typeof data.soc === 'number' && data.soc >= 0 && data.soc <= 100) {
+    ST.battSoc = data.soc;
+  }
+  if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
+    try { AppBridge.saveSoc(ST.battSoc); } catch(e){}
+  }
+  const msg = document.getElementById('fsMsg');
+  if (msg) {
+    msg.textContent = `✓ Live: ${(data.power||0).toFixed(2)} kW · SOC ${Math.round(data.soc||0)}%`;
+    msg.style.color = 'var(--g)';
+  }
+  if (typeof renderAll === 'function') renderAll();
 }
 
 function openKioskView() {
@@ -4428,6 +4449,10 @@ setInterval(() => {
 }, 60*1000);
 
 setInterval(()=>{
+  if (!isSysConfigured()) {
+    // System not configured - don't render fake values
+    return;
+  }
   applyAutoConsumption();
   renderAll();
   const socEl = document.getElementById('cfgSoc');
@@ -4439,6 +4464,7 @@ setInterval(()=>{
 }, 30000);
 
 setInterval(()=>{
+  if (!isSysConfigured()) return;
   applyAutoConsumption();
   evolveSoc();
   renderBattery();
