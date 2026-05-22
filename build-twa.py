@@ -210,6 +210,7 @@ import android.provider.Settings;
 
 public class MainActivity extends Activity {
     private WebView webView;
+    private WebView fsBgWebView;
     private Handler mainHandler;
     private static final String APP_URL = "https://dumitriualx-lang.github.io/solar-dashboard/";
     private static final String CHANNEL_ID = "solar_alerts";
@@ -532,6 +533,7 @@ public class MainActivity extends Activity {
                 .putString("fs_last_error", "")
                 .apply();
             android.util.Log.d("AppBridge", "Kiosk URL saved (" + url.length() + " chars)");
+            startFsBackground();
         }
 
         @JavascriptInterface
@@ -592,6 +594,72 @@ public class MainActivity extends Activity {
                 closeBtn.setOnClickListener(v -> dialog.dismiss());
                 kv.loadUrl(fUrl);
                 dialog.show();
+            });
+        }
+
+        @JavascriptInterface
+        public void onFsData(String json) {
+            android.util.Log.d("AppBridge", "FS data: " + json);
+            if (json == null || json.startsWith("ERR")) return;
+            try {
+                org.json.JSONObject o = new org.json.JSONObject(json);
+                android.content.SharedPreferences.Editor ed =
+                    getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
+                if (o.has("power")) {
+                    double p = o.getDouble("power");
+                    String u = o.optString("unit", "kW");
+                    if ("MW".equals(u)) p *= 1000;
+                    ed.putFloat("fs_pv_kw", (float) p);
+                }
+                if (o.has("soc"))  ed.putFloat("fs_soc", (float) o.getDouble("soc"));
+                if (o.has("kwh"))  ed.putFloat("fs_kwh_today", (float) o.getDouble("kwh"));
+                ed.putLong("fs_last_fetch_ms", System.currentTimeMillis()).apply();
+                mainHandler.post(() -> {
+                    if (webView != null) webView.evaluateJavascript(
+                        "if(typeof applyFsBgData==='function')applyFsBgData(" + json + ");", null);
+                });
+            } catch (Exception e) { android.util.Log.e("AppBridge","onFsData: "+e.getMessage()); }
+        }
+
+        @JavascriptInterface
+        public void startFsBackground() {
+            mainHandler.post(() -> {
+                android.content.SharedPreferences prefs = getSharedPreferences("solar_prefs", MODE_PRIVATE);
+                String url = prefs.getString("fs_kiosk_url", "");
+                if (url.isEmpty()) { android.util.Log.d("AppBridge", "No kiosk URL"); return; }
+                if (fsBgWebView == null) {
+                    fsBgWebView = new android.webkit.WebView(MainActivity.this);
+                    fsBgWebView.getSettings().setJavaScriptEnabled(true);
+                    fsBgWebView.getSettings().setDomStorageEnabled(true);
+                    fsBgWebView.addJavascriptInterface(new AppBridge(), "AppBridge");
+                    fsBgWebView.setWebViewClient(new android.webkit.WebViewClient() {
+                        @Override
+                        public void onPageFinished(android.webkit.WebView v, String u) {
+                            mainHandler.postDelayed(() -> {
+                                String js = "(function(){"
+                                + "try{"
+                                + "var data={ts:Date.now()};"
+                                + "var all=document.querySelectorAll('*');"
+                                + "for(var i=0;i<all.length;i++){"
+                                + "var e=all[i];if(e.children.length>3)continue;"
+                                + "var t=(e.textContent||'').trim();if(t.length>40)continue;"
+                                + "var m=t.match(/(\\\\d+\\\\.?\\\\d*)\\\\s*(kW|MW)\\\\b/);"
+                                + "if(m&&!data.power){data.power=parseFloat(m[1]);data.unit=m[2];}"
+                                + "var s=t.match(/(\\\\d+\\\\.?\\\\d*)\\\\s*%/);"
+                                + "if(s&&!data.soc&&parseFloat(s[1])<=100){data.soc=parseFloat(s[1]);}"
+                                + "var y=t.match(/(\\\\d+\\\\.?\\\\d*)\\\\s*kWh/i);"
+                                + "if(y&&!data.kwh){data.kwh=parseFloat(y[1]);}"
+                                + "}"
+                                + "AppBridge.onFsData(JSON.stringify(data));"
+                                + "}catch(e){AppBridge.onFsData('ERR:'+e.message);}"
+                                + "})()";
+                                v.evaluateJavascript(js, null);
+                            }, 10000);
+                        }
+                    });
+                }
+                fsBgWebView.loadUrl(url);
+                android.util.Log.d("AppBridge", "fsBgWebView loading: " + url);
             });
         }
 
