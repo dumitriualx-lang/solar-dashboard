@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 12   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 13   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -153,12 +153,13 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
     </application>
 </manifest>
 """)
-# Patch versionCode/versionName with auto-incremented values
 _bgpath = os.path.join(APP, "build.gradle")
 with open(_bgpath) as _f: _bg = _f.read()
-_bg = _bg.replace("versionCode 4", f"versionCode {VERSION_CODE}")
-_bg = _bg.replace('versionName "1.2.0"', f'versionName "{VERSION_NAME}"')
+import re as _re
+_bg = _re.sub(r'versionCode \d+',    f'versionCode {VERSION_CODE}',       _bg)
+_bg = _re.sub(r'versionName "[^"]*"', f'versionName "{VERSION_NAME}"',     _bg)
 with open(_bgpath, "w") as _f: _f.write(_bg)
+print(f"  patched build.gradle → versionCode={VERSION_CODE} versionName={VERSION_NAME}")
 
 
 # Ownership verification file for Google Play package registration
@@ -523,9 +524,38 @@ public class MainActivity extends Activity {
                 android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(lv, true);
                 lv.addJavascriptInterface(new AppBridge(), "AppBridge");
                 // JS to capture roarand from XHR responses
-                String JS_INJ = "(function(){if(window._fs_xhr_patched)return;window._fs_xhr_patched=true;var orig=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(d){this.addEventListener('load',function(){try{var r=JSON.parse(this.responseText);if(r&&r.roarand){window._fs_roarand=r.roarand;try{AppBridge.saveRoarand(r.roarand);}catch(e){}}if(r&&r.data&&r.data.roarand){window._fs_roarand=r.data.roarand;try{AppBridge.saveRoarand(r.data.roarand);}catch(e){}}}catch(e){}});orig.apply(this,arguments);};})()";
+                String JS_INJ = "(function(){"
+                    + "if(window._rr_done)return;window._rr_done=true;"
+                    // Intercept XHR request headers (dashboard sends roarand here)
+                    + "var oh=XMLHttpRequest.prototype.setRequestHeader;"
+                    + "XMLHttpRequest.prototype.setRequestHeader=function(n,v){"
+                    + "if((n==='roarand'||n==='X-XSRF-TOKEN')&&v&&v.length>4){"
+                    + "window._fs_rr=v;try{AppBridge.saveRoarand(v);}catch(e){}}"
+                    + "oh.apply(this,arguments);};" 
+                    // Intercept XHR response body (login response has roarand)
+                    + "var os=XMLHttpRequest.prototype.send;"
+                    + "XMLHttpRequest.prototype.send=function(d){"
+                    + "this.addEventListener('load',function(){"
+                    + "try{var r=JSON.parse(this.responseText);"
+                    + "var rr=r&&(r.roarand||(r.data&&r.data.roarand));"
+                    + "if(rr){window._fs_rr=rr;try{AppBridge.saveRoarand(rr);}catch(e){}}}"
+                    + "catch(e){}});os.apply(this,arguments);};" 
+                    // Intercept fetch (some pages use fetch instead of XHR)
+                    + "if(window.fetch){var of=window.fetch;window.fetch=function(u,o){"
+                    + "if(o&&o.headers){"
+                    + "var h=o.headers,rr=h instanceof Headers?h.get('roarand'):h.roarand||h['X-XSRF-TOKEN'];"
+                    + "if(rr&&rr.length>4){window._fs_rr=rr;try{AppBridge.saveRoarand(rr);}catch(e){}}}"
+                    + "return of.apply(this,arguments).then(function(resp){"
+                    + "var c=resp.clone();c.json().then(function(r){"
+                    + "var rr=r&&(r.roarand||(r.data&&r.data.roarand));"
+                    + "if(rr){window._fs_rr=rr;try{AppBridge.saveRoarand(rr);}catch(e){}}"
+                    + "}).catch(function(){});return resp;});}}" 
+                    + "})();
                 // JS to read back captured roarand
-                String JS_RR  = "(function(){if(window._fs_roarand)return window._fs_roarand;var m=document.cookie.match(/roarand=([^;]+)/);if(m)return m[1];try{var s=sessionStorage.getItem('roarand');if(s)return s;}catch(e){}return '';})()";
+                String JS_RR  = "(function(){"
+                    + "var rr=window._fs_rr||window._fs_roarand||'';" 
+                    + "if(!rr){var m=document.cookie.match(/roarand=([^;]+)/);if(m)rr=m[1];}"
+                    + "return rr;})()";
                 // Keep ALL navigation inside the WebView
                 lv.setWebViewClient(new android.webkit.WebViewClient() {
                     @Override
@@ -578,6 +608,10 @@ public class MainActivity extends Activity {
                                 String t = p.trim();
                                 if (t.startsWith("roarand=")) { rr = t.substring(8).trim(); break; }
                             }
+                        }
+                        // Also check if saveRoarand already saved it via interceptor
+                        if (rr.isEmpty() || rr.equals("null")) {
+                            rr = prefs.getString("fs_roarand", "");
                         }
                         final String frr = rr;
                         android.util.Log.d("AppBridge", "Save: cookie=" + fck.length() + " roarand=" + (frr.isEmpty()?"missing":"set("+frr.length()+")"));
