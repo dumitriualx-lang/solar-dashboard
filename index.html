@@ -480,72 +480,13 @@ body::before{
             border-radius:var(--rs);padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;
             font-family:inherit;white-space:nowrap">+ Reading</button>
         </div>
-        <div class="cfg-hint" style="margin-top:5px">Open FusionSolar, read live PV power, enter it here. Each reading teaches the app — accuracy improves automatically over time.</div>
+        <div class="cfg-hint" style="margin-top:5px">Open your inverter's monitoring app, read live PV power, enter it here. Each reading teaches the app — accuracy improves automatically over time.</div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
           <div id="cfgCalibMsg" style="font-size:11px;min-height:14px"></div>
           <button onclick="resetCalibration()" style="font-size:10px;padding:2px 8px;background:none;
             border:1px solid var(--br2);border-radius:5px;color:var(--t3);cursor:pointer;font-family:inherit">
             Clear all readings</button>
         </div>
-      </div>
-    </div>
-
-    <!-- FusionSolar Integration — shown only when Huawei panel brand is selected -->
-    <div id="fusionSolarSection" style="display:none;margin-top:14px;padding:14px;
-      border-radius:var(--r);border:1px solid rgba(0,180,255,.25);
-      background:linear-gradient(135deg,rgba(0,40,100,.5),rgba(0,10,30,.7))">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-          color:var(--bl)">🔗 FusionSolar Live Data</div>
-        <div id="fsStatus" style="font-size:10px;padding:2px 8px;border-radius:10px;
-          background:rgba(0,80,160,.3);color:var(--t2);border:1px solid var(--br2)">Not connected</div>
-      </div>
-      <p style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">
-        Log in with your <strong style="color:var(--tx)">FusionSolar app credentials</strong> to pull
-        real inverter data. Same account as the mobile app.
-      </p>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <button onclick="openFsWebLogin()"
-          style="width:100%;background:rgba(0,180,230,.15);color:var(--bl);
-          border:1px solid rgba(0,180,230,.4);border-radius:var(--rs);padding:12px;font-size:14px;
-          font-weight:700;cursor:pointer;font-family:inherit">
-          🌐 Login with FusionSolar
-        </button>
-        <div style="display:flex;gap:8px">
-          <button onclick="testFusionSolar()"
-            style="flex:1;background:rgba(0,200,130,.1);color:var(--g);border:1px solid rgba(0,200,130,.3);
-            border-radius:var(--rs);padding:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-            Test
-          </button>
-          <button onclick="disconnectFusionSolar()"
-            style="flex:1;background:none;color:var(--t3);border:1px solid var(--br2);
-            border-radius:var(--rs);padding:9px;font-size:12px;cursor:pointer;font-family:inherit">
-            Disconnect
-          </button>
-        </div>
-        <details style="margin-top:6px">
-          <summary style="font-size:11px;color:var(--t3);cursor:pointer;padding:4px">Advanced: paste Kiosk URL instead</summary>
-          <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
-            <input type="url" id="kioskUrlInput" placeholder="https://...fusionsolar.huawei.com/.../#/kiosk?kk=..."
-              style="width:100%;background:rgba(0,20,50,.5);color:var(--tx);border:1px solid var(--br2);
-              border-radius:var(--rs);padding:9px;font-size:11px;font-family:monospace;box-sizing:border-box">
-            <div style="display:flex;gap:6px">
-              <button onclick="saveKioskUrl()" style="flex:1;background:rgba(0,180,230,.1);color:var(--bl);
-                border:1px solid rgba(0,180,230,.3);border-radius:var(--rs);padding:7px;font-size:11px;cursor:pointer;font-family:inherit">Save Kiosk URL</button>
-              <button onclick="openKioskView()" style="flex:1;background:rgba(0,200,130,.05);color:var(--g);
-                border:1px solid rgba(0,200,130,.2);border-radius:var(--rs);padding:7px;font-size:11px;cursor:pointer;font-family:inherit">View Live</button>
-            </div>
-          </div>
-        </details>
-      </div>
-      <div id="fsMsg" style="font-size:11px;min-height:14px;margin-top:6px"></div>
-      <!-- Diagnostic log — shows exact login steps and API responses on screen -->
-      <div id="fsLog" style="display:none;margin-top:10px;padding:10px;background:rgba(0,0,0,.4);
-        border-radius:8px;border:1px solid rgba(0,180,255,.15);font-family:monospace;
-        font-size:10px;color:var(--t2);max-height:220px;overflow-y:auto;line-height:1.6"></div>
-      <div style="font-size:10px;color:var(--t3);margin-top:8px;line-height:1.4">
-        Credentials are stored only on this device. Connection uses the eu5.fusionsolar.huawei.com
-        endpoint — the same server your browser uses. Data refreshes every 5 minutes.
       </div>
     </div>
 
@@ -566,7 +507,7 @@ body::before{
           <input type="number" id="cfgSoc" inputmode="numeric" min="0" max="100" step="1" value="" oninput="onSocInput()">
           <span class="cfg-unit">%</span>
         </div>
-        <div class="cfg-hint" id="cfgSocHint">Enter SOC from FusionSolar · 90% = full · 10% = empty (reserve)</div>
+        <div class="cfg-hint" id="cfgSocHint">Enter SOC from your inverter's app · 90% = full · 10% = empty (reserve)</div>
       </div>
       <div class="cfg-group">
         <div class="cfg-lbl">⚡ Stored energy</div>
@@ -907,36 +848,29 @@ const _notifReady      = () => Date.now() - _appStartMs >= _NOTIF_GRACE_MS;
 // This fires before JS may have read localStorage, ensuring coords are set
 // Called by Java MainActivity every 60s when FusionSolar data is fresh.
 // Overrides NWP/satellite estimates with real inverter readings.
-function applyFsLive(pvKw, battSocPct, gridImportKw, gridExportKw, houseLoadKw, pvKwhToday) {
-  if (pvKw >= 0)        ST.pvKw           = +pvKw.toFixed(3);
-  // battSocPct is raw FusionSolar 0–100% — convert to internal 0–100 scale
-  if (battSocPct >= 0)  ST.battSoc        = +Math.max(0, Math.min(100, (battSocPct - 10) / 90 * 100)).toFixed(1);
-  if (gridImportKw >= 0) ST._fsGridImport = +gridImportKw.toFixed(3);
-  if (gridExportKw >= 0) ST._fsGridExport = +gridExportKw.toFixed(3);
-  if (houseLoadKw >= 0)  ST._fsHouseLoad  = +houseLoadKw.toFixed(3);
-  if (pvKwhToday > 0)    ST.pvKwhToday    = +pvKwhToday.toFixed(2);
-  ST._fsLive   = true;
-  ST._fsLastMs = Date.now();
-  setApi('ok', '✅ ' + (ST.locName||'') + ' · FusionSolar live · '
-    + new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
-  renderAll();
-}
-
 function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) {
-  if (panelKw > 0)  { SYS.panelKw   = panelKw; }
-  if (battGross > 0){ SYS.battGross  = battGross; SYS.battRes = battRes || 0.10; }
-  const socAge = Date.now() - (ST._socEvolvedMs || 0);
-  if (soc >= 0 && socAge > 90000) { ST.battSoc = soc; }
-  if (consKw > 0)   { ST.consKw      = consKw; }
-  if (typeof bgPvKw === 'number' && bgPvKw > 0 && !ST.apiOk) { ST.pvKw = bgPvKw; }
-  lastFlowT = Date.now();
-  // Sync UI inputs
+  // System configuration (panelKw, battGross) is OWNED BY localStorage (set by user).
+  // Java SharedPreferences may have stale values from a previous install — never let
+  // them overwrite SYS.* on a "fresh" install where localStorage was cleared.
+  const userHasSavedCfg = !!(savedCfg && (savedCfg.panelKw || savedCfg.battGross));
+  if (userHasSavedCfg) {
+    if (panelKw > 0)   { SYS.panelKw   = panelKw; }
+    if (battGross > 0) { SYS.battGross = battGross; SYS.battRes = battRes || 0.10; }
+  }
+  // Runtime state (SOC, consumption) — only restore if user has saved a config
+  // (otherwise these are leftover values that shouldn't seed a fresh dashboard)
+  if (userHasSavedCfg) {
+    const socAge = Date.now() - (ST._socEvolvedMs || 0);
+    if (soc >= 0 && socAge > 90000) { ST.battSoc = soc; }
+    if (consKw > 0)   { ST.consKw   = consKw; }
+    if (typeof bgPvKw === 'number' && bgPvKw > 0 && !ST.apiOk) { ST.pvKw = bgPvKw; }
+    lastFlowT = Date.now();
+  }
+  // Sync UI inputs (already gated by userHasSavedCfg below)
   const socEl   = document.getElementById('cfgSoc');
   const panelEl = document.getElementById('cfgPanel');
   const battEl  = document.getElementById('cfgBatt');
   const azEl    = document.getElementById('cfgAzimuth');
-  // Only fill config fields if user has previously saved a config (not on fresh install)
-  const userHasSavedCfg = savedCfg && (savedCfg.panelKw || savedCfg.battGross);
   if (userHasSavedCfg) {
     if (socEl   && document.activeElement !== socEl   && soc >= 0)        socEl.value   = Math.round(socToDisplay(soc));
     if (panelEl && document.activeElement !== panelEl && panelKw > 0)     panelEl.value = panelKw;
@@ -944,8 +878,6 @@ function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) 
     if (battEl  && document.activeElement !== battEl  && battGross > 0)   battEl.value  = battGross;
   }
   updateSocDisplay();
-  // Do not call renderAll() here — the debounced intervals handle rendering.
-  // Calling it here causes a visible flash before fetchWeather returns fresh data.
 }
 
 // ── Location cache — prevents geocoding on every resume ────────────
@@ -1292,11 +1224,18 @@ async function fetchWeather() {
   ST._fetchStartMs = Date.now();
   setApi('load', '⏳ Fetching weather...');
   try {
+    // Map azimuth: app uses compass 0=N, 90=E, 180=S, 270=W
+    // Open-Meteo expects: -180..180 where 0=South (negative=East, positive=West)
+    const azCompass = SYS.panelAzimuth || 180;
+    const azMeteo = azCompass - 180; // 180→0 (S), 90→-90 (E), 270→90 (W), 0→-180 (N)
+    const tiltDeg = SYS.tiltDeg || 30;
     const u = 'https://api.open-meteo.com/v1/forecast?'
       + 'latitude='  + f(ST.lat,4)
       + '&longitude=' + f(ST.lon,4)
-      + '&current=temperature_2m,cloud_cover,weathercode,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance'
-      + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,cloud_cover,temperature_2m,precipitation_probability,weathercode'
+      + '&tilt=' + tiltDeg + '&azimuth=' + azMeteo
+      + '&models=best_match'
+      + '&current=temperature_2m,cloud_cover,weathercode,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,global_tilted_irradiance'
+      + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,global_tilted_irradiance,cloud_cover,cloud_cover_low,temperature_2m,wind_speed_10m,precipitation_probability,weathercode,is_day'
       + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
       + '&timezone=auto&forecast_days=7';
 
@@ -1520,28 +1459,38 @@ function processOpenMeteo(d) {
     const swr_h = hr.shortwave_radiation?.[i]        || 0;
     const dni_h = hr.direct_normal_irradiance?.[i]   || 0;  // already DNI — no conversion needed
     const dhi_h = hr.diffuse_radiation?.[i]           || 0;
+    const gti_h = hr.global_tilted_irradiance?.[i]   || 0;  // server-computed plane-of-array irradiance
     const tmp_h = hr.temperature_2m?.[i]              || ST.wxTempC || 20;
+    const wnd_h = hr.wind_speed_10m?.[i]              || 0;   // m/s — improves cell-temp accuracy
 
-    if (swr_h <= 0 && dni_h <= 0) {
+    if (swr_h <= 0 && dni_h <= 0 && gti_h <= 0) {
       ST.todayH.push({ hour: localHour, pvKw: 0, ghi: 0, dni: 0, dhi: 0 });
       return;
     }
 
     // Convert local hour midpoint → UTC for solarPosition().
-    // Use phone timezone offset so sun angles match the phone clock exactly.
     const utcHourFrac = localHour + 0.5 - phoneOffsetSec / 3600;
     const hDate = new Date(Date.UTC(todayYr, todayMo - 1, todayDy) + utcHourFrac * 3600000);
     const pos_h = solarPosition(ST.lat, ST.lon, hDate);
 
-    const poa_h = (ST.lat && ST.lon && pos_h.altitude > 0 && (dni_h > 0 || dhi_h > 0))
-      ? calcPOA(dni_h, dhi_h, swr_h, SYS.tiltDeg || 30, SYS.panelAzimuth || 180, pos_h)
-      : 0;
+    // Prefer Open-Meteo's server-computed GTI (most accurate — accounts for atmospheric optics)
+    // Fall back to our own POA calculation if GTI not available
+    const poa_h = gti_h > 0
+      ? gti_h
+      : ((ST.lat && ST.lon && pos_h.altitude > 0 && (dni_h > 0 || dhi_h > 0))
+          ? calcPOA(dni_h, dhi_h, swr_h, SYS.tiltDeg || 30, SYS.panelAzimuth || 180, pos_h)
+          : 0);
 
-    const cellT_h = tmp_h + (SYS.noct - 20) / 800 * Math.max(0, poa_h);
+    // Sandia-style cell temp model: T_cell = T_air + (NOCT-20)/800 * G_POA + wind cooling
+    // Wind > 1 m/s reduces cell temp meaningfully (each m/s ≈ 2°C cooler at high irradiance)
+    const windCool = Math.min(8, wnd_h * 1.8);
+    const cellT_h = tmp_h + (SYS.noct - 20) / 800 * Math.max(0, poa_h) - windCool * Math.min(1, poa_h/800);
     const tFac_h  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_h - 25));
-    const pvKw    = +Math.max(0, Math.min(
-      SYS.acMax || (SYS.panelKw||5) * 0.984,
-      (poa_h / 1000) * (SYS.acMax || (SYS.panelKw||5) * 0.984) * 0.97 * tFac_h
+    const pkw = SYS.panelKw;
+    const acMax = SYS.acMax || (pkw||5) * 0.984;
+    const pvKw    = !isSysConfigured() ? 0 : +Math.max(0, Math.min(
+      acMax,
+      (poa_h / 1000) * pkw * (SYS.invEff || 0.97) * tFac_h
     )).toFixed(3);
 
     ST.todayH.push({ hour: localHour, pvKw, ghi: swr_h, dni: dni_h, dhi: dhi_h });
@@ -2093,266 +2042,9 @@ function showUpdateDialog(versionName, storeUrl, versionCode) {
 const stored = () => SYS.battUse ? +((ST.battSoc/100) * SYS.battUse).toFixed(3) : 0;
 
 // ── Quick SOC correction from battery panel ───────────────────────────────
-// ── FusionSolar integration ────────────────────────────────────────
-const FS_HOST = 'https://eu5.fusionsolar.huawei.com';
-
 function onPanelBrandChange() {
-  const brand  = document.getElementById('cfgPanelBrand')?.value || '';
-  const isHuawei = brand === 'huawei' || brand.startsWith('huawei');
-  const section  = document.getElementById('fusionSolarSection');
-  if (section) section.style.display = isHuawei ? 'block' : 'none';
-  // Populate credentials if already saved
-  if (isHuawei) refreshFsStatus();
+  // FusionSolar integration removed - no-op
 }
-
-function loadFsCredentials() {
-  try { return JSON.parse(localStorage.getItem('fsCredentials') || 'null'); }
-  catch(e) { return null; }
-}
-
-function refreshFsStatus() {
-  const statusEl = document.getElementById('fsStatus');
-  if (!statusEl) return;
-
-  // Use AppBridge as source of truth — localStorage only shows saved credentials, not actual connection
-  if (window.AppBridge && typeof AppBridge.getFusionSolarStatus === 'function') {
-    try {
-      const status = AppBridge.getFusionSolarStatus();
-      if (status === 'captcha') {
-        statusEl.textContent = '⚠ CAPTCHA required';
-        statusEl.style.background = 'rgba(212,168,32,.12)';
-        statusEl.style.color = 'var(--am)';
-        statusEl.style.borderColor = 'rgba(212,168,32,.3)';
-        showFsCaptcha();
-        return;
-      } else if (status.startsWith('connected')) {
-        const mins = status.split(':')[1] || '';
-        statusEl.textContent = '● Live' + (mins ? ' · ' + mins + ' ago' : '');
-        statusEl.style.background = 'rgba(0,200,130,.15)';
-        statusEl.style.color = 'var(--g)';
-        statusEl.style.borderColor = 'rgba(0,200,130,.3)';
-      } else if (creds && creds.user) {
-        statusEl.textContent = '⚠ Credentials saved — tap Test';
-        statusEl.style.background = 'rgba(212,168,32,.1)';
-        statusEl.style.color = 'var(--am)';
-        statusEl.style.borderColor = 'rgba(212,168,32,.3)';
-      } else {
-        statusEl.textContent = 'Not connected';
-        statusEl.style.background = 'rgba(0,80,160,.3)';
-        statusEl.style.color = 'var(--t2)';
-        statusEl.style.borderColor = 'var(--br2)';
-      }
-      return;
-    } catch(e) {}
-  }
-  // Fallback when AppBridge not available
-  if (creds && creds.user) {
-    statusEl.textContent = '● Saved';
-    statusEl.style.background = 'rgba(0,200,130,.15)';
-    statusEl.style.color = 'var(--g)';
-    statusEl.style.borderColor = 'rgba(0,200,130,.3)';
-  } else {
-    statusEl.textContent = 'Not connected';
-    statusEl.style.background = 'rgba(0,80,160,.3)';
-    statusEl.style.color = 'var(--t2)';
-    statusEl.style.borderColor = 'var(--br2)';
-  }
-}
-
-async function testFusionSolar() {
-  const log = document.getElementById('fsLog');
-  const msg = document.getElementById('fsMsg');
-  if (!log) return;
-  log.style.display = 'block';
-  log.innerHTML = '';
-  const FS_HOST = 'https://eu5.fusionsolar.huawei.com';
-
-  const L = (text, colour) => {
-    const d = document.createElement('div');
-    d.style.color = colour || 'var(--t2)';
-    d.textContent = new Date().toLocaleTimeString() + '  ' + text;
-    log.appendChild(d);
-    log.scrollTop = log.scrollHeight;
-  };
-
-  if (msg) { msg.textContent = 'Testing…'; msg.style.color = 'var(--bl)'; }
-
-  // ── Step 1: AppBridge status ──────────────────────────────────────────
-  L('① AppBridge status…');
-  if (window.AppBridge && typeof AppBridge.getFusionSolarStatus === 'function') {
-    try {
-      const status = AppBridge.getFusionSolarStatus();
-      if (status.startsWith('connected')) {
-        L('   Status: ' + status, 'var(--g)');
-        if (msg) { msg.textContent = '✅ Connected'; msg.style.color = 'var(--g)'; }
-      } else if (status === 'disconnected') {
-        L('   No session — tap 🌐 Login with FusionSolar first', 'var(--am)');
-        if (msg) { msg.textContent = 'Login required'; msg.style.color = 'var(--am)'; }
-      } else {
-        L('   Status: ' + status, 'var(--am)');
-      }
-    } catch(e) { L('   AppBridge error: ' + e.message, '#e05a28'); }
-  } else {
-    L('   AppBridge not available — use installed app', 'var(--am)');
-  }
-
-  // ── Step 2: Java connection test (requires new APK) ───────────────────
-  L('② Java login test…');
-  if (window.AppBridge && typeof AppBridge.testFusionSolarConnection === 'function') {
-    try {
-      const result = AppBridge.testFusionSolarConnection();
-      if (result.startsWith('OK')) {
-        L('   ' + result, 'var(--g)');
-        if (msg) { msg.textContent = '✅ FusionSolar live'; msg.style.color = 'var(--g)'; }
-      } else if (result.includes('411') || result.includes('verification code') || result.includes('CAPTCHA')) {
-        L('   ⚠ CAPTCHA required — solve below', 'var(--am)');
-        L('   ' + result.substring(0, 120), 'var(--t2)');
-        showFsCaptcha();
-      } else {
-        L('   ' + result, '#e05a28');
-      }
-    } catch(e) { L('   testFusionSolarConnection not in this APK', 'var(--t3)'); }
-  } else {
-    L('   testFusionSolarConnection not in this APK — push new build to get detailed diagnostics', 'var(--t3)');
-  }
-
-  // ── Step 3: Server reachability (CORS will block — informational only) ──
-  L('③ Server reachability (CORS may block — informational)…');
-  try {
-    await fetch(FS_HOST + '/unisso/login.action', { method: 'HEAD', mode: 'no-cors' });
-    L('   Server reachable ✓', 'var(--g)');
-  } catch(e) {
-    L('   Server unreachable or CORS blocked (expected in browser): ' + e.message, 'var(--t3)');
-  }
-
-  L('─── Done. The AppBridge status above is the definitive result. ───', 'var(--t3)');
-  if (msg) setTimeout(() => { if(msg) msg.textContent = ''; }, 5000);
-}
-
-// ── FusionSolar Kiosk URL approach ──────────────────────────────────────
-function saveKioskUrl() {
-  const inp = document.getElementById('kioskUrlInput');
-  const msg = document.getElementById('fsMsg');
-  if (!inp) return;
-  const url = (inp.value || '').trim();
-  if (!url) {
-    if (msg) { msg.textContent = '⚠ Paste a kiosk URL first'; msg.style.color = '#e05a28'; }
-    return;
-  }
-  if (!url.includes('fusionsolar.huawei.com') || !url.includes('kiosk')) {
-    if (msg) { msg.textContent = '⚠ Not a valid FusionSolar kiosk URL'; msg.style.color = '#e05a28'; }
-    return;
-  }
-  if (window.AppBridge && typeof AppBridge.setKioskUrl === 'function') {
-    try {
-      AppBridge.setKioskUrl(url);
-      localStorage.setItem('fsKioskUrl', url);
-      if (msg) { msg.textContent = '✓ Connected — fetching data (10–15s)…'; msg.style.color = 'var(--g)'; }
-      refreshFsStatus();
-    } catch(e) {
-      if (msg) { msg.textContent = 'Error: ' + e.message; msg.style.color = '#e05a28'; }
-    }
-  }
-}
-
-// Called by Java when background WebView extracts data from kiosk page
-function applyFsBgData(data) {
-  if (!data) return;
-  if (typeof data.power === 'number' && data.power >= 0) {
-    ST.pvKw = data.power;
-    ST.pvSource = 'fusionsolar-live';
-  }
-  if (typeof data.soc === 'number' && data.soc >= 0 && data.soc <= 100) {
-    ST.battSoc = data.soc;
-  }
-  if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
-    try { AppBridge.saveSoc(ST.battSoc); } catch(e){}
-  }
-  const msg = document.getElementById('fsMsg');
-  if (msg) {
-    msg.textContent = `✓ Live: ${(data.power||0).toFixed(2)} kW · SOC ${Math.round(data.soc||0)}%`;
-    msg.style.color = 'var(--g)';
-  }
-  if (typeof renderAll === 'function') renderAll();
-}
-
-function openKioskView() {
-  if (window.AppBridge && typeof AppBridge.openKioskView === 'function') {
-    try { AppBridge.openKioskView(); } catch(e) {}
-  } else {
-    const u = localStorage.getItem('fsKioskUrl');
-    if (u) window.open(u, '_blank');
-  }
-}
-
-function disconnectKiosk() {
-  const msg = document.getElementById('fsMsg');
-  const inp = document.getElementById('kioskUrlInput');
-  if (window.AppBridge && typeof AppBridge.clearKioskUrl === 'function') {
-    try { AppBridge.clearKioskUrl(); } catch(e) {}
-  }
-  localStorage.removeItem('fsKioskUrl');
-  if (inp) inp.value = '';
-  if (msg) { msg.textContent = 'Disconnected'; msg.style.color = 'var(--t2)'; }
-  refreshFsStatus();
-}
-
-// Restore saved URL on page load
-(function loadSavedKioskUrl() {
-  const inp = document.getElementById('kioskUrlInput');
-  if (!inp) return;
-  let url = '';
-  if (window.AppBridge && typeof AppBridge.getKioskUrl === 'function') {
-    try { url = AppBridge.getKioskUrl() || ''; } catch(e) {}
-  }
-  if (!url) {
-    try { url = localStorage.getItem('fsKioskUrl') || ''; } catch(e) {}
-  }
-  if (url) inp.value = url;
-})();
-
-// Called when AppBridge status is 'captcha' — shows CAPTCHA image + input
-function openFsWebLogin() {
-  if (window.AppBridge && typeof AppBridge.openFusionSolarWebLogin === 'function') {
-    const msg = document.getElementById('fsMsg');
-    if (msg) { msg.textContent = 'Opening FusionSolar login…'; msg.style.color = 'var(--bl)'; }
-    try {
-      AppBridge.openFusionSolarWebLogin();
-    } catch(e) {
-      if (msg) { msg.textContent = 'Error: ' + e.message; msg.style.color = '#e05a28'; }
-    }
-  } else {
-    const msg = document.getElementById('fsMsg');
-    if (msg) { msg.textContent = '⚠ Update app to use browser login'; msg.style.color = 'var(--am)'; }
-  }
-}
-
-function showFsCaptcha() {
-  // CAPTCHA image approach was unreliable - guide user to browser login instead
-  const log = document.getElementById('fsLog');
-  const msg = document.getElementById('fsMsg');
-  if (msg) { msg.textContent = '⚠ Login required — tap the button below'; msg.style.color = 'var(--am)'; }
-  if (log) {
-    log.style.display = 'block';
-    log.innerHTML = '<div style="color:var(--am);padding:8px 0">Huawei requires browser login (CAPTCHA). Tap <b>🌐 Login with FusionSolar browser</b> below — log in normally in the page that opens, then tap Done.</div>';
-  }
-}
-
-function submitFsCaptcha() { showFsCaptcha(); }
-
-function disconnectFusionSolar() {
-  localStorage.removeItem('fsCredentials');
-  if (window.AppBridge && typeof AppBridge.clearFusionSolarCreds === 'function') {
-    try { AppBridge.clearFusionSolarCreds(); } catch(e) {}
-  }
-  const msg = document.getElementById('fsMsg');
-  if (msg) { msg.textContent = 'Disconnected — using satellite estimates.'; msg.style.color = 'var(--t2)'; }
-  setTimeout(() => { if(msg) msg.textContent = ''; }, 4000);
-  refreshFsStatus();
-}
-// Stores up to 60 (ghi, cloudCover, pvApp, pvReal) data points in localStorage.
-// getLearnedFactor(ghi) computes a weighted factor from historical readings
-// closest in irradiance, time-weighted so older readings matter less.
 
 const CALIB_STORE = 'solarCalibHistory';
 const CALIB_MAX   = 60;
@@ -4279,7 +3971,19 @@ function applyAutoConsumption() {
 }
 
 let _renderAllTimer = null;
+
+function setEmptyDashboard() {
+  // Clear all displayed values when system not configured
+  const ids = ['pvKwPill','battSocPill','wxTempPill','battKwPill',
+               'pvKwValue','socValue','irrValue','tempValue'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '—';
+  });
+}
+
 function renderAll() {
+  if (!isSysConfigured()) { setEmptyDashboard(); return; }
   if (_renderAllTimer) clearTimeout(_renderAllTimer);
   _renderAllTimer = setTimeout(() => {
     _renderAllTimer = null;
