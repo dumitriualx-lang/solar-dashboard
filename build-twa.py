@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 14   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 15   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -763,16 +763,33 @@ public class MainActivity extends Activity {
                         long startMs = socSavedAt;
                         long endMs = System.currentTimeMillis();
                         long step = 15L * 60L * 1000L;  // 15-min steps for granularity
+                        // PV during the gap: estimate using the forecast bell curve.
+                        // JS pushes peak_kw and peak_hour via AppBridge.saveForecast() after every weather fetch.
+                        // The bell-curve model is far more accurate than the old linear-decay-to-zero approach,
+                        // especially when the gap crosses sunrise/sunset.
+                        float catchPeakKw = prefs.getFloat("peak_kw", 0f);
+                        int   catchPeakHr = prefs.getInt("peak_hour", 12);
                         for (long t = startMs; t < endMs; t += step) {
                             long chunkEnd = Math.min(t + step, endMs);
                             double dtH = (chunkEnd - t) / 3600000.0;
                             java.util.Calendar c = java.util.Calendar.getInstance();
                             c.setTimeInMillis(t);
                             int hr = c.get(java.util.Calendar.HOUR_OF_DAY);
+                            int mn = c.get(java.util.Calendar.MINUTE);
+                            double hOfDay = hr + mn / 60.0;
                             double consH = profHourly[hr];
-                            // pvKw decays linearly to 0 over the elapsed window (best guess without forecast)
-                            double frac = (t - startMs) / (double)(endMs - startMs);
-                            double pvH = pvKwLast * Math.max(0.0, 1.0 - frac);
+                            // Bell-curve PV: peakKw * cos(deltaH * π/12)²  (clamped >= 0, dies at ±6h from peak)
+                            double pvH;
+                            if (catchPeakKw > 0) {
+                                double normDist = (hOfDay - catchPeakHr) / 6.0;
+                                pvH = (Math.abs(normDist) >= 1.0)
+                                    ? 0.0
+                                    : catchPeakKw * Math.pow(Math.cos(normDist * Math.PI / 2.0), 2);
+                            } else {
+                                // No forecast saved yet — fall back to linear decay (legacy behaviour)
+                                double frac = (t - startMs) / (double)(endMs - startMs);
+                                pvH = pvKwLast * Math.max(0.0, 1.0 - frac);
+                            }
 
                             double s2hH = Math.min(pvH, consH);
                             double pvSH = pvH - s2hH;
@@ -790,8 +807,8 @@ public class MainActivity extends Activity {
                             totalFlow += bf * dtH;
                         }
                         android.util.Log.d("MainActivity", String.format(
-                            "SOC catch-up (hourly profile): %.1f min, pvLast=%.2fkW, total battFlow=%.2fkWh, soc %.1f->%.1f",
-                            elapsedH * 60, pvKwLast, totalFlow, (double) soc, curSoc));
+                            "SOC catch-up (bell curve, peak=%.2fkW@%dh): %.1f min, total battFlow=%.2fkWh, soc %.1f->%.1f",
+                            catchPeakKw, catchPeakHr, elapsedH * 60, totalFlow, (double) soc, curSoc));
                     } else {
                         // Legacy fallback: single consKw value
                         double s2h = Math.min(pvKwLast, consKw);
@@ -1136,7 +1153,7 @@ public class SolarForegroundService extends Service {
                 double cellT    = tempC + (45.0 - 20.0) * (poa_in / 800.0);
                 double tFac     = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
                 pvKw = Math.max(0, Math.min(panelKw * 0.984,
-                    (poa_in / 1000.0) * panelKw * 0.984 * tFac * 0.85));
+                    (poa_in / 1000.0) * panelKw * 0.984 * tFac));
             } else {
                 pvKw = 0; // sun below horizon
             }
@@ -1449,18 +1466,14 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
         }
 
         createChannel(ctx);
-        final Context fctx = ctx;
-        // goAsync() extends the receiver lifetime up to ~10s while the thread runs.
-        // Without it, Android may kill the process between onReceive returning and
-        // the thread completing, causing the work to silently abort.
-        final PendingResult asyncResult = goAsync();
-        new Thread(() -> {
-            try { doSolarCheck(fctx); }
-            finally {
-                try { asyncResult.finish(); } catch (Exception ignored) {}
-            }
-        }).start();
-        schedule(ctx);
+        // ARCHITECTURE: FGS is now the single source of truth for SOC computation.
+        // Previously SAR ran its own doSolarCheck on a goAsync thread, racing with
+        // the FGS check that we just kicked off. Both wrote to "soc" pref -
+        // last write wins, sometimes overwriting the more accurate value.
+        //
+        // We only fall back to running our own check if FGS start failed AND
+        // WorkManager fallback also failed.
+        schedule(ctx);  // reschedule next 30-min alarm before we return
     }
 
     private void doSolarCheck(Context ctx) {
@@ -1557,7 +1570,7 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
                 double poa_in   = poaBeam + poaSky + poaGnd;
                 double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
                 double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
-                pvKw = Math.max(0, Math.min(panelKw * 0.984, (poa_in / 1000.0) * panelKw * 0.984 * tFac * 0.85));
+                pvKw = Math.max(0, Math.min(panelKw * 0.984, (poa_in / 1000.0) * panelKw * 0.984 * tFac));
             } else {
                 pvKw = 0; // sun below horizon
             }
@@ -1917,7 +1930,7 @@ public class SolarWorker extends Worker {
             double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
             double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
             pvKw = Math.max(0, Math.min(panelKw * 0.984,
-                (poa_in / 1000.0) * panelKw * 0.984 * tFac * 0.85));
+                (poa_in / 1000.0) * panelKw * 0.984 * tFac));
         }
 
         // ── Energy flow model (mirrors JS calcFlow) ──────────────────────────
