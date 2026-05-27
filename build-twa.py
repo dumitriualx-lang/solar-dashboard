@@ -906,6 +906,7 @@ public class SolarForegroundService extends Service {
     private static final int    FG_NOTIF_ID   = 999;
     private static final long   INTERVAL_MS   = 30 * 60 * 1000L;  // 30 minutes
     private static int          alertNotifId  = 3000;
+    private volatile boolean    isWorking     = false;
 
     private Handler  handler;
     private Runnable checker;
@@ -941,25 +942,38 @@ public class SolarForegroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Schedule first check immediately, then every 30 min
-        // If already scheduled, the handler dedup prevents double-running
-        if (checker == null) {
-            checker = new Runnable() {
-                @Override public void run() {
-                    new Thread(() -> {
-                        try { doSolarCheck(); }
-                        catch (Exception e) {
-                            android.util.Log.e("SolarFGS", "Check error: " + e.getMessage());
-                        }
-                    }).start();
-                    handler.postDelayed(this, INTERVAL_MS);
-                }
-            };
-            handler.postDelayed(checker, 5000);
-
+        // ANDROID 14+ FIX: dataSync FGS has a 6-hour cumulative-per-day limit.
+        // Previously we ran continuously via handler.postDelayed and were killed
+        // by ForegroundServiceDidNotStopInTimeException after 6 hours.
+        // New architecture: do ONE check, then stop. AlarmReceiver wakes us up
+        // every 30 min for the next check, keeping cumulative FGS time minimal.
+        if (isWorking) {
+            android.util.Log.d("SolarFGS", "Already working - ignoring duplicate start");
+            return START_NOT_STICKY;
         }
-        // START_STICKY: if the service is killed (rare), restart it automatically
-        return START_STICKY;
+        isWorking = true;
+        new Thread(() -> {
+            try {
+                doSolarCheck();
+            } catch (Exception e) {
+                android.util.Log.e("SolarFGS", "Check error: " + e.getMessage());
+            } finally {
+                // Always stop the FGS after one check so we stay well under the
+                // 6-hour cumulative-runtime limit for dataSync foreground services.
+                isWorking = false;
+                handler.post(() -> {
+                    try {
+                        stopForeground(true);
+                        stopSelf();
+                        android.util.Log.d("SolarFGS", "Check complete - service stopped");
+                    } catch (Exception ignored) {}
+                });
+            }
+        }).start();
+        // Make sure AlarmReceiver is scheduled so we wake up again in 30 min
+        SolarAlarmReceiver.schedule(getApplicationContext());
+        // START_NOT_STICKY: do not auto-restart - SAR will restart us at the next alarm
+        return START_NOT_STICKY;
     }
 
     @Override
@@ -968,10 +982,11 @@ public class SolarForegroundService extends Service {
         if (handler != null && checker != null) {
             handler.removeCallbacks(checker);
         }
-        // Samsung One UI ignores START_STICKY — schedule a 1-minute restart alarm
-        // so the service comes back even if Android doesn't honour the sticky flag.
-        scheduleRestartAlarm();
-        android.util.Log.d("SolarFGS", "Service destroyed — restart alarm set for 1 min");
+        // NOTE: We no longer schedule a 1-minute restart alarm on destroy.
+        // Under the new one-shot architecture, every onDestroy is expected
+        // (we stopped ourselves intentionally). AlarmReceiver handles the
+        // next periodic wake-up in 30 min.
+        android.util.Log.d("SolarFGS", "Service destroyed (expected after one-shot check)");
     }
 
     private void scheduleRestartAlarm() {
