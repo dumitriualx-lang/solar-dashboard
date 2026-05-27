@@ -1330,8 +1330,12 @@ function calcPV(poaWm2) {
   if (!isSysConfigured()) return 0; // No fake data until user configures system
   const pkw     = SYS.panelKw;
   const tempC   = ST.wxTempC  || 25;
-  const tCell   = tempC + (SYS.noct - 20) / 800 * poaWm2;
-  const tFactor = 1 - SYS.tempCoeff * Math.max(0, tCell - 25);
+  const windMs  = ST.wxWindMs || 0;
+  // Sandia NOCT cell temp model + wind cooling (matches hourly forecast model)
+  // Wind > 1 m/s: ~2°C cooling per m/s at high irradiance (linear scale by poa)
+  const windCool = Math.min(8, windMs * 1.8) * Math.min(1, poaWm2 / 800);
+  const tCell   = tempC + (SYS.noct - 20) / 800 * poaWm2 - windCool;
+  const tFactor = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, tCell - 25));
   const dcKw    = pkw * (poaWm2 / 1000) * tFactor;
   return +Math.min(dcKw * SYS.invEff, SYS.acMax || pkw * SYS.invEff).toFixed(3);
 }
@@ -1519,6 +1523,17 @@ function processOpenMeteo(d) {
     });
   });
   while (FORECAST.length < 5) FORECAST.push({ d:'--', yieldKwh:0, tempC:15, rain:50, icon:'☁️' });
+  // Push today's peak forecast to Java so the background service's morning notification
+  // can show: "Now X.XX kW, peak ~Y.Y kW at HH:00, today YY kWh"
+  try {
+    if (ST.todayH && ST.todayH.length) {
+      const peak = ST.todayH.reduce((a, b) => b.pvKw > a.pvKw ? b : a, { pvKw: 0, hour: 12 });
+      const todayKwh = FORECAST[0] ? FORECAST[0].yieldKwh : 0;
+      if (window.AppBridge && AppBridge.saveForecast) {
+        AppBridge.saveForecast(peak.pvKw, peak.hour, todayKwh);
+      }
+    }
+  } catch(e) {}
 }
 
 function processForecastSolar(data) {
@@ -2261,6 +2276,23 @@ function crossValidateEnergyBalance() {
 // ═══════════════════════════════════════════════════════════════
 // SNAPSHOT LOG
 // ═══════════════════════════════════════════════════════════════
+let _rlogSaveTimer = null;
+function _saveRlogDebounced() {
+  if (_rlogSaveTimer) return;
+  _rlogSaveTimer = setTimeout(() => {
+    _rlogSaveTimer = null;
+    // Use requestIdleCallback when available to avoid blocking UI thread
+    const doSave = () => {
+      try { localStorage.setItem('solarLog4', JSON.stringify(rlog)); } catch(e) {}
+    };
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(doSave, { timeout: 5000 });
+    } else {
+      setTimeout(doSave, 0);
+    }
+  }, 5 * 60 * 1000);  // save at most every 5 minutes (was every 30s — significant ANR risk)
+}
+
 function snap() {
   const fl = calcFlow();
   rlog.push({ t:new Date().toISOString(), pvKw:ST.pvKw,
@@ -2268,10 +2300,11 @@ function snap() {
     grd:+(fl.gridExport-fl.gridImport).toFixed(3),
     lat:ST.lat, lon:ST.lon, loc:ST.locName });
   if (rlog.length>288) rlog.shift();
-  try { localStorage.setItem('solarLog4', JSON.stringify(rlog)); } catch(e){}
+  _saveRlogDebounced();
   document.getElementById('logPill').textContent = rlog.length + ' entries';
   renderLogTable();
-
+  // Trigger consumption-profile learning every 6 hours
+  maybeRunLearning();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3250,55 +3283,11 @@ function notifAllowed() {
 }
 
 function notifyRealtime() {
-  if (!notifAllowed()) return;
-  if (!_notifReady()) return;  // startup grace — avoid false alerts from state init
-  const nowMin = Date.now() / 60000;
-  if (!ST._lastRealtimeNotif) {
-    try {
-      const saved = parseFloat(localStorage.getItem('lastRealtimeNotif') || '0');
-      if (saved > 0) ST._lastRealtimeNotif = saved;
-    } catch(e) {}
-  }
-  if (ST._lastRealtimeNotif && nowMin - ST._lastRealtimeNotif < 30) return;
-
-  const surplus = +(ST.pvKw - (ST.consKw || 0)).toFixed(2);
-
-  if (surplus >= SURPLUS_TRIGGER) {
-    // Fire when production exceeds consumption by at least 1 kW
-    ST._lastRealtimeNotif = nowMin;
-    try { localStorage.setItem('lastRealtimeNotif', nowMin); } catch(e) {}
-    // List every appliance that fits within the current surplus
-    const runnable = APPLIANCES.filter(a => a.kw <= surplus);
-    const names = runnable.length
-      ? runnable.map(a => a.icon + ' ' + a.name).join(', ')
-      : 'small loads';
-    showNotification(
-      '☀️ Solar surplus +' + f(surplus, 2) + ' kW — good time for appliances',
-      'Production ' + f(ST.pvKw, 2) + ' kW · consumption ' + f(ST.consKw || 0, 2) +
-      ' kW · surplus +' + f(surplus, 2) + ' kW. Run: ' + names +
-      '. Battery: ' + socToDisplay(ST.battSoc) + '%.',
-      'realtime-high'
-    );
-  } else {
-    // Surplus too low — look ahead for the next hour where surplus ≥ 1 kW
-    const now = new Date();
-    const nowH = now.getHours() + now.getMinutes() / 60;
-    const nextWindow = ST.todayH && ST.todayH.find(
-      h => h.hour > nowH && (h.pvKw - (ST.consKw || 0)) >= SURPLUS_TRIGGER
-    );
-    if (nextWindow) {
-      ST._lastRealtimeNotif = nowMin;
-      try { localStorage.setItem('lastRealtimeNotif', nowMin); } catch(e) {}
-      const winSurplus = +(nextWindow.pvKw - (ST.consKw || 0)).toFixed(2);
-      showNotification(
-        '⏰ Solar surplus expected at ' + nextWindow.hour + ':00',
-        'Now: ' + f(ST.pvKw, 2) + ' kW production, only +' + f(Math.max(0, surplus), 2) +
-        ' kW surplus. Forecast +' + f(winSurplus, 2) + ' kW at ' + nextWindow.hour +
-        ':00 — schedule appliances then.',
-        'realtime-low'
-      );
-    }
-  }
+  // DISABLED: Java SolarForegroundService now handles all proactive notifications
+  // (morning, hourly status, evening, battery low). This function previously fired
+  // realtime "surplus" notifications that duplicated FGS alerts.
+  // Kept as no-op so existing callers don't break.
+  return;
 }
 
 function scheduleEveningForecast() {
@@ -3406,45 +3395,10 @@ async function registerPeriodicSync() {
 }
 
 function checkMissedDailyNotifications() {
-  if (!notifAllowed() || !FORECAST.length) return;
-  if (!_notifReady()) return;  // startup grace — wait for state to stabilise
-  const now = new Date();
-  const todayKey = now.toDateString();
-  const h = now.getHours() + now.getMinutes() / 60;
-  const peakKw = SYS.panelKw || 5;
-  if (h >= 7.5 && h < 20 && localStorage.getItem('lastMorningNotifDay') !== todayKey) {
-    localStorage.setItem('lastMorningNotifDay', todayKey);
-    const today = FORECAST[0];
-    const bestHour = ST.todayH && ST.todayH.length
-      ? ST.todayH.reduce((a, b) => b.pvKw > a.pvKw ? b : a, { pvKw: 0, hour: 12 })
-      : { pvKw: 0, hour: 12 };
-    const runnable = APPLIANCES.filter(a => a.kw >= HIGH_KW && bestHour.pvKw - (ST.consKw||0) >= Math.max(a.kw, SURPLUS_TRIGGER));
-    const names = runnable.length ? runnable.slice(0,3).map(a => a.icon+' '+a.name).join(', ') : 'limited surplus today';
-    if (today.yieldKwh >= peakKw * 2) {
-      showNotification('☀️ Good solar day — ' + f(today.yieldKwh,1) + ' kWh forecast',
-        today.icon + ' Peak at ' + bestHour.hour + ':00 (' + f(bestHour.pvKw,2) + ' kW). Best for: ' + names + '. Battery: ' + socToDisplay(ST.battSoc) + '%.',
-        'morning-forecast');
-    } else {
-      showNotification('☁️ Limited solar today — ' + f(today.yieldKwh,1) + ' kWh forecast',
-        today.icon + ' Low production expected. Defer large appliances. Battery: ' + socToDisplay(ST.battSoc) + '%.',
-        'morning-forecast');
-    }
-  }
-  if (h >= 20 && FORECAST.length >= 2 && localStorage.getItem('lastEveningNotifDay') !== todayKey) {
-    localStorage.setItem('lastEveningNotifDay', todayKey);
-    const tomorrow = FORECAST[1];
-    const highProd = tomorrow.yieldKwh >= peakKw * 3;
-    if (highProd) {
-      const names = APPLIANCES.filter(a => a.kw >= HIGH_KW).slice(0,3).map(a => a.icon+' '+a.name).join(', ');
-      showNotification('☀️ Good solar day tomorrow — plan ahead',
-        tomorrow.icon + ' ' + tomorrow.d + ': ' + f(tomorrow.yieldKwh,1) + ' kWh forecast. Schedule: ' + names + '.',
-        'evening-forecast');
-    } else {
-      showNotification('☁️ Limited solar tomorrow',
-        tomorrow.icon + ' ' + tomorrow.d + ': only ' + f(tomorrow.yieldKwh,1) + ' kWh forecast. Defer large appliances.',
-        'evening-forecast');
-    }
-  }
+  // DISABLED: Java SolarForegroundService is the single source of truth for
+  // morning forecast and evening summary notifications. This function used to
+  // duplicate the FGS notifications via web Notification API.
+  return;
 }
 
 async function storeNotifPayloads() {
@@ -3541,6 +3495,18 @@ function updateSocDisplay() {
 
 function onCfgChange() {
   updateUsableDisplay();
+  // If azimuth dropdown changed and config is already saved, refetch weather
+  // so the user sees the production impact immediately (before they save)
+  const azEl = document.getElementById('cfgAzimuth');
+  if (azEl && azEl.value) {
+    const newAz = parseInt(azEl.value);
+    if (newAz !== SYS.panelAzimuth && newAz >= 0 && newAz <= 360) {
+      SYS.panelAzimuth = newAz;
+      if (ST.lat && ST.lon && isSysConfigured()) {
+        fetchWeather();
+      }
+    }
+  }
 }
 
 function updateUsableDisplay() {
@@ -3643,6 +3609,9 @@ function saveCfgAndApply() {
   SYS.panelKw   = panel;
   SYS.battGross = gross;
   SYS.battRes   = res;
+  // Update azimuth FIRST so AppBridge.saveSoc receives the new value
+  const azimuth = parseInt(document.getElementById('cfgAzimuth').value) || 180;
+  SYS.panelAzimuth = azimuth;
   if (!isNaN(soc) && soc>=0 && soc<=100) {
     ST.battSoc = socToInternal(soc);
     lastFlowT  = Date.now();
@@ -3656,8 +3625,6 @@ function saveCfgAndApply() {
   }
   SYS._battMaxC = maxC;
   SYS._battMaxD = maxD;
-  const azimuth = parseInt(document.getElementById('cfgAzimuth').value) || 180;
-  SYS.panelAzimuth = azimuth;
   const calib = getLearnedFactor(ST.irrWm2 || 0);
   SYS.pvCalibFactor = calib;
   saveCfg({
@@ -3674,6 +3641,14 @@ function saveCfgAndApply() {
     tiltDeg:       SYS.tiltDeg || 30,
     notifEnabled:  loadCfg().notifEnabled,
   });
+  // Push 24-hour consumption profile to Java for accurate SOC catch-up after long sleep
+  if (window.AppBridge && AppBridge.saveConsProfile) {
+    try {
+      const hourly = [];
+      for (let h = 0; h < 24; h++) hourly.push(getProfileConsKw(h));
+      AppBridge.saveConsProfile(JSON.stringify(hourly));
+    } catch(e) {}
+  }
   updateUsableDisplay();
   const pill = document.getElementById('cfgSavedPill');
   const msg  = document.getElementById('cfgSavedMsg');
@@ -3684,6 +3659,8 @@ function saveCfgAndApply() {
   applyAutoConsumption();
   renderAll();
   renderSmartSched();
+  // Refetch weather with the new tilt/azimuth so production forecast reflects the change
+  if (ST.lat && ST.lon) fetchWeather();
 }
 
 function showPage(n,el){
@@ -3782,7 +3759,7 @@ const APPLIANCES = [
 
 const applianceState = {};
 
-// ── Appliance reminders — 1-hour timed ──────────────────────────────────────
+// ── Appliance reminders — 30-minute timed ────────────────────────────────────
 // Map of reminderKey → fireAtMs (epoch ms). Keys: app.id or 'id1+id2' for stacks.
 // Stored in localStorage so restarts can recover pending timers.
 const _REMINDER_LS = 'solarReminderTimers';
@@ -3850,8 +3827,8 @@ function toggleApplianceReminder(id) {
     if (_reminderTimers[id]) { clearTimeout(_reminderTimers[id]); delete _reminderTimers[id]; }
     applianceReminders.delete(id);
   } else {
-    // Set 1-hour reminder
-    const fireAt = Date.now() + 3600000;
+    // Set 30-minute reminder
+    const fireAt = Date.now() + 30 * 60 * 1000;
     applianceReminders.set(id, fireAt);
     scheduleReminderTimer(id, fireAt);
   }
@@ -3929,7 +3906,7 @@ function renderSmartSched() {
     const remindBtn = showBell
       ? '<button class="sr-btn' + (reminded ? ' sr-on' : '') + '" ' +
         'onclick="toggleApplianceReminder(\'' + app.id + '\')" ' +
-        'title="' + (reminded ? 'Cancel reminder (fires in ' + _reminderLabel(app.id) + ')' : 'Remind me in 1 hour') + '">' +
+        'title="' + (reminded ? 'Cancel reminder (fires in ' + _reminderLabel(app.id) + ')' : 'Remind me in 30 min') + '">' +
         remindLbl +
         '</button>'
       : '';
@@ -3968,6 +3945,85 @@ function applyAutoConsumption() {
   // The profile is the only reliable consumption source without FusionSolar.
   const kw = getProfileConsKw(new Date().getHours());
   ST.consKw = kw;
+}
+
+// ── Consumption profile learning from rlog history ────────────────
+// Every 6 hours, scan the past 7 days of snapshots and compute the
+// average home consumption per hour-of-day. Blend the learned values
+// into the manual profile (70% learned, 30% manual) so the profile
+// gradually adapts to the user's real usage.
+//
+// Home consumption = pvKw + gridImport - gridExport + battDischarge
+// We approximated as ST.consKw at snapshot time, recorded by snap().
+// Therefore we can re-derive a per-hour average from rlog entries.
+function learnConsumptionProfile() {
+  if (!Array.isArray(rlog) || rlog.length < 24) return; // need at least 24 entries
+  // Group rlog entries by hour of day; record consKw (computed via battery flow + grid)
+  const hourBuckets = Array.from({length:24}, () => []);
+  for (const e of rlog) {
+    try {
+      const t = new Date(e.t);
+      const h = t.getHours();
+      // Derive instantaneous consKw: PV - battery_to_grid + grid_import - grid_export ≈ home load
+      // The recorded snapshot may not directly have consKw; reconstruct from pvKw - net flow
+      // For simplicity, use pvKw - batt (negative batt = discharging adds to home) - grd (negative grd = importing)
+      const pv = +e.pvKw || 0;
+      const batt = +e.batt || 0;  // positive = charging, negative = discharging
+      const grd = +e.grd  || 0;   // positive = exporting, negative = importing
+      // home_load = pv - batt - grd  (energy that flowed to home)
+      const home = Math.max(0, pv - batt - grd);
+      if (home >= 0 && home <= 10) hourBuckets[h].push(home);
+    } catch(e) {}
+  }
+  // Compute average per hour, skip hours with <3 samples
+  const learned = new Array(24).fill(null);
+  for (let h = 0; h < 24; h++) {
+    if (hourBuckets[h].length >= 3) {
+      const sum = hourBuckets[h].reduce((a, b) => a + b, 0);
+      learned[h] = +(sum / hourBuckets[h].length).toFixed(2);
+    }
+  }
+  // Blend into consProfile slots: for each slot, if all hours have learned values,
+  // update the slot's kw value (70% learned, 30% manual)
+  const slots = SYS.consProfile || [];
+  let updated = false;
+  for (const slot of slots) {
+    const end = slot.to === 0 ? 24 : slot.to;
+    const hoursInSlot = [];
+    for (let h = slot.from; h < end; h++) {
+      if (learned[h] !== null) hoursInSlot.push(learned[h]);
+    }
+    if (hoursInSlot.length >= Math.ceil((end - slot.from) / 2)) {
+      const learnedAvg = hoursInSlot.reduce((a, b) => a + b, 0) / hoursInSlot.length;
+      const manual = slot.kw || 0;
+      const blended = +(0.7 * learnedAvg + 0.3 * manual).toFixed(2);
+      if (Math.abs(blended - slot.kw) > 0.05) {
+        slot.kw = blended;
+        updated = true;
+      }
+    }
+  }
+  if (updated) {
+    // Persist and refresh display
+    saveCfg({ ...loadCfg(), consProfile: SYS.consProfile });
+    if (typeof renderConsProfileSlots === 'function') renderConsProfileSlots();
+    // Notify Java so SOC catch-up uses new values
+    if (window.AppBridge && AppBridge.saveConsProfile) {
+      try {
+        const hourly = [];
+        for (let h = 0; h < 24; h++) hourly.push(getProfileConsKw(h));
+        AppBridge.saveConsProfile(JSON.stringify(hourly));
+      } catch(e) {}
+    }
+    console.log('[learning] consProfile auto-updated from rlog');
+  }
+}
+let _lastLearnMs = 0;
+function maybeRunLearning() {
+  const now = Date.now();
+  if (now - _lastLearnMs < 6 * 3600 * 1000) return; // every 6 hours
+  _lastLearnMs = now;
+  try { learnConsumptionProfile(); } catch(e) { console.error('learn error', e); }
 }
 
 let _renderAllTimer = null;
