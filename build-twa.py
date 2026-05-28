@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 15   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 16   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -445,7 +445,27 @@ public class MainActivity extends Activity {
             }
         }
 
-        // ── FusionSolar integration ────────────────────────────────────────
+        
+        @JavascriptInterface
+        public void savePanelLocation(double lat, double lon, String name) {
+            // Store the locked panel location. Used by all background services
+            // (FGS, AlarmReceiver, Worker) and the SOC catch-up. This is what
+            // makes the app independent of where the phone physically is - so
+            // when the user travels, the forecast stays for the panel location.
+            try {
+                android.content.SharedPreferences.Editor ed =
+                    getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
+                ed.putFloat("panel_lat", (float) lat)
+                  .putFloat("panel_lon", (float) lon);
+                if (name != null) ed.putString("panel_loc_name", name);
+                ed.apply();
+                android.util.Log.d("AppBridge", "Panel location locked: " + lat + "," + lon + " (" + name + ")");
+            } catch (Exception e) {
+                android.util.Log.e("AppBridge", "savePanelLocation: " + e.getMessage());
+            }
+        }
+
+// ── FusionSolar integration ────────────────────────────────────────
 
 
         // Fetches the CAPTCHA image as base64 so JS can display it in an <img> tag
@@ -1050,8 +1070,15 @@ public class SolarForegroundService extends Service {
         float consKw   = prefs.getFloat("cons_kw",    0f);
         float battMaxC = prefs.getFloat("batt_max_c", 2.5f);
         float battMaxD = prefs.getFloat("batt_max_d", 2.5f);
-        float lat      = prefs.getFloat("gps_lat",    0f);
-        float lon      = prefs.getFloat("gps_lon",    0f);
+        // PANEL LOCATION LOCK: prefer the user-set panel coords over phone GPS.
+        // This way the forecast stays for the panels even when the user travels.
+        float lat      = prefs.getFloat("panel_lat", 0f);
+        float lon      = prefs.getFloat("panel_lon", 0f);
+        if (lat == 0f || lon == 0f) {
+            // No panel lock yet (first run before user sets it) - fall back to phone GPS
+            lat = prefs.getFloat("gps_lat", 0f);
+            lon = prefs.getFloat("gps_lon", 0f);
+        }
         // Skip if system not configured - prevents fake data on fresh install
         if (panelKw <= 0 || battGross <= 0) {
             android.util.Log.d("SolarFGS", "System not configured - skipping");
@@ -1491,8 +1518,13 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
         float consKw    = prefs.getFloat("cons_kw",     0f);
         float battMaxC  = prefs.getFloat("batt_max_c",  2.5f);
         float battMaxD  = prefs.getFloat("batt_max_d",  2.5f);
-        float lat       = prefs.getFloat("gps_lat",     0f);
-        float lon       = prefs.getFloat("gps_lon",     0f);
+        // PANEL LOCATION LOCK: prefer the user-set panel coords over phone GPS.
+        float lat       = prefs.getFloat("panel_lat",  0f);
+        float lon       = prefs.getFloat("panel_lon",  0f);
+        if (lat == 0f || lon == 0f) {
+            lat = prefs.getFloat("gps_lat", 0f);
+            lon = prefs.getFloat("gps_lon", 0f);
+        }
         if (panelKw <= 0 || battGross <= 0) return;
         if (soc < 0) soc = 50f;
 
@@ -1828,8 +1860,13 @@ public class SolarWorker extends Worker {
         float consKw    = prefs.getFloat("cons_kw",     0f);
         float battMaxC  = prefs.getFloat("batt_max_c",  2.5f);
         float battMaxD  = prefs.getFloat("batt_max_d",  2.5f);
-        float lat       = prefs.getFloat("gps_lat",     0f);
-        float lon       = prefs.getFloat("gps_lon",     0f);
+        // PANEL LOCATION LOCK: prefer the user-set panel coords over phone GPS.
+        float lat       = prefs.getFloat("panel_lat",  0f);
+        float lon       = prefs.getFloat("panel_lon",  0f);
+        if (lat == 0f || lon == 0f) {
+            lat = prefs.getFloat("gps_lat", 0f);
+            lon = prefs.getFloat("gps_lon", 0f);
+        }
 
         // ── GPS fallback via LocationManager ────────────────────────────────
         if (lat == 0f || lon == 0f) {
