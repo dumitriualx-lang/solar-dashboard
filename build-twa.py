@@ -1,2226 +1,4593 @@
-#!/usr/bin/env python3
-import os, io, base64
-from PIL import Image
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#050a14">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 
-# ── Auto version management ───────────────────────────────────────────────────
-# VERSION_CODE uses GITHUB_RUN_NUMBER (auto-incremented by GitHub Actions on
-# every run — no files, no manual editing, never resets).
-# BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
-# Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 16   # offset: run N → version code (BASE + N)
-VERSION_NAME      = "1.2.0"
-_run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
-VERSION_CODE = BASE_VERSION_CODE + _run
-print(f"Build: versionCode={VERSION_CODE}  versionName={VERSION_NAME}  (run #{_run})")
-
-HOME = os.path.expanduser("~")
-ROOT = os.path.join(HOME, "twa")
-APP  = os.path.join(ROOT, "app")
-MAIN = os.path.join(APP, "src", "main")
-RES  = os.path.join(MAIN, "res")
-WRAP = os.path.join(ROOT, "gradle", "wrapper")
-
-PKG       = "com.dumitriualxlang.solardasboard"
-HOST      = "dumitriualx-lang.github.io"
-START_URL = "https://dumitriualx-lang.github.io/solar-dashboard/"
-APP_NAME  = "Solar Dashboard"
-COLOR_HEX = "FF1D9E75"
-KEYSTORE  = os.path.join(HOME, "solar.keystore")
-
-def write(path, content):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
-    print("  wrote " + os.path.relpath(path, ROOT))
-
-write(os.path.join(ROOT, "settings.gradle"), """pluginManagement {
-    repositories { google(); mavenCentral(); gradlePluginPortal() }
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Solar Dashboard">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Solar Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  /* ── Futuristic dark theme — fixed ────────────────────────────── */
+  --g:#00c882;--gl:rgba(0,200,130,.12);--g2:#007a50;
+  --am:#d4b020;--aml:rgba(212,176,32,.12);
+  --rd:#e03030;--rdl:rgba(224,48,48,.12);
+  --bl:#00b4e6;--bll:rgba(0,180,230,.12);
+  --or:#e05a28;
+  --bg:#050a14;
+  --sf:rgba(0,20,60,.9);
+  --sf2:rgba(0,28,75,.55);
+  --br:rgba(0,160,255,.2);--br2:rgba(0,160,255,.1);
+  --tx:#c8e0ff;--t2:rgba(200,224,255,.55);--t3:rgba(200,224,255,.28);
+  --r:14px;--rs:10px;
+  --shadow:0 0 24px rgba(0,100,200,.1),0 4px 24px rgba(0,0,0,.5);
+  --shadow-sm:0 2px 12px rgba(0,0,0,.3);
+  --glass:rgba(0,12,35,.9);
+  --glass-border:rgba(0,160,255,.22);
 }
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories { google(); mavenCentral() }
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{
+  height:100%;background:var(--bg);color:var(--tx);
+  font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:14px;-webkit-font-smoothing:antialiased;
+  background-image:
+    radial-gradient(ellipse at 15% 60%,rgba(0,80,200,.07) 0%,transparent 55%),
+    radial-gradient(ellipse at 85% 15%,rgba(0,200,130,.05) 0%,transparent 50%);
 }
-rootProject.name = "SolarDashboard"
-include ":app"
-""")
-
-write(os.path.join(ROOT, "build.gradle"), "// Top-level build file\n")
-
-write(os.path.join(ROOT, "gradle.properties"), """android.useAndroidX=true
-android.enableJetifier=true
-org.gradle.jvmargs=-Xmx2048m
-""")
-
-write(os.path.join(APP, "build.gradle"), """plugins {
-    id 'com.android.application' version '8.3.2' apply true
+/* Global scanline texture */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,80,160,.013) 3px,rgba(0,80,160,.013) 4px);
 }
-android {
-    namespace "%s"
-    compileSdk 35
-    defaultConfig {
-        applicationId "%s"
-        minSdk 21
-        targetSdk 35
-        versionCode 4
-        versionName "1.2.0"
-        manifestPlaceholders = [
-            hostName:     "dumitriualx-lang.github.io",
-            defaultUrl:   "https://dumitriualx-lang.github.io/solar-dashboard/",
-            launcherName: "Solar Dashboard"
-        ]
-    }
-    signingConfigs {
-        release {
-            storeFile     file("%s")
-            storePassword "solar2024"
-            keyAlias      "solar-key"
-            keyPassword   "solar2024"
-        }
-    }
-    buildTypes {
-        release {
-            minifyEnabled false
-            signingConfig signingConfigs.release
-        }
-    }
+/* ── Header ─────────────────────────────────────────────────────── */
+.hdr{
+  background:linear-gradient(145deg,rgba(0,30,70,.97) 0%,rgba(0,10,30,.99) 100%);
+  color:var(--tx);padding:48px 18px 16px;position:sticky;top:0;z-index:100;
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(0,200,130,.25);
+  box-shadow:0 2px 30px rgba(0,0,0,.5),0 0 40px rgba(0,200,130,.04);
 }
-configurations.all {
-    exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk7"
-    exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk8"
+.hdr h1{font-size:15px;font-weight:600;letter-spacing:.05em;color:var(--tx)}
+.hdr-row{display:flex;justify-content:space-between;align-items:flex-start}
+.hdr-sub{font-size:12px;color:var(--t2);margin-top:3px;font-weight:400;letter-spacing:.04em}
+.live-pill{
+  display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
+  background:rgba(0,200,130,.1);padding:4px 11px;border-radius:20px;
+  border:1px solid rgba(0,200,130,.35);color:var(--g);letter-spacing:.5px;
 }
-dependencies {
-    implementation "androidx.appcompat:appcompat:1.6.1"
-    implementation "androidx.webkit:webkit:1.8.0"
-    implementation "androidx.core:core:1.10.1"
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
-    implementation "androidx.work:work-runtime:2.9.0"
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g);animation:blink 1.5s infinite}
+.hdr-stats{display:flex;gap:12px;margin-top:10px;font-size:12px;color:var(--t2);flex-wrap:wrap}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+/* ── Layout ─────────────────────────────────────────────────────── */
+.body{padding:14px;display:flex;flex-direction:column;gap:12px;padding-bottom:90px;position:relative;z-index:1}
+/* ── Cards ──────────────────────────────────────────────────────── */
+.card{
+  background:linear-gradient(145deg,rgba(0,20,60,.88) 0%,rgba(0,8,25,.97) 100%);
+  border-radius:var(--r);border:1px solid var(--br);
+  padding:16px;box-shadow:var(--shadow-sm);
+  position:relative;overflow:hidden;
 }
-""" % (PKG, PKG, KEYSTORE))
+.card::after{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,80,160,.015) 3px,rgba(0,80,160,.015) 4px);
+  z-index:0;
+}
+.card>*{position:relative;z-index:1}
+.ct{
+  font-size:10px;font-weight:700;color:var(--t2);
+  text-transform:uppercase;letter-spacing:.12em;
+  margin-bottom:12px;display:flex;justify-content:space-between;
+  align-items:center;flex-wrap:wrap;gap:6px;
+}
+/* ── Pills ──────────────────────────────────────────────────────── */
+.pill{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;letter-spacing:.5px;backdrop-filter:blur(4px)}
+.p-ok{background:rgba(0,200,130,.12);color:var(--g);border:1px solid rgba(0,200,130,.3)}
+.p-warn{background:rgba(212,176,32,.12);color:#d4b020;border:1px solid rgba(212,176,32,.3)}
+.p-info{background:rgba(0,180,230,.12);color:var(--bl);border:1px solid rgba(0,180,230,.3)}
+.p-err{background:rgba(224,48,48,.12);color:var(--rd);border:1px solid rgba(224,48,48,.3)}
+/* ── Status bars ─────────────────────────────────────────────────── */
+.gps-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:13px;margin-bottom:10px;gap:8px;flex-wrap:wrap;border:1px solid var(--br2)}
+.gps-ok{background:rgba(0,200,130,.08);color:var(--g);border-color:rgba(0,200,130,.2)}
+.gps-req{background:rgba(0,180,230,.08);color:var(--bl);border-color:rgba(0,180,230,.2)}
+.gps-err{background:rgba(212,176,32,.08);color:#d4b020;border-color:rgba(212,176,32,.2)}
+.gps-btn{background:none;border:1px solid currentColor;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:inherit;opacity:.8}
+.api-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--rs);font-size:13px;margin-bottom:10px;gap:8px;border:1px solid var(--br2)}
+.api-ok{background:rgba(0,200,130,.08);color:var(--g);border-color:rgba(0,200,130,.2)}
+.api-err{background:rgba(212,176,32,.08);color:#d4b020;border-color:rgba(212,176,32,.2)}
+.api-load{background:rgba(0,180,230,.08);color:var(--bl);border-color:rgba(0,180,230,.2)}
+.api-refresh{background:none;border:1px solid currentColor;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:inherit;opacity:.8}
+/* ── Buttons ─────────────────────────────────────────────────────── */
+.log-btn{background:linear-gradient(135deg,rgba(0,200,130,.2),rgba(0,200,130,.1));color:var(--g);border:1px solid rgba(0,200,130,.4);border-radius:var(--rs);padding:9px 16px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;letter-spacing:.05em;box-shadow:0 0 12px rgba(0,200,130,.1)}
+/* ── Metrics grid ────────────────────────────────────────────────── */
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mc{background:rgba(0,28,75,.6);border-radius:var(--r);border:1px solid var(--br2);padding:14px;transition:transform .15s ease}
+.mc.wide{grid-column:span 2}
+.mc-lbl{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px;font-weight:600}
+.mc-val{font-size:14px;font-weight:700;line-height:1}
+.mc-sub{font-size:11px;color:var(--t3);margin-top:4px;line-height:1.3}
+.cg{color:var(--g)!important}.ca{color:var(--am)!important}.cr{color:var(--rd)!important}.cb{color:var(--bl)!important}
+/* ── Irradiance bar ──────────────────────────────────────────────── */
+.irr-bar{height:6px;border-radius:3px;background:rgba(0,28,75,.6);border:1px solid var(--br2);margin:8px 0 4px;overflow:hidden}
+.irr-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#d4a820,var(--g));transition:width 1s cubic-bezier(.4,0,.2,1);box-shadow:0 0 10px rgba(0,200,130,.35)}
+/* ── Energy flow legacy classes ──────────────────────────────────── */
+.flow{display:grid;grid-template-columns:1fr 40px 1fr;align-items:flex-start}
+.ef{display:flex;align-items:center;gap:8px;padding:4px 0}
+.ef-sol{flex:0 0 80px;background:var(--sf2);border:1px solid rgba(0,200,130,.3);border-radius:var(--rs);padding:10px 6px;text-align:center}
+.ef-nodes{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+.ef-node{background:var(--sf2);border:.5px solid var(--br2);border-radius:var(--rs);padding:12px 8px;text-align:center}
+.ef-sol-inner{border:1px solid rgba(0,200,130,.3)}
+.ef-lbl{font-size:11px;color:var(--t2);margin-top:2px}
+.ef-val{font-size:17px;font-weight:700;margin:3px 0}
+.ef-sub{font-size:10px;color:var(--t3)}
+/* ── Alerts ──────────────────────────────────────────────────────── */
+.alert{padding:10px 12px;border-radius:var(--rs);font-size:12px;margin-bottom:6px;line-height:1.55;border-left:3px solid}
+.alert:last-child{margin-bottom:0}
+.al-s{background:rgba(0,200,130,.08);border-color:var(--g);color:var(--g)}
+.al-w{background:rgba(212,176,32,.08);border-color:#d4b020;color:#d4b020}
+.al-i{background:rgba(0,180,230,.08);border-color:var(--bl);color:var(--bl)}
+.al-d{background:rgba(224,48,48,.08);border-color:var(--rd);color:var(--rd)}
+/* ── Charts ──────────────────────────────────────────────────────── */
+.chart-wrap{position:relative;width:100%;height:175px}.chart-sm{position:relative;width:100%;height:150px}
+.leg{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
+.li{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--t2)}
+.lln{width:12px;height:2px;display:inline-block;border-radius:1px}.lbr{width:9px;height:9px;display:inline-block;border-radius:2px}
+/* ── Tabs ────────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:2px;background:rgba(0,28,75,.5);padding:3px;border-radius:var(--rs);margin-bottom:10px;border:1px solid var(--br2)}
+.tab{flex:1;padding:5px;text-align:center;font-size:12px;border-radius:6px;cursor:pointer;color:var(--t2);border:none;background:transparent;font-family:inherit;letter-spacing:.05em}
+.tab.on{background:rgba(0,160,255,.12);color:var(--tx);font-weight:700;border:1px solid rgba(0,160,255,.25)}
+/* ── Navigation ──────────────────────────────────────────────────── */
+.nav{
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(0,8,24,.95);
+  border-top:1px solid rgba(0,160,255,.2);
+  display:flex;z-index:200;
+  padding-bottom:env(safe-area-inset-bottom);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  box-shadow:0 -4px 30px rgba(0,0,0,.6);
+}
+.nb{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px 6px;gap:3px;font-size:10px;color:var(--t3);border:none;background:none;cursor:pointer;font-family:inherit;letter-spacing:.05em;transition:color .2s}
+.nb.on{color:var(--g);text-shadow:0 0 10px rgba(0,200,130,.5)}
+.nb.on .ni{filter:drop-shadow(0 0 6px rgba(0,200,130,.6))}
+.ni{font-size:16px;transition:filter .2s}
+.page{display:none}.page.on{display:block}
+/* ── Log table ───────────────────────────────────────────────────── */
+.log-table{width:100%;border-collapse:collapse;font-size:12px}
+.log-table th{text-align:left;padding:6px 8px;font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--br2)}
+.log-table td{padding:7px 8px;border-bottom:1px solid var(--br2);color:var(--tx)}
+.log-table tr:last-child td{border-bottom:none}
+.log-table tr:hover td{background:rgba(0,80,160,.08)}
+.empty-log{text-align:center;padding:28px;color:var(--t2);font-size:12px;line-height:1.6}
+/* ── Install banner ──────────────────────────────────────────────── */
+.inst{background:linear-gradient(90deg,rgba(0,200,130,.15),rgba(0,180,230,.1));color:var(--g);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;border-bottom:1px solid rgba(0,200,130,.2)}
+.inst button{background:rgba(0,200,130,.15);border:1px solid rgba(0,200,130,.4);color:var(--g);padding:5px 12px;border-radius:7px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer}
+/* ── Toggle ──────────────────────────────────────────────────────── */
+.toggle-wrap{display:flex;gap:2px;background:rgba(0,28,75,.5);padding:3px;border-radius:var(--rs);border:1px solid var(--br2)}
+.tog-btn{padding:3px 12px;font-size:11px;font-weight:600;border-radius:6px;border:none;background:transparent;color:var(--t2);cursor:pointer;font-family:inherit;transition:all .15s;letter-spacing:.05em}
+.tog-btn.on{background:rgba(0,160,255,.12);color:var(--tx);border:1px solid rgba(0,160,255,.25)}
+/* ── Config form ─────────────────────────────────────────────────── */
+.cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.cfg-group{display:flex;flex-direction:column;gap:3px}
+.cfg-lbl{font-size:11px;color:var(--t2);font-weight:600;letter-spacing:.05em}
+.cfg-inp-wrap{display:flex;align-items:center;gap:6px;background:rgba(0,28,75,.6);border-radius:var(--rs);padding:8px 12px;border:1px solid var(--br2);transition:border-color .2s}
+.cfg-inp-wrap:focus-within{border-color:rgba(0,200,130,.45);box-shadow:0 0 0 2px rgba(0,200,130,.08)}
+.cfg-inp-wrap input{flex:1;background:none;border:none;outline:none;font-size:14px;font-weight:700;color:var(--tx);width:100%;font-family:inherit;text-align:right}
+.cfg-unit{font-size:14px;font-weight:600;color:var(--t2);white-space:nowrap}
+.cfg-hint{font-size:11px;color:var(--t3)}
+.cfg-save{
+  background:linear-gradient(135deg,rgba(0,200,130,.2),rgba(0,200,130,.1));
+  color:var(--g);border:1px solid rgba(0,200,130,.4);border-radius:var(--rs);
+  padding:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;
+  width:100%;margin-top:6px;letter-spacing:.08em;
+  box-shadow:0 0 16px rgba(0,200,130,.08);transition:background .2s,box-shadow .2s;
+}
+.cfg-save:active{box-shadow:0 0 24px rgba(0,200,130,.2)}
+.cfg-saved{font-size:11px;color:var(--g);text-align:center;margin-top:4px;height:14px}
+/* ── Manufacturer selects ────────────────────────────────────────── */
+.mfr-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.mfr-group{display:flex;flex-direction:column;gap:3px}
+.mfr-lbl{font-size:11px;color:var(--t2);font-weight:600;letter-spacing:.05em}
+.mfr-select{width:100%;padding:7px 10px;font-size:13px;font-weight:600;font-family:inherit;background:rgba(0,28,75,.6);color:var(--tx);border:1px solid var(--br2);border-radius:var(--rs);appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2300c882' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+.mfr-hint{font-size:11px;color:var(--t3)}
+/* ── Notification bar ────────────────────────────────────────────── */
+.notif-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:var(--rs);font-size:13px;font-weight:500;margin-bottom:10px;gap:10px;flex-wrap:wrap;border:1px solid var(--br2)}
+.notif-ok{background:rgba(0,200,130,.08);color:var(--g);border-color:rgba(0,200,130,.2)}
+.notif-req{background:rgba(0,180,230,.08);color:var(--bl);border-color:rgba(0,180,230,.2)}
+.notif-off{background:rgba(0,28,75,.4);color:var(--t2)}
+.notif-btn{background:none;border:1px solid currentColor;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:inherit;letter-spacing:.05em}
+/* ── Slider ──────────────────────────────────────────────────────── */
+.ps-wrap{position:relative;height:20px;display:flex;align-items:center}
+.ps-track{position:absolute;left:0;right:0;height:5px;background:rgba(0,28,75,.6);border-radius:3px;overflow:hidden;border:1px solid var(--br2)}
+.ps-fill{height:100%;background:linear-gradient(90deg,var(--g2),var(--g));border-radius:3px;transition:width .15s ease}
+.ps-thumb{position:absolute;width:18px;height:18px;border-radius:50%;background:var(--g);box-shadow:0 0 10px rgba(0,200,130,.5);transform:translateX(-50%);pointer-events:none;transition:left .15s ease}
+.ps-input{position:absolute;left:0;right:0;opacity:0;height:20px;margin:0;cursor:pointer;-webkit-appearance:none}
+/* ── Flow arrows ─────────────────────────────────────────────────── */
+.arr{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 2px 0;gap:2px}
+.arr-val{font-size:10px;font-weight:600;text-align:center}
+.arr-track{width:30px;height:3px;border-radius:2px;position:relative;overflow:hidden;background:var(--br2)}
+.arr-dot{width:8px;height:8px;border-radius:50%;position:absolute;top:-2.5px;animation:adot 1s linear infinite}
+@keyframes adot{0%{left:-8px}100%{left:100%}}
+.arr-head{font-size:11px;color:var(--t3)}
+/* ── Forecast strip ──────────────────────────────────────────────── */
+.wstrip{display:flex;gap:4px;margin-bottom:10px}
+.wd{flex:1;text-align:center;padding:6px 2px;border-radius:var(--rs);background:rgba(0,28,75,.5);border:1px solid var(--br2);cursor:pointer;transition:background .15s}
+.wd.today{background:rgba(0,200,130,.08);border-color:rgba(0,200,130,.3)}
+.wd:active{background:rgba(0,80,160,.2)}
+.wi{font-size:15px}.wn{font-size:10px;color:var(--t2);margin:2px 0;letter-spacing:.05em}
+.wt{font-size:11px;font-weight:600;color:var(--tx)}.wkwh{font-size:10px;font-weight:700}.wr{font-size:9px;color:var(--t3)}
+/* ── Schedule ────────────────────────────────────────────────────── */
+.sched{display:flex;flex-direction:column;gap:6px}
+.si{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--rs);background:rgba(0,28,75,.5);border:1px solid var(--br2)}
+.sic{font-size:13px;flex-shrink:0}.sinf{flex:1;min-width:0}
+.snm{font-size:13px;font-weight:600;color:var(--tx)}.stm{font-size:11px;color:var(--t2);line-height:1.35;margin-top:1px}
+.sbg{font-size:11px;padding:2px 8px;border-radius:8px;flex-shrink:0;font-weight:700;letter-spacing:.3px}
+.sb-b{background:rgba(0,200,130,.1);color:var(--g);border:1px solid rgba(0,200,130,.25)}
+.sb-o{background:rgba(0,180,230,.1);color:var(--bl);border:1px solid rgba(0,180,230,.25)}
+.sb-a{background:rgba(224,48,48,.1);color:var(--rd);border:1px solid rgba(224,48,48,.25)}
+.sr-btn{font-size:14px;padding:3px 6px;border-radius:8px;border:none;background:none;cursor:pointer;flex-shrink:0;line-height:1;opacity:.5;transition:opacity .15s,background .15s}
+.sr-btn:active{opacity:.8}
+.sr-btn.sr-on{opacity:1;background:rgba(212,176,32,.15)}
+/* ── Surplus/schedule bar ─────────────────────────────────────────── */
+.sched-surplus{font-size:11px;color:var(--t2);margin-bottom:6px}
+/* ── Grid panel ──────────────────────────────────────────────────── */
+.grid-panel{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+.grid-stat{text-align:center;padding:12px 8px;border-radius:var(--rs);background:rgba(0,28,75,.5);border:1px solid var(--br2)}
+.gs-lbl{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;font-weight:600}
+.gs-val{font-size:14px;font-weight:700;line-height:1}
+.gs-sub{font-size:10px;color:var(--t3);margin-top:3px}
+.grid-flow-bar{height:8px;border-radius:4px;background:rgba(0,28,75,.6);overflow:hidden;margin:8px 0 4px;position:relative;border:1px solid var(--br2)}
+.grid-flow-fill{position:absolute;top:0;bottom:0;border-radius:3px;transition:all .6s ease}
+.grid-status-row{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--t2)}
+/* ── Update overlay ──────────────────────────────────────────────── */
+.upd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.upd-card{background:linear-gradient(145deg,rgba(0,20,60,.97),rgba(0,8,25,.99));border-radius:var(--r);border:1px solid var(--br);padding:24px 20px;max-width:320px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.6);text-align:center}
+.upd-title{font-size:17px;font-weight:700;color:var(--tx);margin-bottom:8px}
+.upd-body{font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:20px}
+.upd-btns{display:flex;gap:10px}
+.upd-later{flex:1;padding:10px;border-radius:var(--rs);border:1px solid var(--br2);background:none;color:var(--t2);font-size:13px;font-family:inherit;cursor:pointer}
+.upd-now{flex:1;padding:10px;border-radius:var(--rs);border:1px solid rgba(0,200,130,.4);background:rgba(0,200,130,.12);color:var(--g);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer}
+/* ── FAQ specific ────────────────────────────────────────────────── */
+.fic{font-size:14px}.flb{font-size:10px;color:var(--t2);margin-top:2px;font-family:inherit}
+.fvl{font-size:14px;font-weight:700;margin-top:2px}.fsub{font-size:10px;color:var(--t3);margin-top:1px;font-family:inherit}
+@keyframes fd{to{stroke-dashoffset:-20}}.fa{stroke-dasharray:6 4;animation:fd .8s linear infinite}
+@keyframes coreRot{to{transform:rotate(360deg)}}
+@keyframes coreFlicker{0%,90%,100%{opacity:1}93%{opacity:.5}97%{opacity:.8}}
+@keyframes corePulse{0%,100%{opacity:.6}50%{opacity:.2}}
+@keyframes drawWave{to{stroke-dashoffset:0}}
+.cn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;border-radius:12px;padding:10px 8px;transition:transform .15s}
+.cn:active{transform:scale(.97)}
+.cn-g{background:rgba(0,200,100,.06);border:1px solid rgba(0,200,100,.25);box-shadow:0 0 16px rgba(0,200,100,.08) inset}
+.cn-b{background:rgba(0,180,255,.06);border:1px solid rgba(0,180,255,.25);box-shadow:0 0 16px rgba(0,180,255,.08) inset}
+.cn-o{background:rgba(220,90,50,.06);border:1px solid rgba(220,90,50,.25);box-shadow:0 0 16px rgba(220,90,50,.08) inset}
+.cn-y{background:rgba(220,170,40,.06);border:1px solid rgba(220,170,40,.25);box-shadow:0 0 16px rgba(220,170,40,.08) inset}
+.cn-lbl{font-size:8px;letter-spacing:1.2px;text-transform:uppercase;opacity:.5;font-weight:600}
+.cn-val{font-size:15px;font-weight:700;line-height:1.1}
+.cn-sub{font-size:9px;opacity:.5;white-space:nowrap;max-width:72px;overflow:hidden;text-overflow:ellipsis}
+.core-ring{width:72px;height:72px;border-radius:50%;position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.core-spin{position:absolute;inset:-3px;border-radius:50%;animation:coreRot 4s linear infinite;opacity:.7}
+.core-bg{position:absolute;inset:3px;border-radius:50%;background:var(--bg)}
+.core-face{position:relative;z-index:1;width:60px;height:60px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 38% 33%,rgba(0,140,255,.22),rgba(0,15,50,.95));border:1px solid rgba(0,160,255,.3);box-shadow:0 0 18px rgba(0,140,255,.12) inset}
+.core-bolt{font-size:20px;animation:coreFlicker 4s infinite}
+.core-kw{font-size:8px;font-weight:700;margin-top:1px;letter-spacing:.3px}
+.wave-line{fill:none;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:500;stroke-dashoffset:500;animation:drawWave 2s ease forwards}
+.donut-seg{fill:none;stroke-width:9}
 
-write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
-    <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
-    <application
-        android:label="Solar Dashboard"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:theme="@android:style/Theme.NoTitleBar"
-        android:allowBackup="true"
-        android:supportsRtl="true"
-        android:usesCleartextTraffic="true"
-        android:networkSecurityConfig="@xml/network_security_config">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity>
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
-            </intent-filter>
-        </receiver>
-        <receiver
-            android:name=".SolarAlarmReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.dumitriualxlang.solardasboard.SOLAR_CHECK"/>
-                <action android:name="com.dumitriualxlang.solardasboard.RESTART_FGS"/>
-            </intent-filter>
-        </receiver>
-        <service
-            android:name=".SolarForegroundService"
-            android:foregroundServiceType="dataSync"
-            android:exported="false"/>
-    </application>
-</manifest>
-""")
-_bgpath = os.path.join(APP, "build.gradle")
-with open(_bgpath) as _f: _bg = _f.read()
-import re as _re
-_bg = _re.sub(r'versionCode \d+',    f'versionCode {VERSION_CODE}',       _bg)
-_bg = _re.sub(r'versionName "[^"]*"', f'versionName "{VERSION_NAME}"',     _bg)
-with open(_bgpath, "w") as _f: _f.write(_bg)
-print(f"  patched build.gradle → versionCode={VERSION_CODE} versionName={VERSION_NAME}")
+</style>
+</head>
+<body>
+
+<div id="instBanner" style="display:none" class="inst">
+  <span>📱 Install Solar Dashboard</span>
+  <div style="display:flex;gap:8px">
+    <button onclick="installApp()">Install</button>
+    <button onclick="this.closest('.inst').style.display='none'" style="background:none;font-size:16px;padding:2px 6px">✕</button>
+  </div>
+</div>
+
+<div class="hdr">
+  <div class="hdr-row">
+    <div>
+      <h1>☀️ Solar Dashboard</h1>
+      <div class="hdr-sub" id="hdrSub"><span id="hdrSysName"></span><span id="clk">--:--:--</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      
+      <div class="live-pill"><div class="live-dot"></div><span id="liveTag">Live</span></div>
+    </div>
+  </div>
+  <div class="hdr-stats">
+    <span id="hdrPv">☀️ -- kW</span>
+    <span id="hdrBatt">🔋 --%</span>
+    <span id="hdrWx">🌡️ --°C</span>
+    <span id="hdrGrid">⚡ --</span>
+  </div>
+</div>
+
+<div class="body">
+<div id="pgDash" class="page on">
+
+  <!-- GPS STATUS BAR -->
+  <!-- GPS STATUS BAR -->
+  <div id="gpsBar" style="display:none;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;border:1px solid rgba(0,180,230,.25);background:linear-gradient(135deg,rgba(0,180,230,.07),rgba(0,8,25,.9));margin-bottom:10px">
+    <div id="gpsIcon" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:radial-gradient(circle at 35% 35%,rgba(0,180,230,.25),rgba(0,180,230,.06));border:1.5px solid rgba(0,180,230,.5);box-shadow:0 0 14px rgba(0,180,230,.2)">📍</div>
+    <span id="gpsMsg" style="flex:1;font-size:12px;color:rgba(200,224,255,.75);line-height:1.4">Requesting your location for accurate solar data...</span>
+    <button class="gps-btn" id="gpsBtnEl" onclick="onGpsBtnClick()" style="background:rgba(0,180,230,.12);border:1px solid rgba(0,180,230,.4);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:#00b4e6;letter-spacing:.5px;white-space:nowrap">Allow GPS</button>
+  </div>
+
+  <!-- API STATUS BAR -->
+  <div class="api-load" id="apiBar" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;margin-bottom:10px">
+    <div id="apiIcon" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:radial-gradient(circle at 35% 35%,rgba(0,180,230,.25),rgba(0,180,230,.06));border:1.5px solid rgba(0,180,230,.5);box-shadow:0 0 14px rgba(0,180,230,.2)">🛰️</div>
+    <span id="apiMsg" style="flex:1;font-size:12px;color:rgba(200,224,255,.75);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⏳ Waiting for location before fetching irradiance...</span>
+    <button class="api-refresh" onclick="onRefreshClick()" style="background:rgba(0,180,230,.12);border:1px solid rgba(0,180,230,.4);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:#00b4e6;letter-spacing:.5px;flex-shrink:0">↻</button>
+  </div>
+
+  <!-- PUSH NOTIFICATION BAR -->
+  <div id="notifBar" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;border:1px solid rgba(212,176,32,.25);background:linear-gradient(135deg,rgba(212,176,32,.07),rgba(0,8,25,.9));margin-bottom:10px">
+    <div id="notifIcon" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:radial-gradient(circle at 35% 35%,rgba(212,176,32,.25),rgba(212,176,32,.06));border:1.5px solid rgba(212,176,32,.5);box-shadow:0 0 14px rgba(212,176,32,.2);animation:corePulse 2.5s infinite">🔔</div>
+    <span id="notifMsg" style="flex:1;font-size:12px;color:rgba(200,224,255,.75);line-height:1.4">Enable notifications to get alerts at peak solar windows</span>
+    <button id="notifBtn" onclick="requestNotifPermission()" style="background:rgba(212,176,32,.12);border:1px solid rgba(212,176,32,.4);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:#d4b020;letter-spacing:.5px;white-space:nowrap">Enable</button>
+  </div>
+
+  <!-- SYSTEM CONFIGURATION -->
+  <div class="card">
+    <div class="ct" style="margin-bottom:0;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px" onclick="toggleSection('cfgBody','cfgChevron');onPanelBrandChange()">
+      <span>⚙️ System configuration</span>
+      <span class="pill p-ok" id="cfgSavedPill" style="display:none">✓ Saved</span>
+      <span id="cfgChevron" style="font-size:14px;transition:transform .25s;color:var(--t2)">▼</span>
+    </div>
+    <div id="cfgBody" style="display:none">
+
+    <div class="mfr-grid">
+      <div class="mfr-group">
+        <div class="mfr-lbl">☀️ Panel brand</div>
+        <select class="mfr-select" id="cfgPanelBrand" onchange="onBrandSelect('panel');onPanelBrandChange()">
+          <option value="">— Select brand —</option>
+          <option value="huawei">Huawei Solar</option>
+          <option value="longi">LONGi Solar</option>
+          <option value="jinko">Jinko Solar</option>
+          <option value="ja">JA Solar</option>
+          <option value="trina">Trina Solar</option>
+          <option value="canadian">Canadian Solar</option>
+          <option value="sunpower">SunPower</option>
+          <option value="rec">REC Group</option>
+          <option value="qcells">Q CELLS (Hanwha)</option>
+          <option value="suntech">Suntech</option>
+          <option value="sharp">Sharp Solar</option>
+          <option value="panasonic">Panasonic HIT</option>
+          <option value="lg">LG Solar</option>
+          <option value="meyer">Meyer Burger</option>
+          <option value="solaria">Solaria</option>
+          <option value="other">Other / Custom</option>
+        </select>
+        <div class="mfr-hint" id="panelBrandHint">Select to auto-fill typical specs</div>
+      </div>
+      <div class="mfr-group">
+        <div class="mfr-lbl">🔋 Battery brand</div>
+        <select class="mfr-select" id="cfgBattBrand" onchange="onBrandSelect('batt')">
+          <option value="">— Select brand —</option>
+          <option value="huawei_5">Huawei Luna 2000 (5 kWh)</option>
+          <option value="huawei_10">Huawei Luna 2000 (10 kWh)</option>
+          <option value="huawei_15">Huawei Luna 2000 (15 kWh)</option>
+          <option value="tesla_pw2">Tesla Powerwall 2 (13.5 kWh)</option>
+          <option value="tesla_pw3">Tesla Powerwall 3 (13.5 kWh)</option>
+          <option value="byd_hvs5">BYD Battery-Box HVS (5.12 kWh)</option>
+          <option value="byd_hvs10">BYD Battery-Box HVS (10.24 kWh)</option>
+          <option value="byd_hvl">BYD Battery-Box HVL (11.04 kWh)</option>
+          <option value="pylontech_us2">Pylontech US2000C (2.4 kWh)</option>
+          <option value="pylontech_us3">Pylontech US3000C (3.55 kWh)</option>
+          <option value="pylontech_us5">Pylontech US5000 (4.8 kWh)</option>
+          <option value="sonnen_eco8">Sonnen Eco (8 kWh)</option>
+          <option value="sonnen_eco10">Sonnen Eco (10 kWh)</option>
+          <option value="solaredge_10">SolarEdge Home Battery (10 kWh)</option>
+          <option value="foxess_h">FoxESS H Series (10.24 kWh)</option>
+          <option value="givbatt_9_5">GivEnergy (9.5 kWh)</option>
+          <option value="sungrow_shb">Sungrow SBR (9.6 kWh)</option>
+          <option value="enphase_iq10">Enphase IQ Battery 10T (10.08 kWh)</option>
+          <option value="alpha_smile5">AlphaESS SMILE5 (5 kWh)</option>
+          <option value="puredrive_5">PureDrive Energy (5 kWh)</option>
+          <optgroup label="─── Deye ───────────────────">
+          <option value="deye_sg5">Deye SE-G5.1 Pro-B (5.12 kWh)</option>
+          <option value="deye_rw16">Deye RW-F16 (16 kWh)</option>
+          </optgroup>
+          <optgroup label="─── GoodWe Lynx ────────────">
+          <option value="goodwe_lynx_u5">GoodWe Lynx Home U (5.4 kWh)</option>
+          <option value="goodwe_lynx_d10">GoodWe Lynx Home D (10 kWh)</option>
+          </optgroup>
+          <optgroup label="─── Livoltek ───────────────">
+          <option value="livoltek_blf5">Livoltek BLF51-5 (5 kWh)</option>
+          <option value="livoltek_bhf10">Livoltek BHF-S10 (10 kWh)</option>
+          </optgroup>
+          <option value="other">Other / Custom</option>
+        </select>
+        <div class="mfr-hint" id="battBrandHint">Select to auto-fill capacity &amp; reserve</div>
+      </div>
+    </div>
+
+    <div class="cfg-grid">
+      <div class="cfg-group">
+        <div class="cfg-lbl">☀️ Panel capacity</div>
+        <div class="cfg-inp-wrap">
+          <input type="number" id="cfgPanel" inputmode="decimal" min="0.5" max="50" step="0.5" value="" oninput="onCfgChange()">
+          <span class="cfg-unit">kW</span>
+        </div>
+        <div class="cfg-hint">Total installed peak power</div>
+      </div>
+      <div class="cfg-group">
+        <div class="cfg-lbl">🔋 Battery capacity</div>
+        <div class="cfg-inp-wrap">
+          <input type="number" id="cfgBatt" inputmode="decimal" min="1" max="200" step="0.5" value="" oninput="onCfgChange()">
+          <span class="cfg-unit">kWh</span>
+        </div>
+        <div class="cfg-hint">Gross capacity (reserve auto-calculated)</div>
+      </div>
+    </div>
+    <div class="cfg-grid">
+      <div class="cfg-group" style="grid-column:span 2">
+        <div class="cfg-lbl">🧭 Panel orientation</div>
+        <div class="cfg-inp-wrap" style="padding:6px 10px">
+          <select id="cfgAzimuth" onchange="onCfgChange()" style="width:100%;background:transparent;border:none;font-family:inherit;font-size:14px;color:var(--tx);outline:none">
+            <option value="">— Select orientation —</option>
+            <option value="180">South (180°)</option>
+            <option value="135">South-East (135°)</option>
+            <option value="90">East (90°)</option>
+            <option value="45">North-East (45°)</option>
+            <option value="0">North (0°)</option>
+            <option value="315">North-West (315°)</option>
+            <option value="270">West (270°)</option>
+            <option value="225">South-West (225°)</option>
+          </select>
+        </div>
+        <div class="cfg-hint">Direction your panels face — affects morning/evening accuracy</div>
+      </div>
+    </div>
+
+    <!-- ─── Panel Location (locked to where panels are physically installed) ─── -->
+    <div class="cfg-grid" style="margin-top:14px">
+      <div class="cfg-group" style="grid-column:span 2">
+        <div class="cfg-lbl">📍 Panel location <span id="panelLocLockIcon" style="color:var(--g);font-size:11px;margin-left:6px">🔒 locked</span></div>
+        <div id="currentPanelLocBox" style="padding:10px 12px;border-radius:var(--rs);background:rgba(0,28,75,.5);border:1px solid var(--br2);font-size:13px;margin-bottom:8px;color:var(--tx)">
+          <div id="currentPanelLocText" style="font-weight:600">Not set</div>
+          <div id="currentPanelLocCoords" style="font-size:11px;color:var(--t2);margin-top:3px">Use the search below to set where your panels are installed</div>
+        </div>
+        <div class="cfg-inp-wrap" style="padding:6px 10px">
+          <input id="panelLocSearch" type="text" placeholder="Search city (e.g. Pantelimon, Bucharest)..." oninput="onPanelLocSearch(this.value)" autocomplete="off" style="width:100%;background:transparent;border:none;font-family:inherit;font-size:14px;color:var(--tx);outline:none">
+        </div>
+        <div id="panelLocResults" style="display:none;margin-top:6px;border-radius:var(--rs);background:rgba(0,28,75,.7);border:1px solid var(--br2);max-height:240px;overflow-y:auto"></div>
+        <div class="cfg-hint">Locked to the city where panels are installed. The app will not follow you when you travel.</div>
+      </div>
+    </div>
+
+    <div class="cfg-grid" style="margin-top:14px;display:none"><!-- calibration section hidden -->
+      <div class="cfg-group" style="grid-column:span 2">
+        <!-- Learning status bar -->
+        <div id="cfgCalibStatus" style="margin:6px 0 8px;padding:8px 10px;border-radius:var(--rs);
+          background:rgba(0,28,75,.5);border:1px solid var(--br2);font-size:11px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span id="cfgCalibLabel" style="color:var(--t2)">No readings yet</span>
+            <span id="cfgCalibFactor" style="color:var(--g);font-weight:700">×1.00</span>
+          </div>
+          <div style="height:4px;border-radius:2px;background:rgba(0,80,160,.3);overflow:hidden">
+            <div id="cfgCalibBar" style="height:100%;border-radius:2px;background:var(--g);width:0%;transition:width .6s ease"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px">
+            <span id="cfgCalibPts" style="font-size:10px;color:var(--t3)">0 readings</span>
+            <span id="cfgCalibApp" style="font-size:10px;color:var(--t3)">App: -- kW</span>
+          </div>
+        </div>
+        <!-- Input row -->
+        <div style="display:flex;gap:8px;align-items:stretch">
+          <div class="cfg-inp-wrap" style="flex:1">
+            <input type="number" id="cfgCalibReal" inputmode="decimal" min="0" max="20" step="0.01"
+              placeholder="Inverter live kW" style="text-align:left">
+            <span class="cfg-unit">kW</span>
+          </div>
+          <button onclick="calibrateProduction()"
+            style="background:rgba(0,200,130,.12);color:var(--g);border:1px solid rgba(0,200,130,.4);
+            border-radius:var(--rs);padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;
+            font-family:inherit;white-space:nowrap">+ Reading</button>
+        </div>
+        <div class="cfg-hint" style="margin-top:5px">Open your inverter's monitoring app, read live PV power, enter it here. Each reading teaches the app — accuracy improves automatically over time.</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+          <div id="cfgCalibMsg" style="font-size:11px;min-height:14px"></div>
+          <button onclick="resetCalibration()" style="font-size:10px;padding:2px 8px;background:none;
+            border:1px solid var(--br2);border-radius:5px;color:var(--t3);cursor:pointer;font-family:inherit">
+            Clear all readings</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="cfg-group" style="margin-top:14px">
+      <div class="cfg-lbl">🏠 Daily consumption profile</div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:8px">Set once — the app uses this to auto-fill home load by time of day</div>
+      <div id="consProfileSlots" style="display:flex;flex-direction:column;gap:10px"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:.5px solid var(--br)">
+        <span style="font-size:12px;color:var(--t2)">Profile daily total</span>
+        <span style="font-size:12px;font-weight:700;color:var(--g)" id="profileTotalLbl">— kWh/day</span>
+      </div>
+    </div>
+
+    <div class="cfg-grid">
+      <div class="cfg-group">
+        <div class="cfg-lbl">🔋 Battery charge (SOC)</div>
+        <div class="cfg-inp-wrap" style="border:.5px solid var(--g)">
+          <input type="number" id="cfgSoc" inputmode="numeric" min="0" max="100" step="1" value="" oninput="onSocInput()">
+          <span class="cfg-unit">%</span>
+        </div>
+        <div class="cfg-hint" id="cfgSocHint">Enter SOC from your inverter's app · 90% = full · 10% = empty (reserve)</div>
+      </div>
+      <div class="cfg-group">
+        <div class="cfg-lbl">⚡ Stored energy</div>
+        <div class="cfg-inp-wrap" style="opacity:.65">
+          <input type="text" id="cfgSocKwh" readonly style="font-size:14px;font-weight:700;color:var(--g);background:none;border:none;outline:none;width:100%;text-align:right;font-family:inherit">
+          <span class="cfg-unit">kWh</span>
+        </div>
+        <div class="cfg-hint">SOC × usable capacity</div>
+      </div>
+    </div>
+    <div class="cfg-grid" style="margin-bottom:0">
+      <div class="cfg-group">
+        <div class="cfg-lbl">🔒 Reserve %</div>
+        <div class="cfg-inp-wrap">
+          <input type="number" id="cfgRes" inputmode="numeric" min="5" max="30" step="1" value="" oninput="onCfgChange()">
+          <span class="cfg-unit">%</span>
+        </div>
+        <div class="cfg-hint">Firmware-locked reserve</div>
+      </div>
+      <div class="cfg-group">
+        <div class="cfg-lbl">⚡ Usable capacity</div>
+        <div class="cfg-inp-wrap" style="opacity:.7">
+          <input type="text" id="cfgUsable" readonly style="font-size:14px;font-weight:700;color:var(--g);background:none;border:none;outline:none;width:100%;text-align:right;font-family:inherit">
+          <span class="cfg-unit">kWh</span>
+        </div>
+        <div class="cfg-hint">Auto-calculated (gross − reserve)</div>
+      </div>
+    </div>
+    <button class="cfg-save" onclick="saveCfgAndApply();toggleSection('cfgBody','cfgChevron')">💾 Save configuration</button>
+    <div class="cfg-saved" id="cfgSavedMsg"></div>
+    </div><!-- /cfgBody -->
+  </div>
+
+<div class="card" style="background:linear-gradient(145deg,rgba(0,20,60,.9) 0%,rgba(0,8,25,.98) 100%);border:1px solid rgba(0,160,255,.2);padding:14px 12px;position:relative;overflow:hidden">
+  <!-- scan lines -->
+  <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,100,200,.012) 3px,rgba(0,100,200,.012) 4px);pointer-events:none;z-index:0"></div>
+  <!-- header -->
+  <div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(0,200,130,.85);text-transform:uppercase">Energy Flow</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:9px;color:rgba(200,230,255,.5);letter-spacing:.5px">
+      <span id="fTs"></span>
+      <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#00c880;box-shadow:0 0 6px #00c880;animation:corePulse 2s infinite;flex-shrink:0"></span>
+    </div>
+  </div>
+  <!-- nodes + flow -->
+  <div id="flowG" style="position:relative;z-index:1">
+    <div style="text-align:center;padding:24px;color:rgba(200,224,255,.4);font-size:11px">Awaiting GPS and irradiance data…</div>
+  </div>
+  <!-- bottom metrics row -->
+  <div id="coreMetrics" style="position:relative;z-index:1;display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,160,255,.12)"></div>
+</div>
+
+<div class="card" style="padding:10px 14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:14px">🔋</span>
+        <div>
+          <div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em" id="battBrandLabel">--</div>
+          <div id="socStaleWarn" style="display:none;font-size:11px;color:var(--am);
+            background:rgba(212,176,32,.08);border:1px solid rgba(212,176,32,.25);
+            border-radius:6px;padding:6px 8px;margin-top:6px;line-height:1.4"></div>
+          <div style="display:flex;align-items:baseline;gap:6px;margin-top:1px">
+            <span style="font-size:14px;font-weight:700;color:var(--tx)" id="bPct">--%</span>
+            <span style="font-size:11px;color:var(--t2)" id="battKwhLbl">-- kWh</span>
+            <button onclick="openSocEdit()" style="font-size:10px;background:none;border:.5px solid var(--t3);border-radius:4px;padding:1px 5px;color:var(--t2);cursor:pointer;font-family:inherit;margin-left:4px">Edit SOC</button>
+          </div>
+          <div id="socEditRow" style="display:none;align-items:center;gap:6px;margin-top:6px">
+            <input type="number" id="socEditInput" inputmode="numeric" min="10" max="90" step="1"
+              style="width:70px;padding:4px 8px;font-size:14px;font-weight:700;border:.5px solid var(--g);border-radius:6px;background:var(--sf2);color:var(--tx);font-family:inherit;text-align:right">
+            <span style="font-size:12px;color:var(--t2)">%</span>
+            <button onclick="applySocEdit()" style="background:rgba(0,200,130,.15);color:var(--g);border:1px solid rgba(0,200,130,.4);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Apply</button>
+            <button onclick="closeSocEdit()" style="background:none;border:.5px solid var(--t3);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;color:var(--t2);font-family:inherit">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <span class="pill" id="bPill" style="font-size:11px">--</span>
+        <span style="font-size:10px;color:var(--t2)" id="battBackupLbl">-- h backup</span>
+      </div>
+    </div>
+    <div style="margin-top:8px;height:5px;border-radius:3px;background:var(--sf2);overflow:hidden">
+      <div id="bFill" style="height:100%;border-radius:3px;transition:width 1.2s ease,background .4s ease"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--t3);margin-top:2px">
+      <span>Reserve 10%</span>
+      <span id="battTimeLabel">--</span>
+      <span id="battMaxLabel">-- kWh usable</span>
+    </div>
+    <div style="margin-top:6px;height:4px;border-radius:2px;background:var(--sf2);overflow:hidden">
+      <div id="bFlowFill" style="height:100%;border-radius:2px;width:0%;transition:width 1s ease,background .4s ease"></div>
+    </div>
+    <div style="font-size:9px;color:var(--t3);margin-top:2px;text-align:center;height:11px" id="bFlowLabel"></div>
+  </div>
+
+<div class="card">
+    <div class="ct">Solar irradiance <span id="irrPill" class="pill p-info">Awaiting GPS</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t2);margin-bottom:4px">
+      <span>0 W/m²</span><span id="irrVal" style="font-weight:700;color:var(--tx)">-- W/m²</span><span>1000 W/m²</span>
+    </div>
+    <div class="irr-bar"><div class="irr-fill" id="irrFill" style="width:0%"></div></div>
+    <div style="font-size:10px;color:var(--t2);margin-top:4px" id="irrSub">Direct + diffuse radiation · Open-Meteo · waiting for GPS fix</div>
+  </div>
+
+<div class="card" id="schedCard">
+    <div class="ct" style="margin-bottom:0;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px" onclick="toggleSection('schedBody','schedChevron')">
+      <span>Smart schedule</span>
+      <span class="pill" id="surplusPill">calculating...</span>
+      <span id="schedChevron" style="font-size:14px;transition:transform .25s;color:var(--t2)">▼</span>
+    </div>
+    <div id="schedBody" style="display:none">
+    <div id="surplusBar" style="margin:10px 0 8px"></div>
+    <div id="smartSched"></div>
+    </div>
+  </div>
+</div><!-- /pgDash -->
+
+<div id="pgForecast" class="page" style="padding:14px;padding-bottom:90px">
+  <div class="card">
+    <div class="ct">7-day solar forecast <span class="pill p-ok" id="fcProdPill">Live · Open-Meteo</span></div>
+    <div class="wstrip" id="ws"><div class="empty-log" style="width:100%">Awaiting GPS...</div></div>
+    <!-- Production bar chart — same card as day strip, matching the app layout -->
+    <div class="chart-wrap" style="margin-top:8px"><canvas id="dayC"></canvas></div>
+    <div class="leg" style="margin-top:6px">
+      <span class="li"><span class="lbr" style="background:rgba(0,200,130,.2);border:1px solid var(--g)"></span>Surplus day</span>
+      <span class="li"><span class="lbr" style="background:rgba(186,117,23,.4);border:1px solid #d4a820"></span>Deficit day</span>
+      <span class="li"><span class="lln" style="background:#D85A30"></span>Daily need</span>
+    </div>
+  </div>
+  <!-- Today summary metrics -->
+  <div id="fcProdBody" class="card" style="margin-top:10px">
+    <div class="ct">Today estimate</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="background:rgba(0,28,75,.5);border-radius:var(--rs);border:1px solid var(--br2);padding:10px 6px;text-align:center">
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Today est.</div>
+        <div style="font-size:14px;font-weight:700;color:var(--g)" id="fcTodayKwh">— kWh</div>
+      </div>
+      <div style="background:rgba(0,28,75,.5);border-radius:var(--rs);border:1px solid var(--br2);padding:10px 6px;text-align:center">
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Peak hour</div>
+        <div style="font-size:14px;font-weight:700;color:var(--am)" id="fcPeakHour">—:00</div>
+      </div>
+      <div style="background:rgba(0,28,75,.5);border-radius:var(--rs);border:1px solid var(--br2);padding:10px 6px;text-align:center">
+        <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Peak power</div>
+        <div style="font-size:14px;font-weight:700;color:var(--g)" id="fcPeakKw">— kW</div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <div class="ct">Alerts</div>
+    <div id="altsHidden"><div class="empty-log">Loading...</div></div>
+  </div>
+</div>
 
 
-# Ownership verification file for Google Play package registration
-assets_dir = os.path.join(APP, "src", "main", "assets")
-os.makedirs(assets_dir, exist_ok=True)
-with open(os.path.join(assets_dir, "adi-registration.properties"), "w") as f:
-    f.write("DXQBJOK6FSERIAAAAAAAAAAAAA\n")
+<div id="pgLog" class="page" style="padding:14px;padding-bottom:90px">
+  <div class="card" style="margin-bottom:10px">
+    <div class="ct">Energy summary <span style="font-size:10px;font-weight:400;color:var(--t2)" id="logDaysLbl"></span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+      <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Produced</div>
+        <div style="font-size:16px;font-weight:700;color:var(--g)" id="statProduced">— kWh</div>
+      </div>
+      <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Consumed</div>
+        <div style="font-size:16px;font-weight:700;color:var(--tx)" id="statConsumed">— kWh</div>
+      </div>
+      <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Daily avg</div>
+        <div style="font-size:16px;font-weight:700;color:#d4a820" id="statDailyAvg">— kWh</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="background:#E1F5EE;border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:#00c882;margin-bottom:2px">From solar</div>
+        <div style="font-size:13px;font-weight:700;color:#085041" id="statFromSolar">— kWh</div>
+      </div>
+      <div style="background:var(--bll);border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:#00b4e6;margin-bottom:2px">From grid</div>
+        <div style="font-size:13px;font-weight:700;color:#0C447C" id="statFromGrid">— kWh</div>
+      </div>
+      <div style="background:#FAEEDA;border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:#d4a820;margin-bottom:2px">Fed to grid</div>
+        <div style="font-size:13px;font-weight:700;color:#633806" id="statToGrid">— kWh</div>
+      </div>
+      <div style="background:var(--sf2);border-radius:var(--rs);padding:8px 10px">
+        <div style="font-size:10px;color:var(--t2);margin-bottom:2px">Self-sufficiency</div>
+        <div style="font-size:13px;font-weight:700;color:var(--tx)" id="statSelfSuff">—%</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="ct" style="margin-bottom:0;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px" onclick="toggleSection('logBody','logChevron')">
+      <span>Reading log <span class="pill p-info" id="logPill">0 entries</span></span>
+      <span id="logChevron" style="font-size:14px;transition:transform .25s;color:var(--t2)">▼</span>
+    </div>
+    <div id="logBody" style="display:none">
+    <p style="font-size:12px;color:var(--t2);margin:8px 0 10px">Automatic snapshots every 30 seconds.</p>
+    <div id="logBodyInner"><div class="empty-log">No readings yet.<br>The app logs automatically every 30 seconds when solar is active.</div></div>
+  </div>
+</div>
+</div><!-- /pgLog -->
 
-write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "MainActivity.java"), """package com.dumitriualxlang.solardasboard;
+<nav class="nav">
+  <button class="nb on"  onclick="showPage('Dash',this)"><span class="ni">⚡</span>Dashboard</button>
+  <button class="nb"     onclick="showPage('Forecast',this)"><span class="ni">📅</span>Forecast</button>
+  <button class="nb"     onclick="showPage('Log',this)"><span class="ni">📋</span>Log</button>
+  <button class="nb"     onclick="showPage('Faq',this)"><span class="ni">❓</span>FAQ</button>
+</nav>
+  <script>
+// Global scope — must be first
+window.notifTimers = {};
 
-import android.app.Activity;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.content.Context;
-import android.content.Intent;
-import android.graphics.Color;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.webkit.GeolocationPermissions;
-import android.webkit.JavascriptInterface;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.view.Window;
-import android.view.WindowManager;
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
-import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import androidx.work.Constraints;
-import androidx.work.ExistingPeriodicWorkPolicy;
-import androidx.work.NetworkType;
-import androidx.work.PeriodicWorkRequest;
-import androidx.work.WorkManager;
-import java.util.concurrent.TimeUnit;
-import android.app.AlarmManager;
-import android.net.Uri;
-import android.os.PowerManager;
-import android.provider.Settings;
+const notifTimers = window.notifTimers;
 
-public class MainActivity extends Activity {
-    private WebView webView;
-    private Handler mainHandler;
-    private static final String APP_URL = "https://dumitriualx-lang.github.io/solar-dashboard/";
-    private static final String CHANNEL_ID = "solar_alerts";
-    private int notifId = 1;
+// ═══════════════════════════════════════════════════════════════
+// SYSTEM CONSTANTS — Huawei SUN2000-5KTL-M1 + Luna 2000 CO
+// ═══════════════════════════════════════════════════════════════
+// Load persisted system config — falls back to Huawei defaults
+const CFG_KEY = 'solarSysConfig';
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem(CFG_KEY)) || {}; } catch(e) { return {}; }
+}
+function saveCfg(obj) {
+  try { localStorage.setItem(CFG_KEY, JSON.stringify(obj)); } catch(e) {}
+}
+const savedCfg = loadCfg();
 
-    private String httpGet(String urlStr) {
-        try {
-            URL url = new URL(urlStr);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(20000);
-            conn.setReadTimeout(20000);
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)");
-            conn.setRequestProperty("Accept", "application/json");
-            conn.setInstanceFollowRedirects(true);
-            int code = conn.getResponseCode();
-            if (code == 200) {
-                BufferedReader br = new BufferedReader(
-                    new InputStreamReader(conn.getInputStream(), "UTF-8"));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close();
-                conn.disconnect();
-                return sb.toString();
-            }
-            conn.disconnect();
-            return "HTTP_ERROR_" + code;
-        } catch (Exception e) {
-            return "JAVA_ERROR_" + e.getClass().getSimpleName() + "_" + e.getMessage();
-        }
+// Guard: returns true only when user has saved system configuration
+function isSysConfigured() {
+  const cfg = loadCfg();
+  return !!(cfg && cfg.panelKw && cfg.battGross);
+}
+
+// ── Safe storage — prevents one corrupt key from crashing the whole app ──────
+function safeJson(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch(e) { try { localStorage.removeItem(key); } catch(_) {} return fallback; }
+}
+function safeSet(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch(_) {}
+}
+
+const SYS = {
+  panelKw:   savedCfg.panelKw   || null,     // kW peak — must be set by user
+  tiltDeg:      savedCfg.tiltDeg      || 30,  // panel tilt angle
+  pvCalibFactor: +(savedCfg.pvCalibFactor || 1.0), // user production calibration multiplier
+  consProfile:  savedCfg.consProfile  || [
+    { from:0,  to:6,  label:'Night',      kw:0 },
+    { from:6,  to:9,  label:'Morning',    kw:0 },
+    { from:9,  to:13, label:'Midday',     kw:0 },
+    { from:13, to:18, label:'Afternoon',  kw:0 },
+    { from:18, to:22, label:'Evening',    kw:0 },
+    { from:22, to:24, label:'Late night', kw:0 },
+  ],
+  panelAzimuth: savedCfg.panelAzimuth || null, // null = not set by user
+  invEff:    0.984,                            // SUN2000-5KTL-M1 (fixed)
+  dcLoss:    0.97,                             // wiring + soiling (fixed)
+  battGross: savedCfg.battGross || null,      // kWh gross — must be set by user
+  battRes:   savedCfg.battRes   || 0.10,      // reserve fraction (10%)
+  _battMaxC: savedCfg.battMaxC  || 2.5,
+  _battMaxD: savedCfg.battMaxD  || 2.5,
+  get battUse()  { return this.battGross ? +(this.battGross * (1 - this.battRes)).toFixed(3) : 0; },
+  get battMaxC() { return this._battMaxC; },
+  get battMaxD() { return this._battMaxD; },
+  get acMax()    { return this.panelKw ? +(this.panelKw * this.invEff * this.dcLoss).toFixed(3) : 5; },
+  tempCoeff: 0.0037,   // %/°C power loss above 25°C (standard silicon panels)
+  noct:      45,       // Nominal Operating Cell Temperature °C
+  // ── Locked panel location (panels are fixed - location doesn't follow you when you travel) ──
+  panelLat:     savedCfg.panelLat     || null,
+  panelLon:     savedCfg.panelLon     || null,
+  panelLocName: savedCfg.panelLocName || '',
+};
+
+// SOC display mapping: physical range 10–100% → internal 0–100 scale
+// 10% physical = 0 internal (reserve floor / empty), 100% physical = 100 internal (full)
+const SOC_FLOOR = 10;   // reserve floor % — discharge stops here (hardware enforced)
+const SOC_CEIL  = 100;  // charge ceiling % — users can charge to 100%
+const socToInternal = (userPct) =>
+  Math.max(0, Math.min(100,
+    ((+userPct - SOC_FLOOR) / (SOC_CEIL - SOC_FLOOR)) * 100
+  ));
+const socToDisplay = (internalPct) =>
+  +(SOC_FLOOR + (internalPct / 100) * (SOC_CEIL - SOC_FLOOR)).toFixed(1);
+
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let ST = {
+  // GPS — updated automatically
+  lat: null, lon: null,
+  locName: 'Acquiring location...',
+  gpsAccuracy: null,
+  gpsOk: false,
+
+  // Solar — calculated from irradiance API
+  pvKw: 0,
+  irrWm2: 0, irrDir: 0, irrDif: 0,
+  wxCond: 'Fetching...', wxTempC: 15, wxIcon: '☀️', cloudCover: 50,
+  tempFactor: 1.0,        // temperature derating factor (calculated in irrToKw)
+  apiOk: false, lastFetch: null,
+
+  // Battery — derived from energy balance, SOC evolves over time
+  battSoc: savedCfg.battSoc ? Math.max(0,Math.min(100,((savedCfg.battSoc-10)/90)*100)) : 50,
+
+  // Consumption — only manual input
+  consKw: savedCfg.consKw || 0,
+
+  // Grid accumulation — tracks today's export/import in kWh
+  pvKwhToday: 0,    // PV kWh produced today — from background service
+  gridExportKwh: 0,
+  gridImportKwh: 0,
+  gridLastT: Date.now(),  // timestamp of last accumulation tick
+  _socEvolvedMs: 0,       // timestamp of last evolveSoc run — prevents SharedPrefs overwrite
+};
+// Restore today's grid kWh from localStorage (survives app reopen within same day)
+(function() {
+  try {
+    const saved = safeJson('solarGridKwh', null);
+    const today = new Date().toDateString();
+    if (saved && saved.date === today) {
+      ST.gridExportKwh = saved.exp || 0;
+      ST.gridImportKwh = saved.imp || 0;
+      ST._lastDate = today;
+    }
+  } catch(e) {}
+})();
+
+let FORECAST = [];
+const rlog = safeJson('solarLog4', []);
+let dchart, lastFlowT = Date.now();
+let geoWatchId = null;
+
+// Startup guard — suppress all proactive notifications for 90s after app opens.
+// Prevents false "Solar dropped" and notification spam from state initialisation.
+const _appStartMs      = Date.now();
+const _NOTIF_GRACE_MS  = 180000; // 3 minutes — wait for pvKw to stabilise before any notification
+const _notifReady      = () => Date.now() - _appStartMs >= _NOTIF_GRACE_MS;
+
+// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// Called by native onResume to restore GPS from SharedPreferences
+// This fires before JS may have read localStorage, ensuring coords are set
+// Called by Java MainActivity every 60s when FusionSolar data is fresh.
+// Overrides NWP/satellite estimates with real inverter readings.
+function applyStateFromNative(soc, panelKw, battGross, battRes, consKw, bgPvKw) {
+  // System configuration (panelKw, battGross) is OWNED BY localStorage (set by user).
+  // Java SharedPreferences may have stale values from a previous install — never let
+  // them overwrite SYS.* on a "fresh" install where localStorage was cleared.
+  const userHasSavedCfg = !!(savedCfg && (savedCfg.panelKw || savedCfg.battGross));
+  if (userHasSavedCfg) {
+    if (panelKw > 0)   { SYS.panelKw   = panelKw; }
+    if (battGross > 0) { SYS.battGross = battGross; SYS.battRes = battRes || 0.10; }
+  }
+  // Runtime state (SOC, consumption) — only restore if user has saved a config
+  // (otherwise these are leftover values that shouldn't seed a fresh dashboard)
+  if (userHasSavedCfg) {
+    const socAge = Date.now() - (ST._socEvolvedMs || 0);
+    if (soc >= 0 && socAge > 90000) { ST.battSoc = soc; }
+    if (consKw > 0)   { ST.consKw   = consKw; }
+    if (typeof bgPvKw === 'number' && bgPvKw > 0 && !ST.apiOk) { ST.pvKw = bgPvKw; }
+    lastFlowT = Date.now();
+  }
+  // Sync UI inputs (already gated by userHasSavedCfg below)
+  const socEl   = document.getElementById('cfgSoc');
+  const panelEl = document.getElementById('cfgPanel');
+  const battEl  = document.getElementById('cfgBatt');
+  const azEl    = document.getElementById('cfgAzimuth');
+  if (userHasSavedCfg) {
+    if (socEl   && document.activeElement !== socEl   && soc >= 0)        socEl.value   = Math.round(socToDisplay(soc));
+    if (panelEl && document.activeElement !== panelEl && panelKw > 0)     panelEl.value = panelKw;
+    if (azEl    && savedCfg.panelAzimuth)                                 azEl.value    = SYS.panelAzimuth;
+    if (battEl  && document.activeElement !== battEl  && battGross > 0)   battEl.value  = battGross;
+  }
+  updateSocDisplay();
+}
+
+// ── Location cache — prevents geocoding on every resume ────────────
+function _locCacheKey(lat, lon) {
+  return (Math.round(lat * 100) / 100) + ',' + (Math.round(lon * 100) / 100);
+}
+function getCachedLocName(lat, lon) {
+  try {
+    const c = safeJson('locCache', {});
+    const v = c[_locCacheKey(lat, lon)];
+    // Reject expired or coordinate-string entries (they contain '°')
+    if (v && Date.now() - v.ts < 7 * 86400000 && v.name && !v.name.includes('\u00b0'))
+      return v.name;
+  } catch(e) {}
+  return null;
+}
+function setCachedLocName(lat, lon, name) {
+  // Never cache coordinate strings — only real place names
+  if (!name || name.includes('\u00b0')) return;
+  try {
+    const c = safeJson('locCache', {});
+    c[_locCacheKey(lat, lon)] = { name, ts: Date.now() };
+    const keys = Object.keys(c);
+    if (keys.length > 20) delete c[keys[0]];
+    localStorage.setItem('locCache', JSON.stringify(c));
+  } catch(e) {}
+}
+
+// Reverse geocode lat/lon → city/locality via Nominatim (OSM, no API key needed)
+async function reverseGeocode(lat, lon) {
+  // Check cache first — avoids repeated slow Nominatim requests
+  const cached = getCachedLocName(lat, lon);
+  if (cached) return cached;
+
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), 3000); // 3-second hard timeout
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`;
+    const r = await fetch(url, {
+      headers: { 'Accept-Language': 'en', 'User-Agent': 'SolarDashboard/1.0' },
+      signal: ctrl.signal
+    });
+    clearTimeout(tid);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const a = d.address || {};
+    const city = a.city || a.town || a.village || a.municipality || a.county || null;
+    if (city) setCachedLocName(lat, lon, city);
+    return city;
+  } catch(e) {
+    clearTimeout(tid);
+    return null;
+  }
+}
+
+function applyGpsFromNative(lat, lon, name) {
+  if (!lat || !lon) return;
+  // PANEL LOCATION LOCK: if the user has locked the panel site, never let phone GPS
+  // override it. Panels are physically fixed — production must be computed for where
+  // they are installed, not where the phone currently is.
+  if (SYS.panelLat && SYS.panelLon) {
+    // Ensure ST stays pinned to the panel location
+    if (ST.lat !== SYS.panelLat || ST.lon !== SYS.panelLon) {
+      ST.lat = SYS.panelLat;
+      ST.lon = SYS.panelLon;
+      ST.locName = SYS.panelLocName || (SYS.panelLat.toFixed(2)+'°N '+SYS.panelLon.toFixed(2)+'°E');
+      ST.gpsOk = true;
+      setGps('ok', '🔒 ' + ST.locName);
+    }
+    return;
+  }
+  const moved = !ST.lat || !ST.lon ||
+    Math.abs(lat - ST.lat) > 0.002 || Math.abs(lon - ST.lon) > 0.002; // ~200m
+  ST.lat = lat; ST.lon = lon; ST.gpsOk = true;
+  ST._gpsTs = Date.now(); // track when GPS was last updated
+
+  // Priority: passed name → cache → geocode → short coordinates
+  const cached   = getCachedLocName(lat, lon);
+  const resolved = (name && !name.includes('°')) ? name : cached;
+
+  if (resolved) {
+    ST.locName = resolved;
+    setGps('ok', '\ud83d\udccd ' + resolved);
+    setCachedLocName(lat, lon, resolved); // keep cache fresh
+    try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: resolved })); } catch(e) {}
+    if (ST.apiOk && ST.lastFetch) {
+      setApi('ok', '\u2705 ' + resolved + ' \u00b7 '
+        + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+        + ' \u00b7 \u21bb 1min');
+    }
+    if (moved || !ST.apiOk) fetchWeather();
+    return;
+  }
+
+  // No name available — show Locating while geocoding runs
+  ST.locName = 'Locating\u2026';
+  setGps('ok', '📍 Locating\u2026');
+  if (moved || !ST.apiOk) fetchWeather();
+
+  reverseGeocode(lat, lon).then(city => {
+    const fallback    = lat.toFixed(2) + '\u00b0N ' + lon.toFixed(2) + '\u00b0E';
+    const displayName = city || fallback;
+    ST.locName = displayName;
+    setGps('ok', '\ud83d\udccd ' + displayName);
+
+    // Update api bar regardless of whether weather has loaded yet
+    if (ST.apiOk && ST.lastFetch) {
+      setApi('ok', '\u2705 ' + displayName + ' \u00b7 '
+        + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+        + ' \u00b7 \u21bb 1min');
     }
 
-    public class AppBridge {
-        // Called from JS to fetch weather - runs HTTP in background, injects result back
-        @JavascriptInterface
-        public void fetchWeather(String urlStr) {
-            new Thread(() -> {
-                String result = httpGet(urlStr);
-                if (result == null) result = "NULL_RESULT";
-                final String escaped = android.util.Base64.encodeToString(
-                    result.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                    android.util.Base64.NO_WRAP);
-                mainHandler.post(() ->
-                    webView.evaluateJavascript(
-                        "window.__nativeWeatherResult('" + escaped + "');", null));
-            }).start();
-        }
+    if (city) {
+      // Only cache and persist real city names — never coordinate strings
+      setCachedLocName(lat, lon, city);
+      try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
+      if (window.AppBridge && AppBridge.saveGps) try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
+    }
+    // On failure: do NOT cache — let next resume retry geocoding
+  });
+}
 
-        @JavascriptInterface
-        public void showNotif(String title, String body) {
-            showNotifTagged(title, body, title);  // tag = title (stable)
-        }
+function onGpsBtnClick() {
+  // PANEL LOCATION LOCK: if locked, GPS button should not fetch phone location.
+  // Inform the user the location is pinned and point them to the setting.
+  if (SYS.panelLat && SYS.panelLon) {
+    setGps('ok', '🔒 Locked to ' + (SYS.panelLocName || 'panel site') + ' — change in Settings');
+    return;
+  }
+  // In native app with new AppBridge: trigger OS permission dialog
+  if (window.AppBridge && typeof AppBridge.requestLocationPermission === 'function') {
+    AppBridge.requestLocationPermission();
+    setGps('req', '📍 Allow location access in the system prompt...');
+    return;
+  }
+  // Fallback: call geolocation directly (browser or older APK)
+  requestLocation();
+}
 
-        @JavascriptInterface
-        public void showNotifTagged(String title, String body, String tag) {
-            mainHandler.post(() -> {
-                NotificationCompat.Builder b = new NotificationCompat.Builder(
-                    MainActivity.this, CHANNEL_ID)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle(title).setContentText(body)
-                    .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setAutoCancel(true)
-                    .setColor(Color.parseColor("#1D9E75"));
-                Intent i = new Intent(MainActivity.this, MainActivity.class);
-                i.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                b.setContentIntent(PendingIntent.getActivity(MainActivity.this, 0, i,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
-                try {
-                    // Stable ID derived from tag hash - same tag replaces previous notification
-                    int stableId = 4000 + (Math.abs((tag != null ? tag : title).hashCode()) % 1000);
-                    NotificationManagerCompat.from(MainActivity.this).notify(stableId, b.build());
-                } catch (Exception ignored) {}
-            });
-        }
+function onRefreshClick() {
+  // PANEL LOCATION LOCK: if locked, never request phone GPS. Just refetch weather
+  // for the locked panel site.
+  if (SYS.panelLat && SYS.panelLon) {
+    ST.lat = SYS.panelLat;
+    ST.lon = SYS.panelLon;
+    ST.locName = SYS.panelLocName || (SYS.panelLat.toFixed(2)+'°N '+SYS.panelLon.toFixed(2)+'°E');
+    setApi('load', '⏳ Refreshing forecast for ' + ST.locName + '…');
+    fetchWeather();
+    return;
+  }
+  // Refresh = request fresh GPS first, then weather follows automatically
+  setApi('load', '⏳ Refreshing location…');
+  // Clear location name cache for current coords so we re-geocode after move
+  if (ST.lat && ST.lon) {
+    try {
+      const c = safeJson('locCache', {});
+      const key = (Math.round(ST.lat*100)/100)+','+(Math.round(ST.lon*100)/100);
+      delete c[key];
+      localStorage.setItem('locCache', JSON.stringify(c));
+    } catch(e) {}
+  }
+  // Tell Java to request a fresh GPS fix
+  if (window.AppBridge && typeof AppBridge.loadGps === 'function') {
+    try { AppBridge.loadGps(); } catch(e) {}
+  }
+  // Also request via browser geolocation (works in browser mode)
+  if ('geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      pos => applyPosition(pos),
+      () => fetchWeather(),  // GPS failed — still refresh weather with current coords
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  } else {
+    fetchWeather();
+  }
+}
 
-        @JavascriptInterface
-        public boolean notifGranted() {
-            return NotificationManagerCompat.from(MainActivity.this).areNotificationsEnabled();
-        }
+function requestLocation() {
+  // PANEL LOCATION LOCK: if user has set a fixed panel location, never use phone GPS.
+  // Panels are physically fixed - location must not change when the user travels.
+  if (SYS.panelLat && SYS.panelLon) {
+    ST.lat = SYS.panelLat;
+    ST.lon = SYS.panelLon;
+    ST.locName = SYS.panelLocName || (SYS.panelLat.toFixed(2)+'°N '+SYS.panelLon.toFixed(2)+'°E');
+    ST.gpsOk = true;
+    ST._gpsTs = Date.now();
+    setGps('ok', '🔒 ' + ST.locName);
+    fetchWeather();
+    return;
+  }
+  if (!('geolocation' in navigator)) {
+    setGps('err', '❌ Geolocation not supported.');
+    return;
+  }
+  setGps('req', '📍 Requesting GPS...');
+  navigator.geolocation.getCurrentPosition(
+    pos => applyPosition(pos),
+    err => onLocationErr(err),
+    { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }  // maximumAge:0 = always fresh
+  );
+}
 
-        @JavascriptInterface
-        public void requestNotif() {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                requestPermissions(
-                    new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
-        }
+// ── Panel Location: free Open-Meteo geocoding (no API key needed) ──────────
+let _panelLocSearchTimer = null;
+async function geocodeCity(query) {
+  if (!query || query.trim().length < 3) return [];
+  try {
+    const url = 'https://geocoding-api.open-meteo.com/v1/search?'
+      + 'name=' + encodeURIComponent(query.trim())
+      + '&count=8&language=en&format=json';
+    const r = await fetch(url);
+    const d = await r.json();
+    return Array.isArray(d.results) ? d.results : [];
+  } catch (e) {
+    console.error('geocode error', e);
+    return [];
+  }
+}
+function onPanelLocSearch(query) {
+  clearTimeout(_panelLocSearchTimer);
+  const resultsEl = document.getElementById('panelLocResults');
+  if (!query || query.trim().length < 3) {
+    if (resultsEl) { resultsEl.style.display = 'none'; resultsEl.innerHTML = ''; }
+    return;
+  }
+  _panelLocSearchTimer = setTimeout(async () => {
+    const results = await geocodeCity(query);
+    renderPanelLocResults(results);
+  }, 350);
+}
+function renderPanelLocResults(results) {
+  const el = document.getElementById('panelLocResults');
+  if (!el) return;
+  if (!results.length) {
+    el.innerHTML = '<div style="padding:10px 12px;color:var(--t2);font-size:12px">No matches — try a different name.</div>';
+    el.style.display = 'block';
+    return;
+  }
+  el.innerHTML = results.map((r) => {
+    const place  = [r.name, r.admin1, r.country].filter(Boolean).join(', ');
+    const coords = (+r.latitude).toFixed(3) + '°N, ' + (+r.longitude).toFixed(3) + '°E';
+    const safeName = place.replace(/'/g, "\\'");
+    return '<div class="panel-loc-result" onclick="selectPanelLocation('
+      + r.latitude + ',' + r.longitude + ",'" + safeName + "'"
+      + ')" style="padding:10px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06)">'
+      + '<div style="font-weight:600;color:var(--tx);font-size:13px">' + place + '</div>'
+      + '<div style="font-size:11px;color:var(--t2);margin-top:2px">' + coords + '</div>'
+      + '</div>';
+  }).join('');
+  el.style.display = 'block';
+}
+function selectPanelLocation(lat, lon, name) {
+  SYS.panelLat = +lat;
+  SYS.panelLon = +lon;
+  SYS.panelLocName = name || '';
+  // Update ST so fetchWeather uses the new location immediately
+  ST.lat = +lat;
+  ST.lon = +lon;
+  ST.locName = name || '';
+  ST.gpsOk = true;
+  ST._gpsTs = Date.now();
+  // Persist to localStorage
+  saveCfg({ ...loadCfg(), panelLat: +lat, panelLon: +lon, panelLocName: name || '' });
+  // Push to Java SharedPreferences so FGS/SAR/Worker all use the locked location
+  if (window.AppBridge && AppBridge.savePanelLocation) {
+    try { AppBridge.savePanelLocation(+lat, +lon, name || ''); } catch(e) {}
+  }
+  updateCurrentPanelLocDisplay();
+  // Hide results dropdown and clear input
+  const r = document.getElementById('panelLocResults'); if (r) { r.style.display = 'none'; r.innerHTML = ''; }
+  const i = document.getElementById('panelLocSearch'); if (i) i.value = '';
+  setGps('ok', '🔒 ' + (name || 'Location locked'));
+  // Refetch weather with new coords
+  fetchWeather();
+}
+function updateCurrentPanelLocDisplay() {
+  const txtEl    = document.getElementById('currentPanelLocText');
+  const coordsEl = document.getElementById('currentPanelLocCoords');
+  const lockEl   = document.getElementById('panelLocLockIcon');
+  if (!txtEl) return;
+  if (SYS.panelLat && SYS.panelLon) {
+    txtEl.textContent = SYS.panelLocName || ('Lat ' + SYS.panelLat.toFixed(3) + ', Lon ' + SYS.panelLon.toFixed(3));
+    if (coordsEl) coordsEl.textContent = SYS.panelLat.toFixed(4) + '°N, ' + SYS.panelLon.toFixed(4) + '°E · 🔒 Locked';
+    if (lockEl) lockEl.style.display = '';
+  } else {
+    txtEl.textContent = 'Not set';
+    if (coordsEl) coordsEl.textContent = 'Use the search below to set where your panels are installed';
+    if (lockEl) lockEl.style.display = 'none';
+  }
+}
+// Migrate existing GPS users: on first run after this update, if no panel
+// location is set but a saved GPS exists, treat the saved GPS as the panel
+// location. User can change it later via the search if their panels are elsewhere.
+function migrateGpsToPanelLocation() {
+  if (SYS.panelLat && SYS.panelLon) return;  // already set
+  try {
+    const saved = JSON.parse(localStorage.getItem('solarGps') || 'null');
+    if (saved && saved.lat && saved.lon) {
+      SYS.panelLat = saved.lat;
+      SYS.panelLon = saved.lon;
+      SYS.panelLocName = saved.name || '';
+      saveCfg({ ...loadCfg(), panelLat: saved.lat, panelLon: saved.lon, panelLocName: saved.name || '' });
+      if (window.AppBridge && AppBridge.savePanelLocation) {
+        try { AppBridge.savePanelLocation(saved.lat, saved.lon, saved.name || ''); } catch(e) {}
+      }
+      console.log('[migration] Existing GPS coords migrated to panel location lock:', saved.name);
+    }
+  } catch(e) {}
+}
 
-        // saveSoc — persists all system state to SharedPreferences.
-        // Called from JS every 5s (evolveSoc) and on any config change.
-        // soc_saved_at_ms is used by injectLocation() to catch-up SOC evolution
-        // when the app reopens and the background service hasn't fired yet.
-        @JavascriptInterface
-        public void saveSoc(float soc, float panelKw, float battGross, float battRes, float consKw, float battMaxC, float battMaxD, float panelAzimuth) {
-            getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE)
-                .edit()
-                .putFloat("soc",            soc)
-                .putFloat("panel_kw",       panelKw)
-                .putFloat("batt_gross",     battGross)
-                .putFloat("batt_res",       battRes)
-                .putFloat("cons_kw",        consKw)
-                .putFloat("batt_max_c",     battMaxC)
-                .putFloat("batt_max_d",     battMaxD)
-                .putFloat("panel_azimuth",   panelAzimuth)
-                .putLong ("soc_saved_at_ms", System.currentTimeMillis())
-                .putBoolean("soc_confirmed",  true)
-                .apply();
-        }
+function applyPosition(pos) {
+  // PANEL LOCATION LOCK: ignore browser GPS if panel site is locked
+  if (SYS.panelLat && SYS.panelLon) {
+    ST.lat = SYS.panelLat;
+    ST.lon = SYS.panelLon;
+    ST.locName = SYS.panelLocName || (SYS.panelLat.toFixed(2)+'°N '+SYS.panelLon.toFixed(2)+'°E');
+    ST.gpsOk = true;
+    setGps('ok', '🔒 ' + ST.locName);
+    fetchWeather();
+    return;
+  }
+  const lat = pos.coords.latitude;
+  const lon = pos.coords.longitude;
+  const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
+  const moved = !ST.lat || !ST.lon ||
+    Math.abs(lat - ST.lat) > 0.002 || Math.abs(lon - ST.lon) > 0.002; // ~200m
+  ST.lat = lat; ST.lon = lon; ST.gpsAccuracy = acc; ST.gpsOk = true;
+  ST._gpsTs = Date.now();
 
-        @JavascriptInterface
-        public int getVersionCode() {
+  const cached = getCachedLocName(lat, lon);
+  ST.locName = cached || 'Locating\u2026';
+  setGps('ok', '📍 ' + ST.locName);
+  if (moved) fetchWeather();
+
+  if (!cached) {
+    reverseGeocode(lat, lon).then(city => {
+      const fallback    = lat.toFixed(2) + '\u00b0N ' + lon.toFixed(2) + '\u00b0E';
+      const displayName = city || fallback;
+      ST.locName = displayName;
+      setGps('ok', '\ud83d\udccd ' + displayName);
+      if (ST.apiOk && ST.lastFetch) {
+        setApi('ok', '\u2705 ' + displayName + ' \u00b7 '
+          + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+          + ' \u00b7 \u21bb 1min');
+      }
+      if (city) {
+        setCachedLocName(lat, lon, city);
+        try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
+        if (window.AppBridge && AppBridge.saveGps) try { AppBridge.saveGps(lat, lon, city); } catch(e) {}
+      }
+    });
+  } else {
+    try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: cached })); } catch(e) {}
+  }
+}
+
+function onLocationErr(err) {
+  if (err.code === 1) {
+    // Permission denied by user in browser/system prompt
+    setGps('err', '⚠️ Location denied — tap Allow GPS and accept the permission prompt.');
+  } else if (err.code === 2) {
+    setGps('err', '⚠️ Location unavailable — ensure GPS/Location is enabled on this device.');
+  } else {
+    setGps('err', '⚠️ Location timed out — tap Allow GPS to retry.');
+  }
+}
+
+function onLocationOk(lat, lon, name, acc) {
+  ST.lat = lat; ST.lon = lon; ST.locName = name; ST.gpsAccuracy = acc; ST.gpsOk = true;
+  setGps('ok', '📍 ' + (name && !name.includes('°') ? name : 'Locating...'));
+  fetchWeather();
+}
+
+function setGps(type, html) {
+  const bar  = document.getElementById('gpsBar');
+  const icon = document.getElementById('gpsIcon');
+  const msg  = document.getElementById('gpsMsg');
+  const btn  = document.getElementById('gpsBtnEl');
+  if (!bar) return;
+  if (type === 'ok') {
+    bar.style.display = 'none'; return;
+  }
+  bar.style.display = 'flex';
+  const col = type === 'err' ? '#d4b020' : '#00b4e6';
+  const bg  = type === 'err' ? 'rgba(212,176,32' : 'rgba(0,180,230';
+  bar.style.borderColor = col+'55';
+  bar.style.background  = `linear-gradient(135deg,${bg},.07),rgba(0,8,25,.9))`;
+  if (icon) { icon.style.borderColor = col+'99'; icon.style.boxShadow = `0 0 14px ${col}44`; }
+  if (msg)  msg.textContent = html;
+  if (btn)  { btn.style.color = col; btn.style.borderColor = col+'66'; btn.style.background = bg+',.12)'; }
+}
+
+// Reverse geocode using Open-Meteo's geocoding — no API key needed
+// ═══════════════════════════════════════════════════════════════
+// OPEN-METEO — fetch irradiance for current GPS position
+// ═══════════════════════════════════════════════════════════════
+// ── Satellite radiation fetch (EUMETSAT measured data, more accurate than NWP) ──
+// Uses Open-Meteo Satellite Radiation API — actual satellite measurements,
+// not weather model estimates. Covers Europe via EUMETSAT MTG/MSG satellite.
+// Called after processOpenMeteo(); updates ST.pvKw if satellite data is available.
+// Falls back silently — existing forecast path remains the safety net.
+async function fetchSatelliteRadiation(lat, lon) {
+  try {
+    // timezone=UTC so returned timestamps are UTC — safe to compare against Date.now()
+    // regardless of device timezone or panel location timezone.
+    const today = new Date().toISOString().slice(0, 10);
+    const url = 'https://satellite-api.open-meteo.com/v1/archive?'
+      + 'latitude=' + lat + '&longitude=' + lon
+      + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation'
+      + '&models=satellite_radiation_seamless'
+      + '&temporal_resolution=native'
+      + '&start_date=' + today + '&end_date=' + today
+      + '&timezone=UTC';
+    const r = await fetch(url, { headers: { 'User-Agent': 'SolarDashboard/1.0' } });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const hr = d.hourly;
+    if (!hr || !hr.time) return null;
+    const times  = hr.time;
+    const swr    = hr.shortwave_radiation   || [];
+    const dir    = hr.direct_radiation      || [];
+    const dif    = hr.diffuse_radiation     || [];
+    const nowMs  = Date.now();
+    // Append 'Z' so JS parses the timestamp as UTC, not device local time
+    let lastIdx = -1;
+    for (let i = times.length - 1; i >= 0; i--) {
+      if (new Date(times[i] + 'Z').getTime() <= nowMs && swr[i] !== null && swr[i] !== undefined) {
+        lastIdx = i; break;
+      }
+    }
+    if (lastIdx < 0) return null;
+
+    // Reject stale archive data. The satellite_radiation_seamless model blends
+    // EUMETSAT SARAH-3 (15-30 min lag, near-realtime) with ERA5 reanalysis
+    // (2-5 day lag). If the most recent available timestamp is more than 3 hours
+    // behind current time, the archive is serving old ERA5 data — don't let it
+    // overwrite the NWP forecast which is more current.
+    const dataAgeMs = nowMs - new Date(times[lastIdx] + 'Z').getTime();
+    if (dataAgeMs > 3 * 3600 * 1000) return null;
+
+    return { swr: swr[lastIdx] || 0, direct: dir[lastIdx] || 0, diffuse: dif[lastIdx] || 0 };
+  } catch(e) { return null; }
+}
+
+// Apply satellite radiation data to ST — called after forecast fetch succeeds
+function applySatelliteRadiation(sat) {
+  if (!sat) return;
+  const directRad  = sat.direct;
+  const diffuseRad = sat.diffuse;
+  if (directRad + diffuseRad <= 0 && sat.swr <= 0) return;  // night or no data
+  const ghi = sat.swr > 0 ? sat.swr : (directRad + diffuseRad);
+
+  // Use horizontal direct radiation (not DNI) to avoid sin(elevation) blowup at low sun angles.
+  // DHI fallback: when API returns near-zero diffuse on cloudy days, estimate from cloud cover.
+  const cloudFrac = Math.min(1, Math.max(0, (ST.cloudCover || 0) / 100));
+  const rawDHI    = diffuseRad > 0 ? diffuseRad : (ST.irrDif || 0);
+  const dhi       = rawDHI > ghi * 0.10 ? rawDHI : ghi * (0.15 + cloudFrac * 0.65);
+  const rawDirect = directRad > 0 ? directRad : Math.max(0, ghi - dhi);
+
+  const tiltR  = (SYS.tiltDeg || 30) * Math.PI / 180;
+  const pnlAzR = (SYS.panelAzimuth || 180) * Math.PI / 180;
+  const pos    = solarPosition(ST.lat, ST.lon, new Date());
+  const altR   = Math.max(0.001, pos.altitude) * Math.PI / 180;
+  const azR    = pos.azimuth * Math.PI / 180;
+  const cosAOI = Math.sin(altR)*Math.cos(tiltR) + Math.cos(altR)*Math.sin(tiltR)*Math.cos(azR - pnlAzR);
+  const poa    = Math.max(0,
+    Math.max(0, cosAOI) * rawDirect +
+    dhi * (1 + Math.cos(tiltR)) / 2 +
+    ghi * 0.20 * (1 - Math.cos(tiltR)) / 2
+  );
+
+  const panelKw = SYS.panelKw || 5;
+  const tempC   = ST.wxTempC || 20;
+  const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(0, poa);
+  const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
+  const acMax   = SYS.acMax || panelKw * 0.984;
+  // PR = acMax × 0.97 × learned calibration factor for current GHI conditions
+  // Raw formula output — no calibration factor applied.
+  // Self-calibration was removed: it introduced compounding errors when
+  // background service died (stale pvApp values corrupted the learned factor).
+  ST.pvKwBase = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac)).toFixed(3);
+  let pvKw    = +ST.pvKwBase.toFixed(3);
+
+  ST.pvKw      = pvKw;
+  ST._satLastMs = Date.now();
+  ST.irrWm2    = sat.swr;
+  ST.poaWm2    = +poa.toFixed(1);
+}
+
+async function fetchWeather() {
+  if (!ST.lat || !ST.lon) {
+    setApi('load', '⏳ Waiting for GPS location...'); return;
+  }
+  // Prevent concurrent fetches — but auto-clear if stuck > 45s.
+  // Android suspends JS timers when backgrounded so the 30s timeout may never fire.
+  if (ST._fetchInProgress) {
+    const stuckMs = Date.now() - (ST._fetchStartMs || 0);
+    if (stuckMs < 45000) return;   // still within normal window — wait
+    // Force-clear stuck fetch: timer was suspended, timeout never fired
+    ST._fetchInProgress = false;
+    if (window.__nativeWeatherResult) delete window.__nativeWeatherResult;
+  }
+  ST._fetchInProgress = true;
+  ST._fetchStartMs = Date.now();
+  setApi('load', '⏳ Fetching weather...');
+  try {
+    // Map azimuth: app uses compass 0=N, 90=E, 180=S, 270=W
+    // Open-Meteo expects: -180..180 where 0=South (negative=East, positive=West)
+    const azCompass = SYS.panelAzimuth || 180;
+    const azMeteo = azCompass - 180; // 180→0 (S), 90→-90 (E), 270→90 (W), 0→-180 (N)
+    const tiltDeg = SYS.tiltDeg || 30;
+    const u = 'https://api.open-meteo.com/v1/forecast?'
+      + 'latitude='  + f(ST.lat,4)
+      + '&longitude=' + f(ST.lon,4)
+      + '&tilt=' + tiltDeg + '&azimuth=' + azMeteo
+      + '&models=best_match'
+      + '&current=temperature_2m,cloud_cover,weathercode,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,global_tilted_irradiance'
+      + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,global_tilted_irradiance,cloud_cover,cloud_cover_low,temperature_2m,wind_speed_10m,precipitation_probability,weathercode,is_day'
+      + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
+      + '&timezone=auto&forecast_days=7';
+
+    let raw;
+    if (window.AppBridge && window.AppBridge.fetchWeather) {
+      // Android native fetch via AppBridge
+      raw = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          // Clean up callback so a late Java response doesn't corrupt a future fetch
+          delete window.__nativeWeatherResult;
+          reject(new Error('timeout'));
+        }, 30000);
+        window.__nativeWeatherResult = function(b64) {
+          clearTimeout(timer);
+          delete window.__nativeWeatherResult;
+          try { resolve(atob(b64)); }
+          catch(e) { reject(new Error('decode failed')); }
+        };
+        window.AppBridge.fetchWeather(u);
+      });
+      // Check for Java error responses
+      if (!raw || raw === 'null' || raw === 'NULL_RESULT') throw new Error('null response from Java');
+      if (raw.startsWith('HTTP_ERROR_') || raw.startsWith('JAVA_ERROR_')) throw new Error(raw);
+    } else {
+      const r = await fetch(u);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      raw = await r.text();
+    }
+
+    const d = JSON.parse(raw);
+    processOpenMeteo(d);
+    ST.apiOk = true; ST.lastFetch = new Date(); ST._fetchInProgress = false;
+    refreshForecastIfOpen(); // auto-update today's curve if Forecast tab is open
+    // Launch satellite fetch in parallel — updates pvKw if measured data available
+    // Does not block the UI; falls back silently if satellite API is unreachable
+    if (ST.lat && ST.lon) {
+      fetchSatelliteRadiation(ST.lat, ST.lon).then(sat => {
+        if (sat) { applySatelliteRadiation(sat); renderBattery(); renderFlow(); renderMetrics(); renderGridPanel(); }
+      }).catch(() => {});
+    }
+    setApi('ok', '✅ ' + ST.locName + ' · '
+      + ST.lastFetch.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+      + ' · ↻ 1min');
+    scheduleAllNotifications();
+    if (!ST._dailyNotifChecked) {
+      // Run these only once per app session — they fire on config changes too,
+      // but calling them every 60s creates notification spam on first eligible fetch.
+      ST._dailyNotifChecked = true;
+      checkMissedDailyNotifications();
+    }
+    notifyRealtime();
+    storeNotifPayloads();
+  } catch(e) {
+    ST.apiOk = false; ST._fetchInProgress = false;
+    setApi('err', '⚠️ ' + e.message
+      + ' <button class="api-refresh" onclick="fetchWeather()">Retry</button>');
+    fallbackEstimate();
+  }
+  renderAll();
+}
+
+function wxLabel(code) {
+  if (code === 0)  return 'Clear sky';
+  if (code <= 3)   return 'Partly cloudy';
+  if (code <= 48)  return 'Foggy';        // WMO 4-48: fog, mist, dust haze
+  if (code <= 59)  return 'Drizzle';      // WMO 50-59: drizzle (not rain!)
+  if (code <= 69)  return 'Rain';         // WMO 60-69: rain / freezing rain
+  if (code <= 79)  return 'Snow';         // WMO 70-79: snow
+  if (code <= 84)  return 'Rain showers'; // WMO 80-84: rain showers
+  if (code <= 86)  return 'Snow showers'; // WMO 85-86: snow showers
+  if (code <= 94)  return 'Hail';         // WMO 87-94: hail
+  return 'Thunderstorm';                  // WMO 95-99
+}
+
+function wxIcon(code, tempC) {
+  // tempC used to avoid showing snow icons when temperature is above freezing
+  const isWarm = typeof tempC === 'number' && tempC > 3;
+  if (code === 0) return '☀️';
+  if (code <= 2)  return '🌤️';
+  if (code <= 3)  return '☁️';
+  if (code <= 48) return '🌫️';    // WMO 4-48: fog / mist
+  if (code <= 59) return '🌦️';    // WMO 50-59: drizzle
+  if (code <= 69) return '🌧️';    // WMO 60-69: rain
+  if (code <= 79) return isWarm ? '🌧️' : '❄️'; // WMO 70-79: snow (→ rain if temp>3°C)
+  if (code <= 84) return '🌦️';    // WMO 80-84: rain showers
+  if (code <= 86) return isWarm ? '🌦️' : '🌨️'; // WMO 85-86: snow showers
+  return '⛈️';
+}
+
+function calcPV(poaWm2) {
+  if (!poaWm2 || isNaN(poaWm2) || poaWm2 <= 0) return 0;
+  if (!isSysConfigured()) return 0; // No fake data until user configures system
+  const pkw     = SYS.panelKw;
+  const tempC   = ST.wxTempC  || 25;
+  const windMs  = ST.wxWindMs || 0;
+  // Sandia NOCT cell temp model + wind cooling (matches hourly forecast model)
+  // Wind > 1 m/s: ~2°C cooling per m/s at high irradiance (linear scale by poa)
+  const windCool = Math.min(8, windMs * 1.8) * Math.min(1, poaWm2 / 800);
+  const tCell   = tempC + (SYS.noct - 20) / 800 * poaWm2 - windCool;
+  const tFactor = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, tCell - 25));
+  const dcKw    = pkw * (poaWm2 / 1000) * tFactor;
+  return +Math.min(dcKw * SYS.invEff, SYS.acMax || pkw * SYS.invEff).toFixed(3);
+}
+
+// Clear-sky irradiance model (Bird & Hulstrom) + cloud correction
+function clearSkyIrradiance(lat, lon) {
+  const pos = solarPosition(lat, lon);
+  if (!pos || pos.altitude <= 0) return { ghi:0, dni:0, dhi:0 };
+  const now  = new Date();
+  const doy  = Math.floor((now - new Date(now.getFullYear(),0,0)) / 86400000);
+  const alt  = pos.altitude;
+  const E0   = 1 + 0.033 * Math.cos(2 * Math.PI * doy / 365);
+  const I0   = 1367 * E0;
+  const zenR = (90 - alt) * Math.PI / 180;
+  const AM   = 1 / (Math.cos(zenR) + 0.50572 * Math.pow(96.07995 - alt, -1.6364));
+  const tau_b = 0.98 * Math.exp(-0.103 * AM);
+  const tau_d = 0.271 - 0.294 * tau_b;
+  const sinAlt = Math.sin(alt * Math.PI / 180);
+  const ghi_beam = I0 * sinAlt * tau_b;
+  const ghi_diff = I0 * sinAlt * tau_d;
+  const ghi = ghi_beam + ghi_diff;
+  const dni = ghi_beam / Math.max(0.001, sinAlt);
+  return { ghi: +ghi.toFixed(1), dni: +dni.toFixed(1), dhi: +ghi_diff.toFixed(1) };
+}
+
+function processOpenMeteo(d) {
+  const cur = d.current || {};
+  const hr  = d.hourly  || {};
+
+  if (!ST.lat || !ST.lon) return;
+
+  ST.wxTempC   = +(cur.temperature_2m || 15);
+  ST.wxCond    = wxLabel(cur.weathercode || 0);
+  ST.wxIcon    = wxIcon(cur.weathercode  || 0, ST.wxTempC);
+  ST.wxCode    = cur.weathercode || 0;  // raw WMO code for rain cap
+
+  // Use direct_radiation + diffuse_radiation from Open-Meteo
+  // direct_radiation = beam on horizontal surface (drops immediately when clouds block sun)
+  // diffuse_radiation = sky scatter (stays high under clouds)
+  // These respond faster to cloud changes than shortwave_radiation or cloud_cover
+  const directRad  = +(cur.direct_radiation  || 0);  // beam on horizontal W/m²
+  const diffuseRad = +(cur.diffuse_radiation || 0);  // diffuse W/m²
+  const swr        = +(cur.shortwave_radiation || directRad + diffuseRad || 0);
+  ST.cloudCover = +(cur.cloud_cover || 0);
+  const pos = solarPosition(ST.lat, ST.lon);
+  const cosZen = Math.max(0.001, Math.cos((90 - pos.altitude) * Math.PI / 180));
+
+  // GHI = MIN(SWR, clear-sky) — SWR measures actual radiation, clear-sky is the ceiling
+  // This correctly handles: haze/thin cloud (SWR<csGHI → SWR wins),
+  // full clear (SWR≈csGHI → both same), impossible readings (SWR>csGHI → capped)
+  const cs = clearSkyIrradiance(ST.lat, ST.lon);
+
+  let ghi, dni, dhi;
+  if (pos.altitude > 2 && swr > 0) {
+    // Use SWR as GHI — ground truth for total radiation reaching surface
+    // Cap at clear-sky (physically impossible to exceed)
+    ghi = Math.min(swr, cs.ghi);
+    // Use direct_radiation / diffuse_radiation for beam/diffuse split
+    // direct_radiation drops immediately when clouds block sun
+    dhi = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
+    dni = Math.min(directRad > 0 ? directRad / Math.max(0.001, cosZen) : (ghi - dhi) / Math.max(0.001, cosZen), 950);
+  } else if (pos.altitude > 2) {
+    // No SWR data — fall back to cloud-corrected clear-sky
+    const cf = Math.max(0, 1 - 0.75 * Math.pow(ST.cloudCover / 100, 3.4));
+    ghi = cs.ghi * cf;
+    dni = cs.dni * cf;
+    dhi = cs.dhi * Math.max(0.2, 1 - cf * 0.5);
+  } else {
+    // Night
+    ghi = 0; dni = 0; dhi = 0;
+  }
+
+  ST.irrWm2 = ghi;
+  ST.cfGHI  = swr > 0 ? swr / Math.max(1, ghi) : 1;
+
+  // Store location UTC offset for use elsewhere (satellite timezone alignment, etc.)
+  const utcOffsetSec = d.utc_offset_seconds || 0;
+  ST._utcOffsetSec = utcOffsetSec;
+
+  // Current NWP production — use calcPOA with proper DNI (prefer API DNI over computed)
+  const dniCur = (cur.direct_normal_irradiance || 0) > 0
+    ? +(cur.direct_normal_irradiance)
+    : directRad > 0 ? directRad / cosZen : 0;
+  const dhiCur = diffuseRad > 0 ? diffuseRad : ghi * 0.15;
+  const satAge = ST._satLastMs ? (Date.now() - ST._satLastMs) : Infinity;
+  if (satAge > 20 * 60 * 1000) {
+    // POA using horizontal direct + DHI fallback (same as satellite path)
+    const cfNwp     = Math.min(1, Math.max(0, (ST.cloudCover || 0) / 100));
+    const rawDHInwp = dhiCur > 0 ? dhiCur : ghi * (0.15 + cfNwp * 0.65);
+    const rawDirNwp = dniCur > 0 ? Math.min(dniCur, ghi) : Math.max(0, ghi - rawDHInwp);
+    const tiltRnwp  = (SYS.tiltDeg || 30) * Math.PI / 180;
+    const pnlAzRnwp = (SYS.panelAzimuth || 180) * Math.PI / 180;
+    const posNwp    = solarPosition(ST.lat, ST.lon, new Date());
+    const altRnwp   = Math.max(0.001, posNwp.altitude) * Math.PI / 180;
+    const azRnwp    = posNwp.azimuth * Math.PI / 180;
+    const cosAOInwp = Math.sin(altRnwp)*Math.cos(tiltRnwp) + Math.cos(altRnwp)*Math.sin(tiltRnwp)*Math.cos(azRnwp - pnlAzRnwp);
+    const poaCur    = Math.max(0,
+      Math.max(0, cosAOInwp) * rawDirNwp +
+      rawDHInwp * (1 + Math.cos(tiltRnwp)) / 2 +
+      ghi * 0.20 * (1 - Math.cos(tiltRnwp)) / 2
+    );
+    const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
+    const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
+    const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
+    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp)).toFixed(3);
+    ST.poaWm2 = +poaCur.toFixed(1);
+  }
+
+  // Build todayH using phone's local clock — phone and panels are co-located.
+  // getTimezoneOffset() returns minutes WEST of UTC (negative for UTC+), so negate it.
+  const phoneOffsetSec = -new Date().getTimezoneOffset() * 60;
+  const pad = n => String(n).padStart(2,'0');
+  const locNow   = new Date();                             // phone local time
+  const todayStr = locNow.getFullYear()    + '-'
+                 + pad(locNow.getMonth()+1) + '-'
+                 + pad(locNow.getDate());
+  const todayYr  = locNow.getFullYear();
+  const todayMo  = locNow.getMonth() + 1;
+  const todayDy  = locNow.getDate();
+
+  ST.todayH = [];
+  (hr.time || []).forEach((t, i) => {
+    if (!t.startsWith(todayStr)) return;
+    const localHour = parseInt(t.slice(11, 13));
+    const swr_h = hr.shortwave_radiation?.[i]        || 0;
+    const dni_h = hr.direct_normal_irradiance?.[i]   || 0;  // already DNI — no conversion needed
+    const dhi_h = hr.diffuse_radiation?.[i]           || 0;
+    const gti_h = hr.global_tilted_irradiance?.[i]   || 0;  // server-computed plane-of-array irradiance
+    const tmp_h = hr.temperature_2m?.[i]              || ST.wxTempC || 20;
+    const wnd_h = hr.wind_speed_10m?.[i]              || 0;   // m/s — improves cell-temp accuracy
+
+    if (swr_h <= 0 && dni_h <= 0 && gti_h <= 0) {
+      ST.todayH.push({ hour: localHour, pvKw: 0, ghi: 0, dni: 0, dhi: 0 });
+      return;
+    }
+
+    // Convert local hour midpoint → UTC for solarPosition().
+    const utcHourFrac = localHour + 0.5 - phoneOffsetSec / 3600;
+    const hDate = new Date(Date.UTC(todayYr, todayMo - 1, todayDy) + utcHourFrac * 3600000);
+    const pos_h = solarPosition(ST.lat, ST.lon, hDate);
+
+    // Prefer Open-Meteo's server-computed GTI (most accurate — accounts for atmospheric optics)
+    // Fall back to our own POA calculation if GTI not available
+    const poa_h = gti_h > 0
+      ? gti_h
+      : ((ST.lat && ST.lon && pos_h.altitude > 0 && (dni_h > 0 || dhi_h > 0))
+          ? calcPOA(dni_h, dhi_h, swr_h, SYS.tiltDeg || 30, SYS.panelAzimuth || 180, pos_h)
+          : 0);
+
+    // Sandia-style cell temp model: T_cell = T_air + (NOCT-20)/800 * G_POA + wind cooling
+    // Wind > 1 m/s reduces cell temp meaningfully (each m/s ≈ 2°C cooler at high irradiance)
+    const windCool = Math.min(8, wnd_h * 1.8);
+    const cellT_h = tmp_h + (SYS.noct - 20) / 800 * Math.max(0, poa_h) - windCool * Math.min(1, poa_h/800);
+    const tFac_h  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_h - 25));
+    const pkw = SYS.panelKw;
+    const acMax = SYS.acMax || (pkw||5) * 0.984;
+    const pvKw    = !isSysConfigured() ? 0 : +Math.max(0, Math.min(
+      acMax,
+      (poa_h / 1000) * pkw * (SYS.invEff || 0.97) * tFac_h
+    )).toFixed(3);
+
+    ST.todayH.push({ hour: localHour, pvKw, ghi: swr_h, dni: dni_h, dhi: dhi_h });
+  });
+
+  // Build 5-day forecast
+  const day = d.daily || {};
+  FORECAST = [];
+  (day.time || []).slice(0, 5).forEach((dateStr, i) => {
+    const dt      = new Date(dateStr + 'T12:00:00');
+    const dayName = i === 0 ? 'Today' : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()];
+    const code    = day.weathercode?.[i] || 0;
+    let yieldKwh  = 0;
+    if (i === 0 && ST.todayH.length) {
+      yieldKwh = +ST.todayH.reduce((s, h) => s + h.pvKw, 0).toFixed(2);
+    } else {
+      const rain = day.precipitation_probability_max?.[i] || 0;
+      const cf_d = Math.max(0, 1 - 0.75 * Math.pow(rain / 100, 3.4));
+      yieldKwh   = +((SYS.panelKw || 5) * 5 * cf_d).toFixed(2);
+    }
+    FORECAST.push({
+      d: dayName, yieldKwh,
+      tempC: day.temperature_2m_max?.[i] || ST.wxTempC,
+      rain:  day.precipitation_probability_max?.[i] || 0,
+      icon:  wxIcon(code, ST.wxTempC)
+    });
+  });
+  while (FORECAST.length < 5) FORECAST.push({ d:'--', yieldKwh:0, tempC:15, rain:50, icon:'☁️' });
+  // Push today's peak forecast to Java so the background service's morning notification
+  // can show: "Now X.XX kW, peak ~Y.Y kW at HH:00, today YY kWh"
+  try {
+    if (ST.todayH && ST.todayH.length) {
+      const peak = ST.todayH.reduce((a, b) => b.pvKw > a.pvKw ? b : a, { pvKw: 0, hour: 12 });
+      const todayKwh = FORECAST[0] ? FORECAST[0].yieldKwh : 0;
+      if (window.AppBridge && AppBridge.saveForecast) {
+        AppBridge.saveForecast(peak.pvKw, peak.hour, todayKwh);
+      }
+    }
+  } catch(e) {}
+}
+
+function processForecastSolar(data) {
+  // Forecast.Solar returns watt_hours_period per hour
+  const watts = data.result && data.result.watts ? data.result.watts : {};
+  const wattsDay = data.result && data.result.watt_hours_day ? data.result.watt_hours_day : {};
+
+  const now    = new Date();
+  const nowH   = now.getHours();
+  // Use phone local date — toISOString() gives UTC date which breaks after ~21:00 local in UTC+3
+  const pad2   = n => String(n).padStart(2,'0');
+  const today  = now.getFullYear() + '-' + pad2(now.getMonth()+1) + '-' + pad2(now.getDate());
+
+  // Build todayH from hourly watts
+  ST.todayH = [];
+  for (let h = 0; h < 24; h++) {
+    const hStr = today + ' ' + String(h).padStart(2,'0') + ':00:00';
+    const w    = watts[hStr] || 0;
+    const pvKw = +(w / 1000).toFixed(3);
+    ST.todayH.push({ hour:h, pvKw, ghi:pvKw*200, dni:pvKw*150, dhi:pvKw*50 });
+  }
+
+  // Current production estimate from current hour
+  const curHStr = today + ' ' + String(nowH).padStart(2,'0') + ':00:00';
+  ST.pvKw = +((watts[curHStr] || 0) / 1000).toFixed(3);
+
+  // Basic weather estimates (Forecast.Solar doesn't provide temp/cloud)
+  ST.irrWm2    = +(ST.pvKw / Math.max(0.001, SYS.acMax) * 1000).toFixed(0);
+  ST.cloudCover= ST.pvKw < SYS.acMax * 0.3 ? 70 : 20;
+  ST.wxTempC   = ST.wxTempC || 15;
+  ST.wxCond    = ST.pvKw > 1 ? 'Sunny' : ST.pvKw > 0.1 ? 'Partly cloudy' : 'Overcast/night';
+  ST.wxIcon    = ST.pvKw > 1 ? '☀️' : ST.pvKw > 0.1 ? '🌤️' : '☁️';
+  ST.poaWm2    = ST.irrWm2;
+  ST.cfGHI     = 1.0;
+
+  // Build 5-day forecast
+  FORECAST = [];
+  const days = Object.keys(wattsDay).sort().slice(0,5);
+  days.forEach((dateStr, i) => {
+    const yieldWh  = wattsDay[dateStr] || 0;
+    const yieldKwh = +(yieldWh / 1000).toFixed(2);
+    const dt       = new Date(dateStr + 'T12:00:00');
+    const dayName  = i===0 ? 'Today' : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dt.getDay()];
+    FORECAST.push({
+      d: dayName, yieldKwh,
+      tempC: ST.wxTempC, rain: yieldKwh < SYS.panelKw * 3 ? 60 : 15,
+      icon: yieldKwh > SYS.panelKw * 4 ? '☀️' : yieldKwh > SYS.panelKw * 2 ? '🌤️' : '🌧️'
+    });
+  });
+  // Pad to 5 days if needed
+  while (FORECAST.length < 5) {
+    FORECAST.push({ d:'--', yieldKwh:0, tempC:15, rain:50, icon:'☁️' });
+  }
+}
+
+function setApi(t, m) {
+  const bar  = document.getElementById('apiBar');
+  const icon = document.getElementById('apiIcon');
+  const msg  = document.getElementById('apiMsg');
+  if (!bar) return;
+  const palettes = {
+    ok:   { col:'#00c882', bg:'rgba(0,200,130', ic:'✅', glyph:'🛰️' },
+    err:  { col:'#d4b020', bg:'rgba(212,176,32', ic:'⚠️', glyph:'📡' },
+    load: { col:'#00b4e6', bg:'rgba(0,180,230', ic:'⏳', glyph:'🛰️' },
+  };
+  const p = palettes[t] || palettes.load;
+  bar.style.borderColor = p.col+'44';
+  bar.style.background  = `linear-gradient(135deg,${p.bg},.08),rgba(0,8,25,.9))`;
+  if (icon) { icon.textContent=p.glyph; icon.style.borderColor=p.col+'66'; icon.style.boxShadow=`0 0 14px ${p.col}33`; icon.style.background=`radial-gradient(circle at 35% 35%,${p.bg},.2),${p.bg},.05))`; }
+  if (msg)  msg.textContent = m;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WMO code helpers
+// ═══════════════════════════════════════════════════════════════
+function wmoIcon(c){if(c===0)return'☀️';if(c<=2)return'🌤️';if(c===3)return'☁️';if(c<=49)return'🌫️';if(c<=67)return'🌧️';if(c<=77)return'❄️';if(c<=84)return'🌦️';return'⛈️';}
+function wmoText(c){if(c===0)return'Clear sky';if(c<=2)return'Partly cloudy';if(c===3)return'Overcast';if(c<=49)return'Foggy';if(c<=59)return'Drizzle';if(c<=69)return'Rain';if(c<=79)return'Snow';if(c<=84)return'Showers';return'Thunderstorm';}
+
+// ═══════════════════════════════════════════════════════════════
+// IRRADIANCE → kW (STC: 1000 W/m² = 5 kW peak)
+// ═══════════════════════════════════════════════════════════════
+// ── SOLAR POSITION ─────────────────────────────────────────────
+// Returns { altitude, azimuth } in degrees.
+// Pass utcDate to get position at a specific UTC moment (used for hourly forecast).
+// Omit utcDate (or pass null) to use current time.
+function solarPosition(lat, lon, utcDate) {
+  const now     = utcDate || new Date();
+  const yr      = now.getUTCFullYear();
+  const doy     = Math.floor((now.getTime() - Date.UTC(yr, 0, 0)) / 86400000);
+  const hourUTC = now.getUTCHours() + now.getUTCMinutes()/60 + now.getUTCSeconds()/3600;
+  const decl   = 23.45 * Math.sin((360/365*(doy - 81)) * Math.PI/180);
+  const ha     = (hourUTC - 12)*15 + lon;
+  const latR   = lat  * Math.PI/180;
+  const decR   = decl * Math.PI/180;
+  const haR    = ha   * Math.PI/180;
+  const sinAlt = Math.sin(latR)*Math.sin(decR) + Math.cos(latR)*Math.cos(decR)*Math.cos(haR);
+  const alt    = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180/Math.PI;
+  const cosZ   = Math.cos((90-alt)*Math.PI/180);
+  const cosAz  = (Math.sin(decR) - Math.sin(latR)*sinAlt) /
+                 (Math.cos(latR)*Math.cos(Math.asin(Math.max(-1,Math.min(1,sinAlt)))) + 1e-9);
+  let   az     = Math.acos(Math.max(-1, Math.min(1, cosAz))) * 180/Math.PI;
+  if   (ha > 0) az = 360 - az;
+  return { altitude:alt, azimuth:az, cosZenith:cosZ };
+}
+
+// ── PLANE OF ARRAY (POA) IRRADIANCE ────────────────────────────
+// Transposition model for south-facing tilted panel
+// dni = Direct Normal Irradiance (W/m²)
+// dhi = Diffuse Horizontal Irradiance (W/m²)
+// ghi = Global Horizontal Irradiance (W/m²)
+// tiltDeg = panel tilt from horizontal (e.g. 30)
+// panelAz = panel azimuth (180 = south)
+// pos is optional — when omitted uses current sun position (real-time).
+// Pass a pre-computed solarPosition() result to use a specific-hour position (hourly forecast).
+function calcPOA(dni, dhi, ghi, tiltDeg, panelAz, pos) {
+  const lat = ST.lat || 0;
+  const lon = ST.lon || 0;
+  if (!lat || !lon || (!ghi && !dni)) return 0;
+  const p = pos || solarPosition(lat, lon);
+  if (p.altitude <= 0) return dhi > 0 ? dhi * (1 + Math.cos(tiltDeg * Math.PI/180)) / 2 : 0;
+  const tiltR   = tiltDeg * Math.PI/180;
+  const altR    = p.altitude * Math.PI/180;
+  const solAzR  = p.azimuth  * Math.PI/180;
+  const pnlAzR  = panelAz    * Math.PI/180;
+  const cosAOI  = Math.sin(altR)*Math.cos(tiltR) +
+                  Math.cos(altR)*Math.sin(tiltR)*Math.cos(solAzR - pnlAzR);
+  const poaBeam   = Math.max(0, cosAOI) * dni;
+  const poaSky    = dhi * (1 + Math.cos(tiltR)) / 2;
+  const poaGround = ghi * 0.20 * (1 - Math.cos(tiltR)) / 2;
+  return poaBeam + poaSky + poaGround;
+}
+
+// ── GHI → POA → AC kW ──────────────────────────────────────────
+// Uses DNI/DHI from API when available, falls back to split estimate
+// Temperature via NOCT model: cellT = ambient + (NOCT-20)*(irr/800)
+function irrToKw(ghi, dni, dhi, cloudCover) {
+  // Cloud cover correction (Boland empirical model):
+  // NWP forecast irradiance overestimates on overcast days.
+  // cloud_factor = 1 - 0.75*(cc)^3.4  (Boland et al.)
+  // DNI is blocked more aggressively than GHI.
+  const cc       = Math.min(100, Math.max(0, cloudCover || ST.cloudCover || 0)) / 100;
+  const cfGHI    = Math.max(0, 1 - 0.75 * Math.pow(cc, 3.4));
+  const cfDNI    = Math.max(0, cfGHI - 0.15);   // beam always more attenuated than diffuse
+
+  const corrGHI  = ghi * cfGHI;
+  const corrDNI  = (dni || 0) * cfDNI;
+  const corrDHI  = (dhi || 0) * cfGHI;
+
+  const ambient  = ST.wxTempC || 15;
+  const cellT    = ambient + (45 - 20) * (Math.max(0, corrGHI) / 800);
+  const tempF    = Math.max(0.80, 1 - Math.max(0, cellT - 25) * 0.004);
+
+  ST.tempFactor  = +tempF.toFixed(4);
+  ST.cellTempC   = +cellT.toFixed(1);
+  ST.poaWm2      = +(corrGHI * 1.10).toFixed(1);
+  ST.cfGHI       = +cfGHI.toFixed(3);
+
+  const acMax  = SYS.acMax;
+  const raw    = (corrGHI * 1.10 / 1000) * acMax * 0.97 * tempF;
+  return +Math.max(0, Math.min(acMax, raw)).toFixed(3);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PROCESS API RESPONSE
+// ═══════════════════════════════════════════════════════════════
+function processData(data) {
+  const cur = data.current;
+  ST.irrDir    = cur.direct_radiation         || 0;
+  ST.irrDif    = cur.diffuse_radiation        || 0;
+  ST.irrDNI    = cur.direct_normal_irradiance || 0;
+  ST.irrWm2    = ST.irrDir + ST.irrDif;
+  ST.cloudCover= cur.cloud_cover              || 0;
+  ST.pvKw      = irrToKw(ST.irrWm2, ST.irrDNI, ST.irrDif, ST.cloudCover);
+  ST.wxTempC = +cur.temperature_2m.toFixed(1);
+  ST.wxCond  = wmoText(cur.weathercode);
+  ST.wxIcon  = wmoIcon(cur.weathercode);
+
+  const now = new Date();
+  const _p2 = n => String(n).padStart(2,'0');
+  const ts = now.getFullYear() + '-' + _p2(now.getMonth()+1) + '-' + _p2(now.getDate());
+  const h = data.hourly;
+  const si = h.time.findIndex(t => t.startsWith(ts));
+  ST.todayH = [];
+  for (let i = 0; i < 24; i++) {
+    const idx = si + i;
+    const ghi = (h.direct_radiation[idx]||0)+(h.diffuse_radiation[idx]||0);
+    const dni = h.direct_normal_irradiance ? (h.direct_normal_irradiance[idx]||0) : null;
+    const dhi = h.diffuse_radiation[idx]||0;
+    const cc_h = h.cloud_cover ? (h.cloud_cover[idx]||0) : ST.cloudCover;
+    ST.todayH.push({ hour:i, pvKw:irrToKw(ghi,dni,dhi,cc_h), ghi, dni, dhi });
+  }
+
+  FORECAST = [];
+  for (let d = 0; d < 5; d++) {
+    const ds = si+d*24; let s=0;
+    for (let i = 0; i < 24; i++) {
+      const idx = ds+i;
+      const ghi=(h.direct_radiation[idx]||0)+(h.diffuse_radiation[idx]||0);
+      const dni=h.direct_normal_irradiance?(h.direct_normal_irradiance[idx]||0):null;
+      const dhi=h.diffuse_radiation[idx]||0;
+      const cc_f=h.cloud_cover?(h.cloud_cover[idx]||0):ST.cloudCover;
+      s+=irrToKw(ghi,dni,dhi,cc_f);
+    }
+    const dt=new Date(now); dt.setDate(dt.getDate()+d);
+    FORECAST.push({
+      d:d===0?'Today':['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dt.getDay()],
+      yieldKwh:+s.toFixed(2), tempC:+data.daily.temperature_2m_max[d].toFixed(1),
+      rain:data.daily.precipitation_probability_max[d]||0,
+      icon:wmoIcon(data.daily.weathercode[d]),
+    });
+  }
+}
+
+// Offline fallback: estimate from solar position geometry
+function fallbackEstimate() {
+  if (!ST.lat) return;
+  const pos = solarPosition(ST.lat, ST.lon);
+  if (pos.altitude <= 0) { ST.pvKw=0; ST.irrWm2=0; ST.poaWm2=0; return; }
+  // Estimate GHI from solar altitude (cloudy conditions: 20% of clear-sky)
+  const clearSky = Math.sin(pos.altitude * Math.PI/180) * 1000;
+  const ghi = clearSky * 0.20;
+  // Estimate DNI/DHI split
+  const dhi = ghi * 0.45; const dni = (ghi * 0.55) / Math.max(0.05, pos.cosZenith);
+  ST.irrWm2  = +ghi.toFixed(0); ST.irrDNI = +dni.toFixed(0); ST.irrDif = +dhi.toFixed(0);
+  ST.pvKw    = irrToKw(ghi, dni, dhi);
+  ST.wxCond  = 'Offline estimate'; ST.wxIcon = '🌤️';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ENERGY FLOW — fully calculated, no manual battery input
+// Solar → Home → Battery → Grid
+// Deficit → Battery → Grid import
+// ═══════════════════════════════════════════════════════════════
+function calcFlow() {
+  // Huawei Luna 2000 accurate flow model
+  // Priority: Solar → Home → Battery → Grid
+  const pv      = ST.pvKw  || 0;
+  const cons    = ST.consKw || 0;
+  const soc     = ST.battSoc || 50;
+  // ST.battSoc is on the INTERNAL scale: 0 = physical 10% (empty), 100 = physical 100% (full)
+  // hardFlr = 0 internal = physical 10% — the true reserve floor where discharge stops
+  // Soft ramp zone: internal 0–2% (display 10–11.6%) — reduce discharge near floor
+  // to prevent a hard cliff and match Huawei inverter behaviour at reserve boundary
+  const hardFlr = 0;   // internal SOC: discharge blocked only at/below this
+  const rampTop = 2;   // internal SOC: full discharge rate above this
+
+  const s2h = Math.min(pv, cons);   // solar directly to home
+  const pvS = pv - s2h;             // solar surplus after home
+  const hD  = cons - s2h;           // home deficit remaining
+
+  // Battery charge — from surplus only, never from grid
+  const bC = (soc < 100) ? Math.min(pvS, SYS.battMaxC) : 0;
+
+  // Battery discharge:
+  // soc <= hardFlr (internal 0% = display 10%): hard floor, no discharge, grid covers all
+  // soc <= rampTop (internal 0-2% = display 10-11.6%): soft ramp, partial discharge
+  // soc > rampTop: full discharge up to battMaxD
+  let bD;
+  if (soc <= hardFlr) {
+    bD = 0;
+  } else if (soc <= rampTop) {
+    const frac = (soc - hardFlr) / rampTop;   // 0→1 as soc goes from floor to rampTop
+    bD = Math.min(hD * frac, SYS.battMaxD);
+  } else {
+    bD = Math.min(hD, SYS.battMaxD);
+  }
+
+  const gExp = Math.max(0, pvS - bC);   // feed-in to grid
+  const gImp = Math.max(0, hD - bD);    // import from grid
+
+  return {
+    pv, cons, solar2home: s2h, solar2batt: bC, batt2home: bD,
+    battFlow: bC - bD, gridExport: gExp, gridImport: gImp
+  };
+}
+
+// Evolve battery SOC based on calculated flow over elapsed time
+function evolveSoc() {
+  const fl  = calcFlow();
+  const now = Date.now();
+  const dtH = (now - lastFlowT) / 3600000;   // hours elapsed
+  lastFlowT = now;
+  ST._socLastMs = now; // track when SOC was last evolved
+  const hardFlr = 0;   // internal 0 = physical 10% — discharge stops here
+  const prevSoc = ST.battSoc;
+  // Huawei Luna 2000: 96% charge × 96% discharge = 92% round-trip efficiency
+  // Efficiency model:
+  // Charging (battFlow > 0): only 95% of solar energy gets stored → apply ×0.95
+  // Discharging (battFlow < 0): consKw IS the real draw — no penalty needed
+  // Applying /0.95 on discharge caused ~8% SOC drift over 30h vs FusionSolar
+  const battEff = 0.95;
+  const effFlow = fl.battFlow > 0 ? fl.battFlow * battEff : fl.battFlow;
+  ST.battSoc = Math.max(hardFlr, Math.min(100,
+    ST.battSoc + (effFlow / (SYS.battUse || 4.5)) * dtH * 100
+  ));
+  ST._socEvolvedMs = now; // mark that evolveSoc has run — blocks SharedPrefs overwrite
+  // Persist SOC to Android SharedPreferences (survives WebView process kill).
+  // Only persist when system is properly configured — prevents the default
+  // ST.battSoc=50 from being written as if it were a real user-entered SOC,
+  // which would otherwise pre-fill the SOC field with 50% on every launch.
+  if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
+    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
+  }
+  // Accumulate grid kWh in real-time from live calcFlow() values.
+  // Only accumulate when API has loaded (ST.apiOk) so ST.pvKw is real, not 0.
+  // Java background service corrects the total every 30 min via applyStateFromNative.
+  const today = new Date(now).toDateString();
+  if (!ST._lastDate) ST._lastDate = today;
+  if (today !== ST._lastDate) {
+    ST.gridExportKwh = 0; ST.gridImportKwh = 0; ST.pvKwhToday = 0;
+    ST._lastDate = today;
+  }
+  if (ST.apiOk) {
+    ST.gridExportKwh = +(ST.gridExportKwh + fl.gridExport * dtH).toFixed(4);
+    ST.gridImportKwh = +(ST.gridImportKwh + fl.gridImport * dtH).toFixed(4);
+    ST.pvKwhToday    = +(ST.pvKwhToday    + (ST.pvKw||0)  * dtH).toFixed(4);
+    // Persist so values survive brief app reopen
+    try { localStorage.setItem('solarGridKwh', JSON.stringify({
+      exp: ST.gridExportKwh, imp: ST.gridImportKwh, date: today })); } catch(e) {}
+  }
+
+  // ── Real-time alerts ──────────────────────────────────────────────────────
+  if (!isSysConfigured()) return;
+  const canNotif = (window.AppBridge && window.AppBridge.showNotif) ||
+    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  if (!canNotif) return;
+
+  const nowMin = now / 60000;
+
+  // Grid power activated
+  if (fl.gridImport > 0.05 &&
+      (!ST._lastGridNotif || nowMin - ST._lastGridNotif > 60)) {
+    ST._lastGridNotif = nowMin;
+    showNotification(
+      '⚡ Grid power active',
+      'Drawing ' + f(fl.gridImport, 2) + ' kW from grid. ' +
+      'Battery: ' + socToDisplay(ST.battSoc) + '%. Solar: ' + f(ST.pvKw, 2) + ' kW.',
+      'grid-import'
+    );
+  }
+
+  // Solar production ended — fire when production drops to ≤ 0.20 kW
+  const prevPvOn = ST._pvWasOn;
+  ST._pvWasOn = ST.pvKw > 0.20;
+  if (prevPvOn && !ST._pvWasOn &&
+      fl.battFlow < -0.05 &&
+      (!ST._lastSolarEndNotif || nowMin - ST._lastSolarEndNotif > 120)) {
+    ST._lastSolarEndNotif = nowMin;
+    const bkp = f(stored() / Math.max(0.01, ST.consKw), 1);
+    showNotification(
+      '🌙 Solar ended — running on battery',
+      'Production dropped to ' + f(ST.pvKw, 2) + ' kW. ' +
+      'Battery at ' + socToDisplay(ST.battSoc) + '% · ~' + bkp + 'h backup remaining.',
+      'solar-ended'
+    );
+  }
+
+  // Battery at reserve
+  if (ST.battSoc <= hardFlr + 2 && prevSoc > hardFlr + 2 &&
+      (!ST._lastBattLowNotif || nowMin - ST._lastBattLowNotif > 15)) {
+    ST._lastBattLowNotif = nowMin;
+    showNotification(
+      '🔋 Battery at reserve — grid starting',
+      'Battery at ' + socToDisplay(ST.battSoc) + '% (reserve floor). ' +
+      'Grid covering ' + f(fl.gridImport,2) + ' kW. Solar: ' + f(ST.pvKw,2) + ' kW.',
+      'batt-low'
+    );
+  }
+
+  // Production drop detection — 30-minute rolling window
+  // Store pvKw every 5s in a circular buffer (360 entries = 30 min)
+  if (!ST._pvHistory) ST._pvHistory = [];
+  ST._pvHistory.push(ST.pvKw);
+  if (ST._pvHistory.length > 360) ST._pvHistory.shift(); // keep 30 min
+
+  const prevHighProd = ST._prevPvHigh;
+  ST._prevPvHigh = ST.pvKw >= 1.5;
+  // Check 30-min drop: compare current to value 360 steps ago (or oldest available)
+  const pvOld = ST._pvHistory.length >= 360 ? ST._pvHistory[0] : ST._pvHistory[0] || 0;
+  const pvDrop = pvOld - ST.pvKw;                 // positive = dropped
+  const surplusWasHigh = pvOld >= 1.5;             // was producing enough 30 min ago
+
+  if (surplusWasHigh && pvDrop > 1.0 && ST.pvKw < 1.5 &&
+      ST._pvHistory.length >= 360 &&         // full 30-min window required — prevents false alarm on resume
+      _notifReady() &&                        // startup grace period must have passed
+      (!ST._lastProdDropNotif || nowMin - ST._lastProdDropNotif > 30)) {
+    ST._lastProdDropNotif = nowMin;
+    showNotification(
+      '☁️ Solar dropped — pause large appliances',
+      'Production fell from ' + f(pvOld,2) + ' kW to ' + f(ST.pvKw,2) +
+      ' kW in 30 min. Surplus no longer sufficient — pause high-load appliances.',
+      'prod-drop'
+    );
+  }
+
+  // Battery fully charged
+  if (ST.battSoc >= 99 && prevSoc < 99 &&
+      (!ST._lastBattFullNotif || nowMin - ST._lastBattFullNotif > 15)) {
+    ST._lastBattFullNotif = nowMin;
+    const surplus = +(ST.pvKw - (ST.consKw||0)).toFixed(2);
+    const runnable = APPLIANCES.filter(a => a.kw <= surplus).map(a => a.icon+' '+a.name).slice(0,3).join(', ');
+    showNotification(
+      '🌞 Battery full — use free solar!',
+      'Battery 100%. Exporting ' + f(fl.gridExport,2) + ' kW to grid.' +
+      (runnable ? ' Run: ' + runnable + '.' : ''),
+      'batt-full'
+    );
+  }
+
+
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
+// ── Theme management ────────────────────────────────────────────────────────
+function applyTheme(theme) {
+  // theme: 'dark' | 'light' | 'system'
+  const html = document.documentElement;
+  if (theme === 'system') {
+    html.removeAttribute('data-theme');
+  } else {
+    html.setAttribute('data-theme', theme);
+  }
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = theme === 'dark' ? '☀️' : theme === 'light' ? '🌙' : '🌓';
+  try { localStorage.setItem('solarTheme', theme); } catch(e) {}
+}
+function toggleTheme() {
+  const current = localStorage.getItem('solarTheme') || 'system';
+  // Cycle: system → dark → light → system
+  const next = current === 'system' ? 'dark' : current === 'dark' ? 'light' : 'system';
+  applyTheme(next);
+}
+// Apply saved theme immediately (before render)
+(function() {
+  const saved = localStorage.getItem('solarTheme');
+  if (saved && saved !== 'system') applyTheme(saved);
+})();
+
+// Section toggle — used for config and smart schedule collapse
+function toggleSection(bodyId, chevronId) {
+  const body = document.getElementById(bodyId);
+  const chev = document.getElementById(chevronId);
+  if (!body) return;
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
+}
+
+const f = (v,d=2) => { const n=Number(v); return isNaN(n)?'--':n.toFixed(d); };
+
+// Hardcoded Play Store URL — fallback if version.json storeUrl is missing or wrong
+const STORE_URL = 'https://play.google.com/store/apps/details?id=com.dumitriualxlang.solardasboard';
+
+function openPlayStore() {
+  const url = STORE_URL;
+  if (window.AppBridge && typeof AppBridge.openUrl === 'function') {
+    AppBridge.openUrl(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+async function checkForUpdate() {
+  try {
+    const res = await fetch('https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now());
+    if (!res.ok) return;
+    const data = await res.json();
+    const lastDismissed = parseInt(localStorage.getItem('updDismissed') || '0');
+    if (data.versionCode <= lastDismissed) return;
+    if (window.AppBridge && typeof AppBridge.getVersionCode === 'function') {
+      const installed = AppBridge.getVersionCode();
+      if (installed && data.versionCode <= installed) return;
+    }
+    // Use hardcoded URL as fallback if version.json storeUrl is missing/wrong
+    const storeUrl = (data.storeUrl && data.storeUrl.includes('play.google.com')) ? data.storeUrl : STORE_URL;
+    showUpdateDialog(data.versionName, storeUrl, data.versionCode);
+  } catch(e) {}
+}
+
+function showUpdateDialog(versionName, storeUrl, versionCode) {
+  const overlay = document.createElement('div');
+  overlay.className = 'upd-overlay';
+  const card = document.createElement('div');
+  card.className = 'upd-card';
+  card.innerHTML =
+    '<div style="font-size:40px;margin-bottom:12px">🚀</div>' +
+    '<div class="upd-title">Update available</div>' +
+    '<div class="upd-body">Version ' + versionName + ' is available on the Play Store with the latest improvements and fixes.</div>';
+  const btns = document.createElement('div');
+  btns.className = 'upd-btns';
+  const later = document.createElement('button');
+  later.className = 'upd-later';
+  later.textContent = 'Not now';
+  later.onclick = () => { try { localStorage.setItem('updDismissed', versionCode); } catch(e) {} overlay.remove(); };
+  const now = document.createElement('button');
+  now.className = 'upd-now';
+  now.textContent = 'Update ↗';
+  now.onclick = () => {
+    try { localStorage.setItem('updDismissed', versionCode); } catch(e) {}
+    overlay.remove();
+    // Create a real anchor and click it — TWA routes _blank anchors to Chrome Custom Tab
+    const a = document.createElement('a');
+    a.href = storeUrl;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    // AppBridge.openUrl uses Android Intent
+    if (window.AppBridge && typeof AppBridge.openUrl === 'function') {
+      AppBridge.openUrl(storeUrl);
+    } else {
+      window.open(storeUrl, '_blank');
+    }
+  };
+  btns.appendChild(later);
+  btns.appendChild(now);
+  card.appendChild(btns);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+const stored = () => SYS.battUse ? +((ST.battSoc/100) * SYS.battUse).toFixed(3) : 0;
+
+// ── Quick SOC correction from battery panel ───────────────────────────────
+function onPanelBrandChange() {
+  // FusionSolar integration removed - no-op
+}
+
+const CALIB_STORE = 'solarCalibHistory';
+const CALIB_MAX   = 60;
+
+function loadCalibHistory() {
+  try { return JSON.parse(localStorage.getItem(CALIB_STORE) || '[]'); }
+  catch(e) { return []; }
+}
+
+function saveCalibHistory(h) {
+  try { localStorage.setItem(CALIB_STORE, JSON.stringify(h)); } catch(e) {}
+}
+
+function getLearnedFactor(ghi) {
+  const h = loadCalibHistory();
+
+  // Only use new-format readings that have pvKwBase stored.
+  // Old readings (no pvKwBase) used pvReal/pvApp which is a relative factor —
+  // those values are corrupted and produce wrong corrections. Ignore them.
+  const valid = h.filter(pt => pt.pvKwBase > 0 && pt.pvReal > 0);
+  if (!valid.length) return 1.0;
+
+  const now = Date.now();
+  let wSum = 0, fSum = 0;
+  valid.forEach(pt => {
+    // Absolute factor for this reading: pvReal / pvKwBase
+    const absFactor = pt.pvReal / pt.pvKwBase;
+    const ghiDist   = Math.abs((pt.ghi || 0) - ghi) / Math.max(ghi, 50);
+    const ageDays   = (now - (pt.ts || 0)) / 86400000;
+    const w         = Math.exp(-ghiDist * 1.5) * Math.exp(-ageDays * 0.07);
+    wSum += w; fSum += absFactor * w;
+  });
+  const factor = wSum > 0 ? fSum / wSum : 1.0;
+  return +Math.max(0.25, Math.min(4.0, factor)).toFixed(3);
+}
+
+function calibrateProduction() {
+  const real = parseFloat(document.getElementById('cfgCalibReal').value);
+  const msg  = document.getElementById('cfgCalibMsg');
+  const setMsg = (t, c) => { if(msg){ msg.textContent=t; msg.style.color=c; } };
+
+  if (isNaN(real) || real <= 0)     { setMsg('Enter the kW value from your inverter app.','var(--am)'); return; }
+  if (ST.pvKw < 0.3)                { setMsg('Too little production right now — wait for stronger sun.','var(--am)'); return; }
+
+  // Use pvKwBase (pre-calibration, raw formula output) for the absolute factor.
+  // Storing pvReal/pvApp (relative) was the bug causing persistent offset after
+  // the first reading shifted the baseline — the factor never grew past the first reading.
+  const pvBase = ST.pvKwBase > 0 ? ST.pvKwBase : ST.pvKw;
+  const rawFactor = real / pvBase;  // absolute: pvReal / pvKwBase
+  if (rawFactor < 0.25 || rawFactor > 4.0) { setMsg('Values too far apart — check both are in kW.','var(--rd)'); return; }
+
+  // Store data point
+  const h = loadCalibHistory();
+  h.push({
+    ts:      Date.now(),
+    ghi:     +(ST.irrWm2 || 0),
+    cloud:   +(ST.cloudCover || 0),
+    hour:    new Date().getHours(),
+    pvKwBase: +pvBase.toFixed(3),   // absolute base — key for correct factor
+    pvApp:   +ST.pvKw.toFixed(3),   // calibrated value shown to user
+    pvReal:  +real.toFixed(3),
+    factor:  +rawFactor.toFixed(4), // absolute: pvReal / pvKwBase
+    consKw:  +(ST.consKw || 0),
+    battSoc: +socToDisplay(ST.battSoc).toFixed(1),
+    migrated: true,                 // mark as new-format so migration skips it
+  });
+  if (h.length > CALIB_MAX) h.splice(0, h.length - CALIB_MAX);
+  saveCalibHistory(h);
+
+  // ── Apply correction IMMEDIATELY without waiting for next weather fetch ──
+  // pvKwBase is the pre-calibration reading stored in applySatelliteRadiation
+  const newFactor = getLearnedFactor(ST.irrWm2 || 0);
+  SYS.pvCalibFactor = newFactor;
+  if (ST.pvKwBase > 0) {
+    ST.pvKw = +(ST.pvKwBase * newFactor).toFixed(3);
+  }
+
+  document.getElementById('cfgCalibReal').value = '';
+  setMsg('✅ Reading saved · ' + h.length + ' total · now showing ' + f(ST.pvKw,2) + ' kW', 'var(--g)');
+  setTimeout(() => { if(msg) msg.textContent = ''; }, 5000);
+  updateCalibDisplay();
+  // Re-render immediately so the dashboard shows the corrected value
+  renderFlow(); renderBattery(); renderMetrics(); renderHeader();
+}
+
+function resetCalibration() {
+  saveCalibHistory([]);
+  try { localStorage.removeItem('socCorrHistory'); } catch(e) {}
+  SYS.pvCalibFactor = 1.0;
+  ST.pvKwBase = 0;
+  const msg = document.getElementById('cfgCalibMsg');
+  if(msg){ msg.textContent = 'All learning data cleared.'; msg.style.color = 'var(--t2)'; }
+  setTimeout(() => { if(msg) msg.textContent = ''; }, 3000);
+  updateCalibDisplay();
+  fetchWeather();
+}
+
+function updateCalibDisplay() {
+  const h       = loadCalibHistory();
+  const n       = h.length;
+  const factor  = getLearnedFactor(ST.irrWm2 || 0);
+  SYS.pvCalibFactor = factor;
+
+  let socPts = 0;
+  try { socPts = safeJson('socCorrHistory', []).length; } catch(e) {}
+  const totalPts = n + socPts;
+
+  const labelEl  = document.getElementById('cfgCalibLabel');
+  const factorEl = document.getElementById('cfgCalibFactor');
+  const barEl    = document.getElementById('cfgCalibBar');
+  const ptsEl    = document.getElementById('cfgCalibPts');
+  const appEl    = document.getElementById('cfgCalibApp');
+
+  if(appEl)    appEl.textContent    = 'App: ' + (ST.pvKw > 0 ? f(ST.pvKw,2)+' kW' : '-- kW');
+  if(factorEl) factorEl.textContent = '×' + factor.toFixed(2);
+  if(ptsEl)    ptsEl.textContent    = n + ' production · ' + socPts + ' SOC readings';
+
+  let label, pct, col;
+  if      (totalPts === 0)  { label='No readings yet — enter a value below'; pct=0;   col='var(--t3)'; }
+  else if (totalPts < 4)    { label='Learning… add more readings for accuracy';  pct=Math.round(totalPts/12*100); col='var(--am)'; }
+  else if (totalPts < 10)   { label='Calibrating — accuracy improving';          pct=Math.round(totalPts/12*100); col='var(--bl)'; }
+  else                      { label='Well calibrated · auto-adjusting to conditions'; pct=100; col='var(--g)'; }
+
+  if(labelEl) { labelEl.textContent = label; labelEl.style.color = col; }
+  if(barEl)   { barEl.style.width = pct+'%'; barEl.style.background = col; }
+}
+
+function openSocEdit() {
+  const row = document.getElementById('socEditRow');
+  const inp = document.getElementById('socEditInput');
+  if (!row || !inp) return;
+  inp.value = Math.round(socToDisplay(ST.battSoc));
+  row.style.display = 'flex';
+  inp.focus(); inp.select();
+}
+function closeSocEdit() {
+  const row = document.getElementById('socEditRow');
+  if (row) row.style.display = 'none';
+}
+function applySocEdit() {
+  const inp = document.getElementById('socEditInput');
+  if (!inp) return;
+  const displayPct = Math.min(90, Math.max(10, parseFloat(inp.value) || 50));
+
+  // ── Record SOC correction for cross-variable learning ─────────────
+  const appDisplaySoc = socToDisplay(ST.battSoc);
+  const socDrift      = displayPct - appDisplaySoc;  // +ve = app underestimated
+  const hourNow       = new Date().getHours();
+  const isPvOff       = ST.pvKw < 0.1;
+
+  try {
+    const socH = safeJson('socCorrHistory', []);
+    const entry = {
+      ts: Date.now(), hour: hourNow,
+      appSoc: +appDisplaySoc.toFixed(1), realSoc: displayPct,
+      drift: +socDrift.toFixed(1),
+      pvKw: +ST.pvKw.toFixed(3),
+      consKw: +(ST.consKw || 0).toFixed(3),
+      battUsable: +(SYS.battUse || 9).toFixed(2),
+    };
+
+    // If no sun and drift is significant, derive actual consumption from SOC drop (log only)
+    if (isPvOff && Math.abs(socDrift) > 3 && socCorrHistory_lastTs) {
+      const hoursElapsed = (Date.now() - socCorrHistory_lastTs) / 3600000;
+      if (hoursElapsed > 1 && hoursElapsed < 16) {
+        const actualConsKw = Math.abs(socDrift) / 100 * (SYS.battUse || 9) / hoursElapsed;
+        entry.derivedConsKw = +actualConsKw.toFixed(3);
+        // Do NOT override ST.consKw — profile is the authority.
+        // Background service death makes SOC stale, corrupting derived consumption.
+      }
+    }
+
+    socH.push(entry);
+    if (socH.length > 30) socH.splice(0, socH.length - 30);
+    localStorage.setItem('socCorrHistory', JSON.stringify(socH));
+  } catch(e) {}
+  socCorrHistory_lastTs = Date.now();
+
+  // ── Apply SOC ──────────────────────────────────────────────────────
+  ST.battSoc = socToInternal(displayPct);
+  lastFlowT  = Date.now();
+  saveCfg({ ...loadCfg(), battSoc: displayPct });
+  if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
+    try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1,
+      ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
+  }
+  closeSocEdit();
+  renderBattery(); renderMetrics(); updateSocDisplay(); renderFlow();
+  const socEl = document.getElementById('cfgSoc');
+  if (socEl) socEl.value = Math.round(displayPct);
+}
+let socCorrHistory_lastTs = null;
+
+function updateClock() {
+  const el = document.getElementById('clk');
+  if (el) el.textContent = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+// ── Energy balance cross-validation ───────────────────────────────
+// NOTE: SOC-drift-based consKw nudging is intentionally disabled.
+// When the background service dies (Samsung kill), SOC becomes stale
+// and the apparent drift is huge — causing consKw to spiral away from
+// the consumption profile. Profile is more reliable than drift estimation.
+// Re-enable only when FusionSolar provides real SOC data.
+let _balanceCheck = { lastRun: 0, drift: 0 };
+function crossValidateEnergyBalance() {
+  // No-op until FusionSolar live data is available
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+
+
+// ═══════════════════════════════════════════════════════════════
+// SNAPSHOT LOG
+// ═══════════════════════════════════════════════════════════════
+let _rlogSaveTimer = null;
+function _saveRlogDebounced() {
+  if (_rlogSaveTimer) return;
+  _rlogSaveTimer = setTimeout(() => {
+    _rlogSaveTimer = null;
+    // Use requestIdleCallback when available to avoid blocking UI thread
+    const doSave = () => {
+      try { localStorage.setItem('solarLog4', JSON.stringify(rlog)); } catch(e) {}
+    };
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(doSave, { timeout: 5000 });
+    } else {
+      setTimeout(doSave, 0);
+    }
+  }, 5 * 60 * 1000);  // save at most every 5 minutes (was every 30s — significant ANR risk)
+}
+
+function snap() {
+  const fl = calcFlow();
+  rlog.push({ t:new Date().toISOString(), pvKw:ST.pvKw,
+    batt:fl.battFlow, soc:ST.battSoc, irr:ST.irrWm2,
+    grd:+(fl.gridExport-fl.gridImport).toFixed(3),
+    lat:ST.lat, lon:ST.lon, loc:ST.locName });
+  if (rlog.length>288) rlog.shift();
+  _saveRlogDebounced();
+  document.getElementById('logPill').textContent = rlog.length + ' entries';
+  renderLogTable();
+  // Trigger consumption-profile learning every 6 hours
+  maybeRunLearning();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — METRICS
+// ═══════════════════════════════════════════════════════════════
+function renderMetrics() {
+  updateCalibDisplay();
+  crossValidateEnergyBalance();
+  // Populate header stat pills
+  const pvEl   = document.getElementById('hdrPv');
+  const battEl = document.getElementById('hdrBatt');
+  const wxEl   = document.getElementById('hdrWx');
+  const gridEl = document.getElementById('hdrGrid');
+  if (pvEl)   pvEl.textContent   = '☀️ ' + f(ST.pvKw, 2) + ' kW';
+  if (battEl) battEl.textContent = '🔋 ' + Math.round(socToDisplay(ST.battSoc)) + '%';
+  if (wxEl)   wxEl.textContent   = '🌡️ ' + (ST.wxTempC != null ? f(ST.wxTempC, 0) + '°C' : '--°C');
+  const fl = calcFlow();
+  if (gridEl) {
+    if (fl.gridExport > 0.05)      gridEl.textContent = '⚡ +' + f(fl.gridExport, 2) + ' kW';
+    else if (fl.gridImport > 0.05) gridEl.textContent = '⚡ -'  + f(fl.gridImport, 2) + ' kW';
+    else                           gridEl.textContent = '⚡ 0 kW';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — IRRADIANCE BAR
+// ═══════════════════════════════════════════════════════════════
+function renderIrr() {
+  const pct = Math.min(100, ST.irrWm2/10);
+  document.getElementById('irrFill').style.width = pct+'%';
+  document.getElementById('irrVal').textContent = Math.round(ST.irrWm2)+' W/m²';
+  const pill = document.getElementById('irrPill');
+  if (!ST.gpsOk)            { pill.textContent='Awaiting GPS'; pill.className='pill p-info'; }
+  else if (ST.irrWm2>600)   { pill.textContent='Excellent';   pill.className='pill p-ok'; }
+  else if (ST.irrWm2>300)   { pill.textContent='Good';        pill.className='pill p-ok'; }
+  else if (ST.irrWm2>100)   { pill.textContent='Moderate';    pill.className='pill p-warn'; }
+  else if (ST.irrWm2>10)    { pill.textContent='Low';         pill.className='pill p-warn'; }
+  else                      { pill.textContent='Night/dark';  pill.className='pill p-info'; }
+  const t = ST.lastFetch;
+  // Use POA for irradiance bar (panel-facing irradiance)
+  const poaPct = Math.min(100, (ST.poaWm2||ST.irrWm2)/10);
+  document.getElementById('irrFill').style.width = poaPct+'%';
+  document.getElementById('irrSub').textContent =
+    (ST.gpsOk ? ST.locName : 'No GPS') +
+    ' · GHI '+Math.round(ST.irrWm2)+' W/m²' +
+    (ST.poaWm2 ? ' → POA '+Math.round(ST.poaWm2)+' W/m²' : '') +
+    ' · ☁️ '+Math.round(ST.cloudCover||0)+'%' +
+    (ST.cfGHI !== undefined ? ' (cloud factor '+Math.round((ST.cfGHI||1)*100)+'%)' : '') +
+    ' · cell '+Math.round(ST.cellTempC||0)+'°C' +
+    (t ? ' · '+t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '') +
+    ' · '+ST.wxIcon+' '+ST.wxCond;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — BATTERY
+// ═══════════════════════════════════════════════════════════════
+function renderBattery() {
+  // ── SOC staleness warning ──────────────────────────────────────────
+  const socAgeMs  = Date.now() - (ST._socLastMs || Date.now());
+  const socAgeH   = socAgeMs / 3600000;
+  const staleWarn = socAgeH > 1.5; // stale if not updated in 90+ min
+  if (staleWarn) {
+    const ageLabel = socAgeH > 3 ? Math.round(socAgeH) + 'h' : Math.round(socAgeH * 60) + 'min';
+    const warnEl = document.getElementById('socStaleWarn');
+    if (warnEl) {
+      warnEl.textContent = '⚠️ SOC estimate is ' + ageLabel + ' old — background service may be inactive. Use Edit SOC to correct.';
+      warnEl.style.display = 'block';
+    }
+  } else {
+    const warnEl = document.getElementById('socStaleWarn');
+    if (warnEl) warnEl.style.display = 'none';
+  }
+  const fl  = calcFlow(), soc = Math.round(ST.battSoc), st = stored(), dispSoc = socToDisplay(ST.battSoc);
+  const chr = fl.battFlow > 0.01, dis = fl.battFlow < -0.01;
+  const bkp = f(st / Math.max(0.01, ST.consKw), 1);
+  const col = soc > 60 ? '#00c882' : soc > 30 ? '#d4a820' : '#e03030';
+  const bg  = soc > 60 ? '#00c882' : soc > 30 ? '#d4a820' : '#e03030';
+
+  // Update battery brand label dynamically
+  const battKey = document.getElementById('cfgBattBrand') ? document.getElementById('cfgBattBrand').value : '';
+  const battSpec = battKey && BATT_BRANDS[battKey] ? BATT_BRANDS[battKey] : null;
+  const brandLabel = document.getElementById('battBrandLabel');
+  if (brandLabel) brandLabel.textContent = battSpec ? battSpec.name : 'Battery';
+
+  // Compact strip elements
+  document.getElementById('bPct').textContent = dispSoc + '%';
+  document.getElementById('bPct').style.color = col;
+  document.getElementById('battKwhLbl').textContent = f(st,3) + ' / ' + f(SYS.battUse,1) + ' kWh';
+  document.getElementById('battBackupLbl').textContent = bkp + 'h backup';
+  document.getElementById('battTimeLabel').textContent = chr ? 'Full in ' + (f((SYS.battUse-st)/fl.battFlow,1))+'h' : dis ? 'Empty in '+f(st/Math.max(0.01,Math.abs(fl.battFlow)),1)+'h' : 'Idle';
+  document.getElementById('battMaxLabel').textContent  = f(SYS.battUse,1) + ' kWh usable';
+
+  // Progress bar width = internal SOC (0–100% of usable range)
+  // so 0% = at reserve floor, 100% = fully charged
+  const fillEl = document.getElementById('bFill');
+  fillEl.style.width = Math.max(ST.battSoc, 2) + '%';
+  fillEl.style.background = col;
+
+  // Pill
+  const pill = document.getElementById('bPill');
+  if      (soc <= 10) { pill.textContent='Reserved';              pill.className='pill p-err'; }
+  else if (chr)       { pill.textContent='↑ +'+f(fl.battFlow,2)+' kW charging';  pill.className='pill p-ok'; }
+  else if (dis)       { pill.textContent='↓ '+f(-fl.battFlow,2)+' kW discharging'; pill.className='pill p-warn'; }
+  else                { pill.textContent='Idle';                  pill.className='pill p-info'; }
+
+  // Charge / discharge flow rate bar
+  const flowFill = document.getElementById('bFlowFill');
+  const flowLbl  = document.getElementById('bFlowLabel');
+  if (flowFill) {
+    const maxFlow = chr ? (SYS.battMaxC || 2.5) : (SYS.battMaxD || 2.5);
+    const flowPct = (chr || dis) ? Math.min(100, Math.abs(fl.battFlow) / Math.max(0.01, maxFlow) * 100) : 0;
+    flowFill.style.width      = flowPct + '%';
+    flowFill.style.background = chr ? '#378ADD' : dis ? '#d4a820' : 'transparent';
+    if (flowLbl) {
+      if (chr) flowLbl.textContent = '⚡ Charging ' + f(fl.battFlow,2) + ' kW · ' + Math.round(flowPct) + '% of max ' + (SYS.battMaxC||2.5) + ' kW';
+      else if (dis) flowLbl.textContent = '⚡ Discharging ' + f(-fl.battFlow,2) + ' kW · ' + Math.round(flowPct) + '% of max ' + (SYS.battMaxD||2.5) + ' kW';
+      else flowLbl.textContent = '';
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — FLOW DIAGRAM
+// ═══════════════════════════════════════════════════════════════
+function renderFlow() {
+  const fl = calcFlow();
+  const CG='#00c882',CB='#00b4e6',CO='#e05a28',CY='#d4a820';
+
+  const fTs = document.getElementById('fTs');
+  if(fTs) fTs.textContent =
+    new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+
+    ' · '+ST.wxIcon+' '+ST.wxCond+' · '+f(ST.wxTempC,0)+'°C';
+
+  const hOn = (fl.solar2home+fl.batt2home+fl.gridImport)>0.01;
+  const bOn = Math.abs(fl.battFlow)>0.01;
+  const bChg= fl.battFlow>0.01;
+  const gImp= fl.gridImport>0.01;
+  const gExp= fl.gridExport>0.01;
+  const gOn = gImp||gExp;
+  const bCol= bChg?CB:fl.battFlow<-0.01?CY:'#445';
+  const gCol= gExp?CG:gImp?CO:'#445';
+  const hCol= hOn?CY:'#445';
+  const pvOn= ST.pvKw>0.1;
+
+  const dispSoc  = socToDisplay(ST.battSoc);
+  const battKw   = bOn?(bChg?'+':'-')+f(Math.abs(fl.battFlow),2)+' kW':'idle';
+  const gridKw   = gExp?'+'+f(fl.gridExport,2)+' kW':gImp?'-'+f(fl.gridImport,2)+' kW':'0.00 kW';
+  const homeKw   = fl.solar2home+fl.batt2home+fl.gridImport;
+  const netFlow  = ST.pvKw-(ST.consKw||0);
+  const netStr   = (netFlow>=0?'+':'')+f(netFlow,2)+' kW';
+  const netCol   = netFlow>=0?CG:CY;
+  const homeSrc  = fl.solar2home>0.01&&fl.batt2home>0.01?'solar+batt':fl.solar2home>0.01?'solar':fl.batt2home>0.01?'batt':gImp?'grid':'idle';
+  const battSub  = Math.round(dispSoc)+'% · '+f(stored(),1)+' kWh';
+
+  // ── Node card builder ──────────────────────────────────────────────
+  // side='l': info on LEFT, icon on RIGHT (left column nodes)
+  // side='r': icon on LEFT, info on RIGHT (right column nodes)
+  function nd(side,icon,iconCol,label,val,valCol,sub1,sub2){
+    const ic=`<div style="width:42px;height:42px;min-width:42px;border-radius:50%;
+      background:rgba(0,14,40,.95);border:2px solid ${iconCol};flex-shrink:0;
+      box-shadow:0 0 12px ${iconCol}55,inset 0 0 10px ${iconCol}18;
+      display:flex;align-items:center;justify-content:center">${icon}</div>`;
+    const inf=`<div style="flex:1;min-width:0;overflow:hidden">
+      <div style="font-size:7px;letter-spacing:1.4px;text-transform:uppercase;color:${iconCol};
+        font-weight:700;opacity:.85;line-height:1.2">${label}</div>
+      <div style="font-size:13px;font-weight:700;color:${valCol};
+        text-shadow:0 0 8px ${valCol}66;line-height:1.15;margin-top:1px">${val}</div>
+      <div style="font-size:8px;opacity:.45;line-height:1.3;margin-top:1px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub1}</div>
+      ${sub2?`<div style="font-size:7.5px;opacity:.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub2}</div>`:''}
+    </div>`;
+    return `<div style="display:flex;align-items:center;gap:6px;
+      background:linear-gradient(135deg,rgba(0,20,62,.92),rgba(0,7,22,.96));
+      border:1px solid ${iconCol}3a;border-radius:10px;padding:8px;
+      box-shadow:0 0 18px ${iconCol}0a inset">${side==='l'?inf+ic:ic+inf}</div>`;
+  }
+
+  // ── Central reactor core ───────────────────────────────────────────
+  const core=`
+  <svg viewBox="0 0 84 120" width="84" height="120" style="display:block;overflow:visible">
+    <defs>
+      <radialGradient id="cig" cx="50%" cy="35%">
+        <stop offset="0%" stop-color="rgba(0,120,255,.55)"/>
+        <stop offset="60%" stop-color="rgba(0,20,80,.85)"/>
+        <stop offset="100%" stop-color="rgba(0,6,24,.98)"/>
+      </radialGradient>
+      <filter id="cf"><feGaussianBlur stdDeviation="2.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <!-- Outer glow ring (spinning) -->
+    <ellipse cx="42" cy="21" rx="37" ry="11" fill="none" stroke="${netCol}" stroke-width="1.5"
+      stroke-dasharray="5 3" style="animation:coreRot 3s linear infinite;transform-box:fill-box;transform-origin:center"/>
+    <!-- Top cap -->
+    <ellipse cx="42" cy="21" rx="37" ry="11" fill="rgba(0,25,70,.9)" stroke="rgba(0,180,255,.55)" stroke-width="1.5"/>
+    <!-- Body -->
+    <rect x="5" y="21" width="74" height="78" rx="5" fill="url(#cig)" stroke="rgba(0,160,255,.35)" stroke-width="1.5"/>
+    <!-- Band rings -->
+    <rect x="5" y="28" width="74" height="7" rx="2" fill="rgba(0,70,180,.22)" stroke="rgba(0,180,255,.18)" stroke-width=".5"/>
+    <rect x="5" y="48" width="74" height="7" rx="2" fill="rgba(0,70,180,.22)" stroke="rgba(0,180,255,.18)" stroke-width=".5"/>
+    <rect x="5" y="68" width="74" height="7" rx="2" fill="rgba(0,70,180,.22)" stroke="rgba(0,180,255,.18)" stroke-width=".5"/>
+    <rect x="5" y="84" width="74" height="7" rx="2" fill="rgba(0,70,180,.22)" stroke="rgba(0,180,255,.18)" stroke-width=".5"/>
+    <!-- Inner chamber glow -->
+    <circle cx="42" cy="59" r="20" fill="rgba(0,80,200,.18)" stroke="rgba(0,200,255,.25)" stroke-width="1.5"/>
+    <circle cx="42" cy="59" r="12" fill="rgba(0,120,255,.12)" stroke="rgba(0,210,255,.4)" stroke-width="1"/>
+    <!-- Lightning bolt -->
+    <text x="42" y="66" text-anchor="middle" font-size="18"
+      fill="rgba(100,225,255,.95)" filter="url(#cf)"
+      style="animation:coreFlicker 4s infinite">⚡</text>
+    <!-- Port connectors — left side (top + bottom) -->
+    <rect x="-5" y="33" width="11" height="10" rx="2" fill="rgba(0,40,110,.85)" stroke="rgba(0,160,255,.55)" stroke-width=".8"/>
+    <rect x="-5" y="66" width="11" height="10" rx="2" fill="rgba(0,40,110,.85)" stroke="rgba(0,160,255,.55)" stroke-width=".8"/>
+    <!-- Port connectors — right side -->
+    <rect x="78" y="33" width="11" height="10" rx="2" fill="rgba(0,40,110,.85)" stroke="rgba(0,160,255,.55)" stroke-width=".8"/>
+    <rect x="78" y="66" width="11" height="10" rx="2" fill="rgba(0,40,110,.85)" stroke="rgba(0,160,255,.55)" stroke-width=".8"/>
+    <!-- Bottom cap -->
+    <ellipse cx="42" cy="99" rx="37" ry="11" fill="rgba(0,16,52,.7)" stroke="rgba(0,140,255,.3)" stroke-width="1"/>
+    <!-- Bottom glow drip -->
+    <line x1="42" y1="110" x2="42" y2="120" stroke="${netCol}" stroke-width="1.5" opacity=".5"
+      style="animation:corePulse 2s ease-in-out infinite"/>
+    <circle cx="42" cy="120" r="2.5" fill="${netCol}" opacity=".6"
+      style="animation:corePulse 2s ease-in-out infinite"/>
+  </svg>
+  <div style="text-align:center;margin-top:3px;font-size:9px;font-weight:700;
+    letter-spacing:.6px;color:${netCol};text-shadow:0 0 8px ${netCol}99">${netStr}</div>`;
+
+  // ── SVG outline icons (Image 2 futuristic style) ──────────────────
+  const iSun = col => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="${col}" stroke-width="1.6" stroke-linecap="round">
+    <circle cx="12" cy="12" r="4.2"/>
+    <line x1="12" y1="2" x2="12" y2="5"/>
+    <line x1="12" y1="19" x2="12" y2="22"/>
+    <line x1="2" y1="12" x2="5" y2="12"/>
+    <line x1="19" y1="12" x2="22" y2="12"/>
+    <line x1="4.6" y1="4.6" x2="6.7" y2="6.7"/>
+    <line x1="17.3" y1="17.3" x2="19.4" y2="19.4"/>
+    <line x1="19.4" y1="4.6" x2="17.3" y2="6.7"/>
+    <line x1="6.7" y1="17.3" x2="4.6" y2="19.4"/>
+  </svg>`;
+  const iHome = col => `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="${col}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 12.5L12 4L21 12.5"/>
+    <path d="M5 11V20H19V11"/>
+    <rect x="9" y="14.5" width="6" height="5.5"/>
+  </svg>`;
+  const iGrid = col => `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="${col}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z"/>
+  </svg>`;
+  const iBatt = (col, pct) => {
+    const bars = Math.round(pct / 25); // 0-4 bars
+    const barW = 2.8, barH = 5, barY = 9.5, gap = 1.1, x0 = 3;
+    let b = '';
+    for (let i = 0; i < 4; i++) {
+      const bx = x0 + i*(barW+gap);
+      b += `<rect x="${bx}" y="${barY}" width="${barW}" height="${barH}" rx=".4" fill="${i < bars ? col : 'none'}" stroke="${col}" stroke-width=".6" opacity="${i < bars ? 1 : 0.3}"/>`;
+    }
+    return `<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="${col}" stroke-width="1.6" stroke-linecap="round">
+      <rect x="1" y="7.5" width="20" height="9" rx="2"/>
+      <line x1="23" y1="11" x2="23" y2="13" stroke-width="2.5"/>
+      ${b}
+    </svg>`;
+  };
+
+  // ── Vertical card (Image 2 style) — icon on top, label+val+sub below ─
+  function ndVert(svgIcon, iconCol, label, val, valCol, sub) {
+    return `<div style="display:flex;flex-direction:column;align-items:center;
+      justify-content:flex-start;gap:4px;text-align:center;
+      background:linear-gradient(135deg,rgba(0,20,62,.92),rgba(0,7,22,.96));
+      border:1px solid ${iconCol}3a;border-radius:10px;padding:10px 6px 8px;
+      box-shadow:0 0 18px ${iconCol}0a inset">
+      <div style="width:52px;height:52px;border-radius:50%;flex-shrink:0;
+        background:rgba(0,14,40,.95);border:2px solid ${iconCol};
+        box-shadow:0 0 14px ${iconCol}55,inset 0 0 10px ${iconCol}18;
+        display:flex;align-items:center;justify-content:center">
+        ${svgIcon}
+      </div>
+      <div style="font-size:8px;letter-spacing:1.4px;text-transform:uppercase;
+        color:${iconCol};font-weight:700;opacity:.85;line-height:1.1">${label}</div>
+      <div style="font-size:14px;font-weight:700;color:${valCol};
+        text-shadow:0 0 8px ${valCol}66;line-height:1;white-space:nowrap">${val}</div>
+      <div style="font-size:8px;opacity:.42;white-space:nowrap;overflow:hidden;
+        text-overflow:ellipsis;max-width:98px;line-height:1.2">${sub}</div>
+    </div>`;
+  }
+  // Triple stroke: wide glow + mid + thin animated dash
+  function tube(d,col,active){
+    const a=active?'class="fa"':'opacity="0.12"';
+    return `<path d="${d}" fill="none" stroke="${col}" stroke-width="10" opacity=".08" stroke-linecap="round"/>
+<path d="${d}" fill="none" stroke="${col}" stroke-width="4"  opacity=".18" stroke-linecap="round"/>
+<path d="${d}" fill="none" stroke="${col}" stroke-width="1.5" ${a} stroke-linecap="round"/>`;
+  }
+
+  // SVG viewBox "0 0 320 228" matches approximate pixel layout.
+  // Node areas: 112px wide on each side. Core: ~84px centered.
+  // Top node center-y ≈ 38.  Bottom node center-y ≈ 190.
+  // Core SVG top ≈ 54px in container. Core top port (y=33 in SVG) → container y=87.
+  // Core bottom port (y=66 in SVG) → container y=120.
+  // Core right edge at x ≈ 119+84=203 from left.
+  // So: left ports x=114, right ports x=203.
+  const dSolar = `M112,38 C116,38 114,72 114,88`;
+  const dHome  = `M208,38 C204,38 206,72 206,88`;
+  const dGrid  = `M112,190 C116,190 114,156 114,122`;
+  const dBatt  = `M208,190 C204,190 206,156 206,122`;
+  const dLvert = `M114,88 L114,122`;   // left core vertical line
+  const dRvert = `M206,88 L206,122`;   // right core vertical line
+
+  const flowSVG=`<svg style="position:absolute;inset:0;width:100%;height:100%;
+    pointer-events:none;overflow:visible;z-index:0"
+    viewBox="0 0 320 228" preserveAspectRatio="none">
+    <defs>
+      <filter id="lg" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="2" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#lg)">
+      ${tube(dSolar,CG,pvOn)}
+      ${tube(dHome ,hCol,hOn)}
+      ${tube(dGrid ,gCol,gOn)}
+      ${tube(dBatt ,bCol,bOn)}
+      ${tube(dLvert,CB,true)}
+      ${tube(dRvert,CB,true)}
+    </g>
+  </svg>`;
+
+  // ── Assemble layout ────────────────────────────────────────────────
+  const html=`<div style="position:relative;height:228px">
+    ${flowSVG}
+    <div style="position:absolute;top:0;left:0;width:110px;z-index:1">
+      ${ndVert(iSun(CG),CG,'Solar',f(ST.pvKw,2)+' kW',CG,'')}
+    </div>
+    <div style="position:absolute;top:0;right:0;width:110px;z-index:1">
+      ${ndVert(iHome(CY),CY,'Home',f(homeKw,2)+' kW',CY,homeSrc)}
+    </div>
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);z-index:2">
+      ${core}
+    </div>
+    <div style="position:absolute;bottom:0;left:0;width:110px;z-index:1">
+      ${ndVert(iGrid(gCol),gCol,'Grid',gridKw,gCol,gImp?'import':gExp?'export':'idle')}
+    </div>
+    <div style="position:absolute;bottom:0;right:0;width:110px;z-index:1">
+      ${ndVert(iBatt(bCol,Math.round(socToDisplay(ST.battSoc))),bCol,'Battery',battKw,bCol,battSub)}
+    </div>
+  </div>`;
+
+  document.getElementById('flowG').innerHTML = html;
+
+  // ── Bottom metrics: source donut + efficiency gauge ────────────────
+  const totalH = homeKw||0.001;
+  const sPct   = Math.round(fl.solar2home/totalH*100);
+  const bPct   = Math.round(fl.batt2home/totalH*100);
+  const gPct   = 100-sPct-bPct;
+  const C      = 138.2;
+  const sLen   = C*sPct/100, bLen=C*bPct/100, gLen=C*gPct/100;
+  const sOff   = C*.25, bOff=sOff-sLen, gOff=bOff-bLen;
+  const donut=
+    `<svg width="70" height="70" viewBox="0 0 70 70">
+      <circle cx="35" cy="35" r="22" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="9"/>
+      ${sPct>0?`<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="${CG}"
+        stroke-dasharray="${sLen} ${C}" stroke-dashoffset="${sOff}"/>`:''}
+      ${bPct>0?`<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="${CB}"
+        stroke-dasharray="${bLen} ${C}" stroke-dashoffset="${bOff}"/>`:''}
+      ${gPct>0?`<circle cx="35" cy="35" r="22" fill="none" class="donut-seg" stroke="${CO}"
+        stroke-dasharray="${gLen} ${C}" stroke-dashoffset="${gOff}"/>`:''}
+      <text x="35" y="32" text-anchor="middle" font-size="11" font-weight="700" fill="${CG}">${sPct}%</text>
+      <text x="35" y="43" text-anchor="middle" font-size="7" fill="rgba(200,224,255,.4)">solar</text>
+    </svg>`;
+  const legend=
+    `<div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:5px;font-size:10px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;
+          background:${CG}"></span>Solar ${sPct}%</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:10px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;
+          background:${CB}"></span>Battery ${bPct}%</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:10px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;
+          background:${CO}"></span>Grid ${gPct}%</div>
+    </div>`;
+  const eff = ST.pvKw>0&&ST.irrWm2>10
+    ? Math.round(Math.min(100,ST.pvKw/((ST.irrWm2/1000)*(SYS.panelKw||5))*100)) : 0;
+  const effCol = eff>=70?CG:eff>=45?CY:CO;
+  const gauge=
+    `<svg width="90" height="62" viewBox="0 0 90 62" overflow="visible">
+      <path d="M10,54 A36,36 0 0,1 80,54" fill="none" stroke="rgba(255,255,255,.06)"
+        stroke-width="7" stroke-linecap="round"/>
+      <path d="M10,54 A36,36 0 0,1 80,54" fill="none" stroke="${effCol}" stroke-width="7"
+        stroke-linecap="round" stroke-dasharray="${113.1*eff/100} 113.1"/>
+      <text x="45" y="46" text-anchor="middle" font-size="14" font-weight="700"
+        fill="${effCol}">${eff}%</text>
+      <text x="45" y="58" text-anchor="middle" font-size="7"
+        fill="rgba(200,224,255,.35)">PERFORMANCE</text>
+    </svg>`;
+
+  const metricsEl=document.getElementById('coreMetrics');
+  if(metricsEl){
+    metricsEl.style.display='flex';
+    metricsEl.innerHTML=
+      `<div style="flex:1">
+        <div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;
+          opacity:.4;font-weight:600;margin-bottom:6px">Source</div>
+        <div style="display:flex;align-items:center;gap:10px">${donut}${legend}</div>
+       </div>
+       <div style="display:flex;flex-direction:column;align-items:center">
+        <div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;
+          opacity:.4;font-weight:600;margin-bottom:4px">Efficiency</div>
+        ${gauge}
+       </div>`;
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — WEATHER STRIP
+// ═══════════════════════════════════════════════════════════════
+function renderStrip() {
+  if(!FORECAST.length) return;
+  // Use full daily profile total, not current kW × 24 (which gives wrong threshold)
+  const need = getProfileDailyKwh() || (ST.consKw * 24);
+  document.getElementById('ws').innerHTML=FORECAST.map((d,i)=>
+    '<div class="wd '+(i===0?'today':'')+'" onclick="selectForecastDay('+i+')" style="cursor:pointer" id="wd'+i+'">'+
+    '<div class="wi">'+d.icon+'</div>'+
+    '<div class="wn">'+d.d+'</div><div class="wt">'+f(d.tempC,0)+'°C</div>'+
+    '<div class="wkwh" style="color:'+(d.yieldKwh>=need?'#00c882':d.yieldKwh>=need*.5?'#d4a820':'#e03030')+'">'+f(d.yieldKwh,1)+' kWh</div>'+
+    '<div class="wr">'+d.rain+'% 🌧</div></div>'
+  ).join('');
+}
+
+function selectForecastDay(idx) {
+  // Guard: FORECAST may be empty on first open before weather loads
+  if (!FORECAST.length) return;
+  const d = FORECAST[idx];
+  if (!d) return;
+
+  // Highlight selected day
+  FORECAST.forEach((_,i) => {
+    const el = document.getElementById('wd'+i);
+    if (!el) return;
+    if (i === idx) {
+      el.style.outline = '2px solid var(--g)';
+      el.style.outlineOffset = '2px';
+    } else {
+      el.style.outline = '';
+    }
+  });
+
+  // Update the day curve chart title
+  const chartCard = document.querySelector('#pgForecast .card:nth-child(2) .ct');
+  if (chartCard) {
+    chartCard.innerHTML = (idx===0?'Today':'<b>'+d.d+'</b>')+' · generation curve ' +
+      '<span class="pill p-info">'+d.icon+' '+f(d.tempC,0)+'°C · '+f(d.yieldKwh,1)+' kWh · '+d.rain+'% rain</span>';
+  }
+
+  // Rebuild day chart — use real hourly data if available, bell curve fallback otherwise
+  if (idx === 0) {
+    if (ST.todayH && ST.todayH.length) {
+      buildDayChart();
+    } else {
+      buildDayChartForDay(0);   // bell-curve fallback until weather data loads
+    }
+  } else {
+    buildDayChartForDay(idx);
+  }
+}
+
+function buildDayChartForDay(dayIdx) {
+  if (!FORECAST.length) return;
+  if (dchart) dchart.destroy();
+
+  // Estimate hourly curve for selected day using a solar arc model
+  const d = FORECAST[dayIdx];
+  const peakKw = d.yieldKwh / 6; // rough peak from daily total
+  const lbls = [], genD = [], conD = [], batD = [];
+  for (let h = 0; h < 24; h++) {
+    lbls.push(h+':00');
+    // Bell curve from 6am to 8pm
+    const mid = 13, spread = 3.5;
+    const solar = h >= 6 && h <= 20
+      ? Math.max(0, peakKw * Math.exp(-Math.pow(h - mid, 2) / (2 * spread * spread)))
+      : 0;
+    const gen = +solar.toFixed(3);
+    genD.push(gen);
+    conD.push(ST.consKw);
+    batD.push(gen > ST.consKw ? +Math.min(gen - ST.consKw, SYS.battMaxC).toFixed(3) : 0);
+  }
+
+  // Populate summary metrics
+  const peakVal = Math.max(...genD);
+  const peakH   = genD.indexOf(peakVal);
+  const setEl = (id, v) => { const e = document.getElementById(id); if(e) e.textContent = v; };
+  setEl('fcTodayKwh', f(d.yieldKwh, 1) + ' kWh');
+  setEl('fcPeakHour', peakH + ':00');
+  setEl('fcPeakKw',   f(peakVal, 2) + ' kW');
+
+  dchart = new Chart(document.getElementById('dayC').getContext('2d'), {
+    data: { labels: lbls, datasets: [
+      { type:'line', data:genD, borderColor:'#00c882', backgroundColor:'rgba(0,200,130,.1)',
+        fill:true, tension:.4, pointRadius:0, borderWidth:2 },
+      { type:'line', data:conD, borderColor:'#e05a28', fill:false, tension:0,
+        pointRadius:0, borderWidth:1.5, borderDash:[5,4] },
+      { type:'bar',  data:batD, backgroundColor:'rgba(55,138,221,.25)',
+        borderColor:'#378ADD', borderWidth:1, borderRadius:3 },
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ ticks:{ font:{size:9}, color:'#888', maxTicksLimit:12 }, grid:{ color:'rgba(128,128,128,.06)' } },
+        y:{ ticks:{ font:{size:9}, color:'#888', callback:v=>f(v,1)+'kW' }, grid:{ color:'rgba(128,128,128,.06)' }, beginAtZero:true }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — CHARTS
+// ═══════════════════════════════════════════════════════════════
+function refreshForecastIfOpen() {
+  // Called after weather data loads — refreshes today's curve if Forecast tab is active
+  if (document.getElementById('pgForecast') &&
+      document.getElementById('pgForecast').classList.contains('on')) {
+    renderStrip();         // rebuild day cards with fresh FORECAST data
+    selectForecastDay(0);  // highlight today and draw the curve
+  }
+}
+
+function buildDayChart() {
+  // Fall back to forecast hourly data if live today-hours not ready yet
+  if(!ST.todayH || !ST.todayH.length) { if(FORECAST.length) buildDayChartForDay(0); return; }
+  if(dchart)dchart.destroy();
+  const nowH=new Date().getHours(), lbls=ST.todayH.map(h=>h.hour+':00');
+  const genD=ST.todayH.map(h=>+h.pvKw.toFixed(3)), conD=ST.todayH.map(()=>ST.consKw);
+  const batD=genD.map(g=>{const s=g-ST.consKw;return s>0?+Math.min(s,SYS.battMaxC).toFixed(3):0;});
+  const peakVal=Math.max(...genD), peakH=genD.indexOf(peakVal);
+  const setEl2=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  setEl2('fcTodayKwh', f(genD.reduce((a,b)=>a+b,0),1)+' kWh');
+  setEl2('fcPeakHour', peakH+':00');
+  setEl2('fcPeakKw',   f(peakVal,2)+' kW');
+  dchart=new Chart(document.getElementById('dayC').getContext('2d'),{
+    data:{labels:lbls,datasets:[
+      {type:'line',data:genD,borderColor:'#00c882',backgroundColor:'rgba(0,200,130,.1)',fill:true,tension:.4,
+        pointRadius:genD.map((_,i)=>i===nowH?5:0),pointBackgroundColor:'#00c882',borderWidth:2},
+      {type:'line',data:conD,borderColor:'#e05a28',fill:false,tension:0,pointRadius:0,borderWidth:1.5,borderDash:[5,4]},
+      {type:'bar', data:batD,backgroundColor:'rgba(0,180,230,.15)',borderColor:'#00b4e6',borderWidth:1,borderRadius:3},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{font:{size:9},color:'rgba(200,224,255,.3)',maxTicksLimit:12},grid:{color:'rgba(0,100,200,.08)'}},
+              y:{ticks:{font:{size:9},color:'rgba(200,224,255,.3)',callback:v=>f(v,1)+'kW'},grid:{color:'rgba(0,100,200,.08)'},beginAtZero:true}}}
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — SCHEDULE
+// ═══════════════════════════════════════════════════════════════
+function renderSched() {
+  const need=ST.consKw*24;
+  const best =FORECAST.length?FORECAST.slice(1).reduce((a,b)=>b.yieldKwh>a.yieldKwh?b:a):{d:'Sunday',yieldKwh:14,rain:15};
+  const worst=FORECAST.length?FORECAST.reduce((a,b)=>b.yieldKwh<a.yieldKwh?b:a):{d:'Thursday',yieldKwh:3,rain:70};
+  const ty=FORECAST.length?FORECAST[0].yieldKwh:0;
+  const apps=[
+    {ic:'🫧',n:'Washing machine',w:'2.0 kW',b:'10:00–14:00',r:ty>=need?'Today OK · solar peak 10:00–14:00':'Better on '+best.d+' ('+f(best.yieldKwh,1)+' kWh)',s:ty>=need?'best':'ok'},
+    {ic:'🍽️',n:'Dishwasher',w:'1.8 kW',b:'11:00–15:00',r:'Stagger after washer · avoid stacking loads',s:ty>=need?'best':'ok'},
+    {ic:'🌡️',n:'Water heater',w:'2.0 kW',b:'10:30–12:00',r:ty-need>2?'Surplus covers it free today':'Use battery buffer ('+Math.round(ST.battSoc)+'% · '+f(stored(),2)+' kWh)',s:ty-need>2?'best':'ok'},
+    {ic:'❄️',n:'Air conditioner',w:'1.5 kW',b:'12:00–16:00',r:'Solar noon window only · stop by 17:00',s:ty>=need?'ok':'avoid'},
+    {ic:'👕',n:'Tumble dryer',w:'2.5 kW',b:worst.rain>50?'Avoid '+worst.d:best.d+' 10:00',r:worst.rain>50?worst.d+' '+worst.rain+'% rain ('+f(worst.yieldKwh,1)+' kWh)':best.d+' · '+f(best.yieldKwh,1)+' kWh forecast',s:worst.rain>50?'avoid':'ok'},
+    {ic:'🚗',n:'EV charging',w:'3.2 kW',b:best.d+' 10:00',r:'Exceeds current output ('+f(ST.pvKw,2)+' kW). Best on '+best.d+' ('+f(best.yieldKwh,1)+' kWh)',s:'avoid'},
+    {ic:'🍳',n:'Oven / cooking',w:'2.2 kW',b:'12:00–14:00',r:'Peak solar window minimises grid draw',s:ty>=need?'ok':'avoid'},
+    {ic:'🖥️',n:'PC / workstation',w:'0.3 kW',b:'Any time',r:'Low load — always covered by solar or battery',s:'best'},
+  ];
+  const html=apps.map(a=>
+    '<div class="si"><div class="sic">'+a.ic+'</div><div class="sinf">'+
+    '<div class="snm">'+a.n+' <span style="font-size:10px;color:var(--t3);font-weight:400">'+a.w+'</span></div>'+
+    '<div class="stm">'+a.b+' · '+a.r+'</div></div>'+
+    '<div class="sbg '+(a.s==='best'?'sb-b':a.s==='ok'?'sb-o':'sb-a')+'">'+(a.s==='best'?'Best':a.s==='ok'?'OK':'Avoid')+'</div></div>'
+  ).join('');
+  (document.getElementById('sch')||{innerHTML:''}).innerHTML=html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — ALERTS
+// ═══════════════════════════════════════════════════════════════
+function renderAlerts() {
+  const fl=calcFlow(), need=ST.consKw*24, st=stored();
+  const best=FORECAST.length?FORECAST.slice(1).reduce((a,b)=>b.yieldKwh>a.yieldKwh?b:a):null;
+  const A=[];
+  if(!ST.gpsOk) A.push({t:'i',m:'📍 Tap "Allow GPS" above to get solar data for your exact location. Without GPS the dashboard cannot calculate production.'});
+  if(fl.battFlow>0.01)    A.push({t:'s',m:'✅ Battery charging at +'+f(fl.battFlow,2)+' kW — solar ('+f(ST.pvKw,2)+' kW) covers home ('+f(ST.consKw,2)+' kW) with surplus. Grid not needed.'});
+  else if(fl.battFlow<-0.01) A.push({t:'w',m:'🔋 Battery discharging '+f(-fl.battFlow,2)+' kW — solar '+f(ST.pvKw,2)+' kW is '+f(ST.consKw-ST.pvKw,2)+' kW short of load. Battery bridging gap.'});
+  else                    A.push({t:'s',m:'✅ Balanced — solar covering home exactly. Battery holding at '+Math.round(ST.battSoc)+'%.'});
+  if(fl.gridExport>0.01)  A.push({t:'s',m:'⚡ Exporting '+f(fl.gridExport,2)+' kW to grid. Consider running an appliance to self-consume.'});
+  if(fl.gridImport>0.01)  A.push({t:'w',m:'🔌 Importing '+f(fl.gridImport,2)+' kW from grid. Solar + battery insufficient for current load.'});
+  const battName = (() => {
+    const key = document.getElementById('cfgBattBrand') ? document.getElementById('cfgBattBrand').value : '';
+    return (key && BATT_BRANDS[key]) ? BATT_BRANDS[key].name : 'Battery';
+  })();
+  A.push({t:'i',m:'🔋 '+battName+': '+Math.round(ST.battSoc)+'% SOC · '+f(st,2)+' kWh stored · '+f(st/Math.max(0.01,ST.consKw),1)+'h backup · '+(fl.battFlow>0.01?f((SYS.battUse-st)/fl.battFlow,1)+'h to full':'not charging')+'.'});
+  A.push({t:'i',m:'☀️ '+Math.round(ST.irrWm2)+' W/m² ('+Math.round(ST.irrDir)+' direct + '+Math.round(ST.irrDif)+' diffuse) → '+f(ST.pvKw,2)+' kW AC · '+ST.wxIcon+' '+ST.wxCond+' '+f(ST.wxTempC,0)+'°C'+(ST.locName?' · '+ST.locName:'')+'.'});
+  if(FORECAST.length>1){
+    const thu=FORECAST.find(d=>d.d==='Thu')||FORECAST[1];
+    const sat=FORECAST.find(d=>d.d==='Sat')||FORECAST[3];
+    if(thu&&thu.rain>=70) A.push({t:'w',m:'🌧️ '+thu.d+': '+thu.rain+'% rain — only '+f(thu.yieldKwh,1)+' kWh expected vs '+f(need,1)+' kWh daily need. Charge battery to 100% today.'});
+    if(sat&&sat.rain>=65) A.push({t:'w',m:'🌧️ '+sat.d+': '+sat.rain+'% rain — only '+f(sat.yieldKwh,1)+' kWh. Top up the night before.'});
+    if(best) A.push({t:'i',m:'☀️ Best day: '+best.d+' '+best.icon+' '+f(best.tempC,0)+'°C · '+f(best.yieldKwh,1)+' kWh · '+best.rain+'% rain. Schedule EV, dryer and heavy loads then.'});
+  }
+  const _aEl=document.getElementById('altsHidden');if(_aEl)_aEl.innerHTML=A.map(a=>'<div class="alert al-'+a.t+'">'+a.m+'</div>').join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — LOG TABLE
+// ═══════════════════════════════════════════════════════════════
+function deleteLog(idx) {
+  // idx is from the reversed display — convert back to original array index
+  const realIdx = rlog.length - 1 - idx;
+  if (realIdx < 0 || realIdx >= rlog.length) return;
+  rlog.splice(realIdx, 1);
+  try { localStorage.setItem('solarLog4', JSON.stringify(rlog)); } catch(e) {}
+  renderLogTable();
+  document.getElementById('logPill').textContent = rlog.length + ' entries';
+}
+
+function renderLogStats() {
+  const toGrid   = +(ST.gridExportKwh || 0);
+  const fromGrid = +(ST.gridImportKwh || 0);
+
+  // produced: use background pv_kwh if available (accurate, runs 24/7)
+  // fall back to rlog accumulation if background not yet populated
+  const todayStr = new Date().toDateString();
+  const dtH = 30 / 3600;
+  let producedLog = 0, logMinutes = 0;
+  rlog.forEach(r => {
+    if (new Date(r.t).toDateString() !== todayStr) return;
+    producedLog += (r.pvKw || 0) * dtH;
+    logMinutes  += 0.5;
+  });
+  const produced = (ST.pvKwhToday > 0)
+    ? Math.max(ST.pvKwhToday, producedLog)
+    : producedLog;
+
+  // consumed via energy balance: produced + fromGrid - toGrid
+  const consumed  = Math.max(0, produced + fromGrid - toGrid);
+  const fromSolar = Math.max(0, consumed - fromGrid);
+  const selfSuff  = consumed > 0 ? Math.min(100, fromSolar / consumed * 100) : 0;
+
+  const lbl = document.getElementById('logDaysLbl');
+  const src = ST.pvKwhToday > 0 ? 'background data' : Math.round(logMinutes) + ' min logged';
+  if (lbl) lbl.textContent = 'Today · ' + src;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('statProduced',  f(produced,  2) + ' kWh');
+  set('statConsumed',  f(consumed,  2) + ' kWh');
+  set('statDailyAvg',  f(consumed,  2) + ' kWh');
+  set('statFromSolar', f(fromSolar, 2) + ' kWh');
+  set('statFromGrid',  f(fromGrid,  2) + ' kWh');
+  set('statToGrid',    f(toGrid,    2) + ' kWh');
+  set('statSelfSuff',  f(selfSuff,  1) + '%');
+}
+
+function renderLogTable() {
+  document.getElementById('logPill').textContent=rlog.length+' entries';
+  renderLogStats();
+  if(!rlog.length){document.getElementById('logBodyInner').innerHTML='<div class="empty-log">No readings yet.<br>The app logs automatically every 30 seconds when solar is producing.</div>';return;}
+  const rows=[...rlog].reverse().slice(0,50).map((r,i)=>{
+    const d=new Date(r.t), t=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    return '<tr><td>'+t+'</td><td style="color:var(--g)">'+f(r.pvKw,2)+'</td>'+
+      '<td style="color:'+(r.batt>=0?'#378ADD':'#d4a820')+'">'+(r.batt>=0?'+':'')+f(r.batt,2)+'</td>'+
+      '<td>'+Math.round(r.soc)+'%</td><td style="color:#888">'+Math.round(r.irr)+'</td>'+
+      '<td style="color:'+(r.grd>=0?'#00c882':'#e03030')+'">'+(r.grd>0?'+':'')+f(r.grd,2)+'</td>'+
+      '<td><button onclick="deleteLog('+i+')" style="background:none;border:none;color:var(--rd);font-size:14px;cursor:pointer;padding:2px 6px" title="Delete entry">✕</button></td></tr>';
+  }).join('');
+  document.getElementById('logBodyInner').innerHTML='<table class="log-table"><thead><tr><th>Time</th><th>☀️kW</th><th>🔋kW</th><th>SOC</th><th>W/m²</th><th>Grid kW</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MANUFACTURER BRAND SPECS
+// Typical values — user can always override manually
+// ═══════════════════════════════════════════════════════════════
+const PANEL_BRANDS = {
+  huawei:    { name:'Huawei Solar',         hint:'SUN2000 series · typically 400–550 W per panel' },
+  longi:     { name:'LONGi Solar',          hint:'Hi-MO series · world\'s largest panel manufacturer' },
+  jinko:     { name:'Jinko Solar',          hint:'Tiger series · high efficiency mono PERC' },
+  ja:        { name:'JA Solar',             hint:'DeepBlue series · mono bifacial' },
+  trina:     { name:'Trina Solar',          hint:'Vertex series · large-format panels' },
+  canadian:  { name:'Canadian Solar',       hint:'HiKu / BiKu series · bifacial PERC' },
+  sunpower:  { name:'SunPower',             hint:'Maxeon series · highest efficiency (22%+)' },
+  rec:       { name:'REC Group',            hint:'Alpha / TwinPeak series · European quality' },
+  qcells:    { name:'Q CELLS (Hanwha)',     hint:'Q.PEAK series · strong degradation warranty' },
+  suntech:   { name:'Suntech',              hint:'Ultra-V series · mono PERC' },
+  sharp:     { name:'Sharp Solar',          hint:'ND-AK series · established Japanese brand' },
+  panasonic: { name:'Panasonic HIT',        hint:'EverVolt series · HIT heterojunction cells' },
+  lg:        { name:'LG Solar',             hint:'NeON series · discontinued but widely installed' },
+  meyer:     { name:'Meyer Burger',         hint:'European heterojunction · premium efficiency' },
+  solaria:   { name:'Solaria',              hint:'PowerXT series · full-black premium modules' },
+  other:     { name:'Custom',               hint:'Enter your actual installed capacity below' },
+};
+
+const BATT_BRANDS = {
+  // Huawei Luna 2000 S0: 90% DoD (10% reserve), 2.5 kW per 5 kWh module, capped at 5 kW by SUN2000 inverter
+  huawei_5:     { name:'Huawei Luna 2000',   gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · IP66 · 1× module' },
+  huawei_10:    { name:'Huawei Luna 2000',   gross:10.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 90% DoD · IP66 · 2× modules' },
+  huawei_15:    { name:'Huawei Luna 2000',   gross:15.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW (inverter limited) · 90% DoD · 3× modules' },
+  // Tesla Powerwall 2: 13.5 kWh IS the usable capacity (DoD 100% user-accessible), 5 kW continuous
+  tesla_pw2:    { name:'Tesla Powerwall 2',  gross:13.5, res:0,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW cont / 7 kW peak · 100% DoD · liquid cooled' },
+  // Tesla Powerwall 3: 13.5 kWh usable, charge up to 5 kW AC, discharge up to 11.5 kW
+  tesla_pw3:    { name:'Tesla Powerwall 3',  gross:13.5, res:0,  maxC:5.0, maxD:11.5, hint:'LFP · 11.5 kW discharge / 5 kW charge · 100% DoD · built-in inverter' },
+  // BYD HVS: 100% DoD (BMS managed internally), stackable high-voltage
+  byd_hvs5:     { name:'BYD Battery-Box HVS',gross:5.12, res:0,  maxC:3.6, maxD:3.6, hint:'LFP · 3.6 kW · 100% DoD · high-voltage stackable' },
+  byd_hvs10:    { name:'BYD Battery-Box HVS',gross:10.24,res:0,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 100% DoD · 2× 5.12 kWh modules' },
+  // BYD HVL: smallest tower is 11.04 kWh, 100% DoD
+  byd_hvl:      { name:'BYD Battery-Box HVL',gross:11.04,res:0,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 100% DoD · high-voltage tower' },
+  // Pylontech US series: 95% DoD (res=5%), 48V nominal
+  // US2000C: 25A × 48V = 1.2 kW
+  pylontech_us2:{ name:'Pylontech US2000C',  gross:2.4,  res:5,  maxC:1.2, maxD:1.2, hint:'LFP · 1.2 kW · 95% DoD · 48V stackable' },
+  // US3000C: 3.55 kWh, 37A × 48V = 1.78 kW
+  pylontech_us3:{ name:'Pylontech US3000C',  gross:3.55, res:5,  maxC:1.8, maxD:1.8, hint:'LFP · 1.8 kW · 95% DoD · 48V stackable to 57 kWh' },
+  // US5000: 4.8 kWh, 80A recommended × 48V = 3.84 kW
+  pylontech_us5:{ name:'Pylontech US5000',   gross:4.8,  res:5,  maxC:3.8, maxD:3.8, hint:'LFP · 3.8 kW · 95% DoD · 48V stackable to 77 kWh' },
+  // Sonnen eco: 90% DoD, eco 8 has 3.3 kW inverter, eco 10 has 3.3 kW inverter
+  sonnen_eco8:  { name:'Sonnen Eco',         gross:8.0,  res:10, maxC:3.3, maxD:3.3, hint:'LFP · 3.3 kW · 90% DoD · AI energy management' },
+  sonnen_eco10: { name:'Sonnen Eco',         gross:10.0, res:10, maxC:3.3, maxD:3.3, hint:'LFP · 3.3 kW · 90% DoD · VPP capable · 10,000 cycles' },
+  // SolarEdge Home Battery: 9.7 kWh usable from 10 kWh = 97% DoD (res=3%)
+  solaredge_10: { name:'SolarEdge Home',     gross:10.0, res:3,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 97% DoD · DC-coupled' },
+  // FoxESS H Series: H10.24 = 10.24 kWh gross, 6 kW max
+  foxess_h:     { name:'FoxESS H Series',    gross:10.24,res:10, maxC:6.0, maxD:6.0, hint:'LFP · 6 kW · 90% DoD · H10.24 model' },
+  // GivEnergy: 9.5 kWh, 3.6 kW, 80% DoD (20% reserve)
+  givbatt_9_5:  { name:'GivEnergy',          gross:9.5,  res:20, maxC:3.6, maxD:3.6, hint:'LFP · 3.6 kW · 80% DoD · popular in UK' },
+  // Sungrow SBR096: 9.6 kWh (3× 3.2 kWh), 100% DoD per spec, ~5 kW via SH inverter
+  sungrow_shb:  { name:'Sungrow SBR',        gross:9.6,  res:0,  maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 100% DoD · modular 3.2 kWh bricks' },
+  // Enphase IQ Battery 10T: 10.08 kWh usable (100%), 3.84 kW charge & discharge
+  enphase_iq10: { name:'Enphase IQ 10T',     gross:10.08,res:0,  maxC:3.84,maxD:3.84,hint:'LFP · 3.84 kW · 100% DoD · AC-coupled microinverter' },
+  alpha_smile5: { name:'AlphaESS SMILE5',    gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · compact wall unit' },
+  puredrive_5:  { name:'PureDrive Energy',   gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · UK-designed' },
+  // Deye: LFP, 90% DoD; SE-G5.1 Pro-B is 5.12 kWh 51.2V LV (50A rec = 2.56 kW); RW-F16 is 16 kWh LV 8 kW
+  deye_sg5:     { name:'Deye SE-G5.1 Pro-B', gross:5.12, res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · LV 51.2V · wall-mounted' },
+  deye_rw16:    { name:'Deye RW-F16',        gross:16.0, res:10, maxC:8.0, maxD:8.0, hint:'LFP · 8 kW · 90% DoD (14.4 kWh usable) · LV · built-in breaker' },
+  // GoodWe Lynx: LFP, 90% DoD; U series LV 5.4 kWh module (2.5 kW); D series HV 5 kWh module (5 kW per 2-module stack)
+  goodwe_lynx_u5: { name:'GoodWe Lynx Home U', gross:5.4, res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · LV 51.2V · plug & play' },
+  goodwe_lynx_d10:{ name:'GoodWe Lynx Home D',gross:10.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 90% DoD · HV stackable · 2× 5 kWh modules' },
+  // Livoltek: LFP, 90% DoD; BLF51-5 is 5 kWh LV (100A×51.2V but inverter-limited to 2.5 kW); BHF-S10 is 10 kWh HV IP65
+  livoltek_blf5:  { name:'Livoltek BLF51-5',  gross:5.0,  res:10, maxC:2.5, maxD:2.5, hint:'LFP · 2.5 kW · 90% DoD · LV 51.2V · IP21/IP65' },
+  livoltek_bhf10: { name:'Livoltek BHF-S10',  gross:10.0, res:10, maxC:5.0, maxD:5.0, hint:'LFP · 5 kW · 90% DoD · HV modular · IP65 indoor/outdoor' },
+  other:        { name:'Custom',             gross:null, res:10, maxC:null,maxD:null, hint:'Enter your battery gross capacity below' },
+};
+
+function onBrandSelect(type) {
+  if (type === 'panel') {
+    const key = document.getElementById('cfgPanelBrand').value;
+    const b = PANEL_BRANDS[key];
+    if (b) {
+      document.getElementById('panelBrandHint').textContent = b.hint;
+    }
+  } else {
+    const key = document.getElementById('cfgBattBrand').value;
+    const b = BATT_BRANDS[key] || BATT_BRANDS[key.replace('.','_')];
+    // Try both key formats (dots vs underscores in option values)
+    const spec = b || Object.values(BATT_BRANDS).find((_,i) => Object.keys(BATT_BRANDS)[i] === key);
+    if (spec) {
+      document.getElementById('battBrandHint').textContent = spec.hint;
+      if (spec.gross !== null) {
+        document.getElementById('cfgBatt').value = spec.gross;
+        document.getElementById('cfgRes').value  = spec.res;
+        // Store brand maxC/D for use after save
+        document.getElementById('cfgBattBrand').dataset.maxC = spec.maxC || 2.5;
+        document.getElementById('cfgBattBrand').dataset.maxD = spec.maxD || 2.5;
+        onCfgChange();
+      }
+    }
+  }
+  updateHdrSysName();
+}
+
+// Update green header with selected system names
+function updateHdrSysName() {
+  const panelKey = document.getElementById('cfgPanelBrand') ?
+    document.getElementById('cfgPanelBrand').value : '';
+  const battKey  = document.getElementById('cfgBattBrand') ?
+    document.getElementById('cfgBattBrand').value : '';
+  const panelName = panelKey && PANEL_BRANDS[panelKey] ? PANEL_BRANDS[panelKey].name : '';
+  const battSpec  = battKey  && BATT_BRANDS[battKey]   ? BATT_BRANDS[battKey]  : null;
+  const battName  = battSpec ? battSpec.name + ' ' + battSpec.gross + ' kWh' : '';
+  const el = document.getElementById('hdrSysName');
+  if (!el) return;
+  if (panelName || battName) {
+    const parts = [panelName, battName].filter(Boolean);
+    el.textContent = parts.join(' · ') + ' · ';
+  } else {
+    el.textContent = '';
+  }
+}
+
+// Restore saved brand selections
+function restoreBrandSelects() {
+  const cfg = loadCfg();
+  if (cfg.panelBrand) document.getElementById('cfgPanelBrand').value = cfg.panelBrand;
+  if (cfg.battBrand)  {
+    document.getElementById('cfgBattBrand').value = cfg.battBrand;
+    const b = BATT_BRANDS[cfg.battBrand];
+    if (b) document.getElementById('battBrandHint').textContent = b.hint;
+  }
+  if (cfg.panelBrand) {
+    const pb = PANEL_BRANDS[cfg.panelBrand];
+    if (pb) document.getElementById('panelBrandHint').textContent = pb.hint;
+  }
+  updateHdrSysName();
+  // Show/hide FusionSolar section based on restored brand — no onchange fires on programmatic set
+  onPanelBrandChange();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PUSH NOTIFICATIONS
+// Uses browser Notifications API + service worker
+// Schedules local notifications — no backend required
+// ═══════════════════════════════════════════════════════════════
+let scheduledNotifTimers = [];
+
+async function requestNotifPermission() {
+  // Android WebView native notifications
+  if (window.AppBridge && window.AppBridge.showNotif) {
+    if (window.AppBridge.notifGranted && window.AppBridge.notifGranted()) {
+      setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
+      saveCfg({ ...loadCfg(), notifEnabled: true });
+      scheduleAllNotifications();
+    } else {
+           if (window.AppBridge.requestNotif) window.AppBridge.requestNotif();
+      setNotifBar('ok', '🔔 Allow notifications in the system prompt · then tap Enable again');
+    }
+    return;
+  }
+  // Browser / PWA notifications
+  if ((typeof Notification === 'undefined' || !('Notification' in window))) {
+    setNotifBar('off', '📱 For notifications, install as PWA from Chrome browser.');
+    return;
+  }
+  if ((typeof Notification !== 'undefined' && Notification.permission === 'granted')) {
+    setNotifBar('ok', '🔔 Notifications already enabled. Will alert before peak solar windows.');
+    scheduleAllNotifications();
+    return;
+  }
+  const perm = await (typeof Notification !== 'undefined' ? Notification.requestPermission() : Promise.resolve('denied'));
+  if (perm === 'granted') {
+    setNotifBar('ok', '✅ Notifications enabled! You\'ll be alerted before peak solar windows.');
+    saveCfg({ ...loadCfg(), notifEnabled: true });
+    scheduleAllNotifications();
+  } else {
+    setNotifBar('off', '🔕 Notifications blocked. Enable in browser settings to get appliance alerts.');
+    saveCfg({ ...loadCfg(), notifEnabled: false });
+  }
+}
+
+function setNotifBar(type, msg) {
+  const bar  = document.getElementById('notifBar');
+  const icon = document.getElementById('notifIcon');
+  const msgEl= document.getElementById('notifMsg');
+  const btn  = document.getElementById('notifBtn');
+  if (!bar) return;
+  const palettes = {
+    ok:  { col:'#00c882', bg:'rgba(0,200,130',  glyph:'🔔', btnTxt:'Active' },
+    off: { col:'rgba(200,224,255,.4)', bg:'rgba(100,120,160', glyph:'🔕', btnTxt:'Enable' },
+    req: { col:'#d4b020', bg:'rgba(212,176,32', glyph:'🔔', btnTxt:'Enable' },
+  };
+  const p = palettes[type] || palettes.req;
+  bar.style.borderColor = typeof p.col==='string'&&p.col.startsWith('#') ? p.col+'44' : 'rgba(100,120,160,.25)';
+  bar.style.background  = `linear-gradient(135deg,${p.bg},.07),rgba(0,8,25,.9))`;
+  if (icon) { icon.textContent=p.glyph; icon.style.borderColor=p.col+'66'; icon.style.boxShadow=`0 0 14px ${p.col}33`; icon.style.animation=type==='ok'?'none':'corePulse 2.5s infinite'; }
+  if (msgEl) msgEl.textContent = msg;
+  if (btn) {
+    btn.style.display = (type==='ok') ? 'none' : '';
+    btn.style.color = p.col; btn.style.borderColor = p.col+'66'; btn.style.background = p.bg+',.12)';
+  }
+}
+
+function testNotifications() {
+  // Fire both notification types immediately (bypasses debounce) for testing
+  const hasAndroid = window.AppBridge && window.AppBridge.showNotif;
+  if (!hasAndroid && (typeof Notification === 'undefined' || Notification.permission !== 'granted')) {
+    alert('Notifications not enabled. Tap Enable first.');
+    return;
+  }
+  const fl       = calcFlow();
+  const surplus  = fl.pv - fl.consKw;
+
+  // Test "start" notification for first appliance that surplus covers
+  const runnable = APPLIANCES.find(a => surplus >= a.kw);
+  if (runnable) {
+    showNotification(
+      '☀️ [TEST] Run ' + runnable.name + ' now!',
+      'Surplus +' + f(surplus,2) + ' kW covers ' + runnable.kw + ' kW. ' +
+      runnable.name + ' can run on free solar. (This is a test)',
+      'test-start'
+    );
+  }
+
+  // Test "wait for peak" notification for first appliance surplus doesn't cover
+  const waiting = APPLIANCES.find(a => surplus < a.kw);
+  if (waiting) {
+    const peak = ST.todayH ? ST.todayH.reduce((a,b) => b.pvKw>a.pvKw?b:a, {pvKw:0,hour:12}) : {pvKw:0,hour:12};
+    showNotification(
+      '⏰ [TEST] Wait for peak — ' + waiting.name,
+      waiting.name + ' needs ' + waiting.kw + ' kW. ' +
+      'Current surplus ' + f(surplus,2) + ' kW insufficient. ' +
+      'Best production ' + f(peak.pvKw,2) + ' kW at ' + peak.hour + ':00. (This is a test)',
+      'test-wait'
+    );
+  }
+
+  // Test "stop" notification
+  const running = APPLIANCES[0]; // assume washer is running
+  setTimeout(() => {
+    showNotification(
+      '⚠️ [TEST] Stop ' + running.name + ' — solar dropped',
+      'Solar surplus dropped. ' + running.name + ' is now using battery/grid. Consider stopping. (This is a test)',
+      'test-stop'
+    );
+  }, 3000); // 3 second delay to separate from start notification
+}
+
+function initNotifBar() {
+  // Android native notifications via AppBridge
+  if (window.AppBridge && window.AppBridge.showNotif) {
+    if (window.AppBridge.notifGranted && window.AppBridge.notifGranted()) {
+      setNotifBar('ok', '🔔 Native alerts active · you\'ll be notified at peak solar windows');
+      saveCfg({ ...loadCfg(), notifEnabled: true });
+      scheduleAllNotifications();
+    } else {
+      setNotifBar('req', '🔔 Enable notifications for solar production alerts');
+    }
+    return;
+  }
+  // Browser / PWA
+  try {
+    if (typeof Notification === 'undefined') {
+      setNotifBar('off', '📱 For notifications install as PWA from Chrome browser.');
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      setNotifBar('ok', '🔔 Notifications active · alerts scheduled around peak solar windows');
+      scheduleAllNotifications();
+    } else if (Notification.permission === 'denied') {
+      setNotifBar('off', '🔕 Notifications blocked — enable in browser/phone settings');
+    } else {
+      setNotifBar('req', '🔔 Enable notifications to get alerts when it\'s best to run large appliances');
+    }
+  } catch(e) {
+    setNotifBar('req', '🔔 Enable notifications for solar production alerts');
+  }
+}
+
+function showNotification(title, body, tag) {
+  // Use native Android notification bridge if available
+  if (window.AppBridge && window.AppBridge.showNotif) {
+    window.AppBridge.showNotif(title, body);
+    return;
+  }
+  const notifOk = (window.AppBridge && window.AppBridge.showNotif) ||
+    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  if (!notifOk) return;
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(reg => {
+      reg.showNotification(title, {
+        body, tag,
+        icon: 'icons/icon-192.png',
+        badge: 'icons/icon-72.png',
+        vibrate: [200, 100, 200],
+        data: { url: '/' },
+        actions: [{ action: 'open', title: 'Open dashboard' }],
+      });
+    });
+  } else {
+    new Notification(title, { body, tag, icon: 'icons/icon-192.png' });
+  }
+}
+
+// Surplus trigger threshold: notify when production exceeds consumption by this margin
+const SURPLUS_TRIGGER = 1.0;  // kW above consumption to fire appliance notification
+// High consumption threshold: used only to flag heavy loads in schedules
+const HIGH_KW = 2.0;
+
+function notifAllowed() {
+  if (!isSysConfigured()) return false;
+  return (window.AppBridge && window.AppBridge.showNotif) ||
+    (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+}
+
+function notifyRealtime() {
+  // DISABLED: Java SolarForegroundService now handles all proactive notifications
+  // (morning, hourly status, evening, battery low). This function previously fired
+  // realtime "surplus" notifications that duplicated FGS alerts.
+  // Kept as no-op so existing callers don't break.
+  return;
+}
+
+function scheduleEveningForecast() {
+  if (notifTimers['evening_forecast']) {
+    clearTimeout(notifTimers['evening_forecast']);
+    delete notifTimers['evening_forecast'];
+  }
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(20, 0, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1);
+  const msUntil = target - now;
+  notifTimers['evening_forecast'] = setTimeout(() => {
+    delete notifTimers['evening_forecast'];
+    if (!notifAllowed()) return;
+    if (FORECAST.length < 2) return;
+    const todayKey = new Date().toDateString();
+    if (localStorage.getItem('lastEveningNotifDay') === todayKey) { scheduleEveningForecast(); return; }
+    localStorage.setItem('lastEveningNotifDay', todayKey);
+    const tomorrow = FORECAST[1];
+    const peakKw = (SYS.panelKw || 5);
+    const highProductionDay = tomorrow.yieldKwh >= peakKw * 3;
+    if (highProductionDay) {
+      const large = APPLIANCES.filter(a => a.kw >= HIGH_KW);
+      const names = large.slice(0,3).map(a => a.icon + ' ' + a.name).join(', ');
+      showNotification(
+        '☀️ Good solar day tomorrow — plan ahead',
+        tomorrow.icon + ' ' + tomorrow.d + ': ' + f(tomorrow.yieldKwh,1) +
+        ' kWh forecast. Schedule large appliances: ' + names + '.',
+        'evening-forecast'
+      );
+    } else {
+      showNotification(
+        '☁️ Limited solar tomorrow',
+        tomorrow.icon + ' ' + tomorrow.d + ': only ' + f(tomorrow.yieldKwh,1) +
+        ' kWh forecast. Defer large appliances to a sunnier day.',
+        'evening-forecast'
+      );
+    }
+    scheduleEveningForecast();
+  }, msUntil);
+}
+
+function scheduleMorningForecast() {
+  if (notifTimers['morning_forecast']) {
+    clearTimeout(notifTimers['morning_forecast']);
+    delete notifTimers['morning_forecast'];
+  }
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(7, 30, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1);
+  const msUntil = target - now;
+  notifTimers['morning_forecast'] = setTimeout(() => {
+    delete notifTimers['morning_forecast'];
+    if (!notifAllowed()) { scheduleMorningForecast(); return; }
+    if (!FORECAST.length) { scheduleMorningForecast(); return; }
+    const todayKey = new Date().toDateString();
+    if (localStorage.getItem('lastMorningNotifDay') === todayKey) { scheduleMorningForecast(); return; }
+    localStorage.setItem('lastMorningNotifDay', todayKey);
+    const today = FORECAST[0];
+    const peakKw = (SYS.panelKw || 5);
+    const bestHour = ST.todayH && ST.todayH.length
+      ? ST.todayH.reduce((a, b) => b.pvKw > a.pvKw ? b : a, { pvKw: 0, hour: 12 })
+      : { pvKw: 0, hour: 12 };
+    const large = APPLIANCES.filter(a => a.kw >= HIGH_KW);
+    const runnable = large.filter(a => bestHour.pvKw - (ST.consKw || 0) >= a.kw && bestHour.pvKw - (ST.consKw||0) >= SURPLUS_TRIGGER);
+    const names = runnable.length
+      ? runnable.slice(0, 3).map(a => a.icon + ' ' + a.name).join(', ')
+      : 'limited surplus today';
+    if (today.yieldKwh >= peakKw * 2) {
+      showNotification(
+        '☀️ Good solar day — ' + f(today.yieldKwh, 1) + ' kWh forecast',
+        today.icon + ' Peak at ' + bestHour.hour + ':00 (' + f(bestHour.pvKw, 2) +
+        ' kW). Best for: ' + names + '. Battery: ' + socToDisplay(ST.battSoc) + '%.',
+        'morning-forecast'
+      );
+    } else {
+      showNotification(
+        '☁️ Limited solar today — ' + f(today.yieldKwh, 1) + ' kWh forecast',
+        today.icon + ' ' + today.d + ': low production expected. ' +
+        'Defer large appliances to a sunnier day. Battery: ' + socToDisplay(ST.battSoc) + '%.',
+        'morning-forecast'
+      );
+    }
+    scheduleMorningForecast();
+  }, msUntil);
+}
+
+function scheduleAllNotifications() {
+  if (!notifAllowed()) return;
+  scheduleMorningForecast();
+  scheduleEveningForecast();
+  registerPeriodicSync();
+}
+
+async function registerPeriodicSync() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if ('periodicSync' in reg) {
+      await reg.periodicSync.register('solar-refresh', { minInterval: 15 * 60 * 1000 });
+    }
+  } catch(e) {}
+}
+
+function checkMissedDailyNotifications() {
+  // DISABLED: Java SolarForegroundService is the single source of truth for
+  // morning forecast and evening summary notifications. This function used to
+  // duplicate the FGS notifications via web Notification API.
+  return;
+}
+
+async function storeNotifPayloads() {
+  if (!('caches' in window) || !FORECAST.length) return;
+  try {
+    const today = FORECAST[0];
+    const peakKw = SYS.panelKw || 5;
+    const bestHour = ST.todayH && ST.todayH.length
+      ? ST.todayH.reduce((a, b) => b.pvKw > a.pvKw ? b : a, { pvKw: 0, hour: 12 })
+      : { pvKw: 0, hour: 12 };
+    const payload = {
+      date: new Date().toDateString(),
+      soc: socToDisplay(ST.battSoc),
+      morning: {
+        title: today.yieldKwh >= peakKw * 2
+          ? '☀️ Good solar day — ' + f(today.yieldKwh,1) + ' kWh forecast'
+          : '☁️ Limited solar today — ' + f(today.yieldKwh,1) + ' kWh forecast',
+        body: today.icon + ' Peak at ' + bestHour.hour + ':00 (' + f(bestHour.pvKw,2) + ' kW). Battery: ' + socToDisplay(ST.battSoc) + '%.'
+      },
+      evening: FORECAST.length >= 2 ? {
+        title: FORECAST[1].yieldKwh >= peakKw * 3
+          ? '☀️ Good solar day tomorrow — plan ahead'
+          : '☁️ Limited solar tomorrow',
+        body: FORECAST[1].icon + ' ' + FORECAST[1].d + ': ' + f(FORECAST[1].yieldKwh,1) + ' kWh forecast.'
+      } : null
+    };
+    const cache = await caches.open('solar-notif-v1');
+    await cache.put('/solar-notif-payload', new Response(JSON.stringify(payload),
+      { headers: { 'Content-Type': 'application/json' } }));
+  } catch(e) {}
+}
+
+function catchUpLog(bgStartMs) {
+  if (!ST.todayH || !ST.todayH.length || !ST.lat) return;
+  const bgEndMs = Date.now();
+  if ((bgEndMs - bgStartMs) < 10 * 60 * 1000) return; // skip gaps < 10 min
+  const utcOff = ST._utcOffsetSec || 0;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const STEP = 30 * 60 * 1000;
+  let t = Math.max(bgStartMs, todayStart.getTime()) + STEP;
+  while (t < bgEndMs - 60000) {
+    const locH   = new Date(t + utcOff * 1000).getUTCHours();
+    const hEntry = ST.todayH.find(h => h.hour === locH) || { pvKw: 0, ghi: 0 };
+    rlog.push({ t: new Date(t).toISOString(), pvKw: +hEntry.pvKw.toFixed(3),
+      batt: 0, soc: ST.battSoc, irr: hEntry.ghi || 0, grd: 0,
+      lat: ST.lat, lon: ST.lon, loc: ST.locName });
+    t += STEP;
+  }
+  if (rlog.length > 288) rlog.splice(0, rlog.length - 288);
+  try { localStorage.setItem('solarLog4', JSON.stringify(rlog)); } catch(e) {}
+  const lp = document.getElementById('logPill');
+  if (lp) lp.textContent = rlog.length + ' entries';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SYSTEM CONFIGURATION
+// ═══════════════════════════════════════════════════════════════
+function initCfgInputs() {
+  if (savedCfg.panelKw)   document.getElementById('cfgPanel').value = savedCfg.panelKw;
+  if (savedCfg.battGross) document.getElementById('cfgBatt').value  = savedCfg.battGross;
+  if (savedCfg.battRes) document.getElementById('cfgRes').value = Math.round(savedCfg.battRes * 100);
+  if (savedCfg.battSoc)   { document.getElementById('cfgSoc').value = Math.round(savedCfg.battSoc); ST.battSoc = socToInternal(savedCfg.battSoc); }
+  updateCalibDisplay(); // load learned factor from history
+  onPanelBrandChange(); // show/hide FusionSolar section based on saved brand
+  if (savedCfg.panelAzimuth) {
+    const azEl = document.getElementById('cfgAzimuth');
+    if (azEl) azEl.value = String(savedCfg.panelAzimuth);
+  }
+  renderConsProfileSlots();
+  applyAutoConsumption();
+  updateUsableDisplay();
+  updateSocDisplay();
+}
+
+function onSocInput() {
+  const raw     = parseFloat(document.getElementById('cfgSoc').value);
+  if (isNaN(raw)) return;
+  const userPct = Math.min(100, Math.max(0, raw));
+  ST.battSoc = socToInternal(userPct);
+  lastFlowT  = Date.now();
+  saveCfg({ ...loadCfg(), battSoc: userPct });
+  updateSocDisplay();
+  renderAll();
+}
+
+function updateSocDisplay() {
+  const kwhStored = stored();
+  const el = document.getElementById('cfgSocKwh');
+  if (el) el.value = f(kwhStored, 2) + ' kWh stored';
+  const displayPct = socToDisplay(ST.battSoc);
+  const hint = document.getElementById('cfgSocHint');
+  if (hint) hint.textContent = 'Battery at ' + displayPct + '% usable · ' + f(kwhStored,2) + ' kWh stored · (90%=full, 10%=empty)';
+}
+
+function onCfgChange() {
+  updateUsableDisplay();
+  // If azimuth dropdown changed and config is already saved, refetch weather
+  // so the user sees the production impact immediately (before they save)
+  const azEl = document.getElementById('cfgAzimuth');
+  if (azEl && azEl.value) {
+    const newAz = parseInt(azEl.value);
+    if (newAz !== SYS.panelAzimuth && newAz >= 0 && newAz <= 360) {
+      SYS.panelAzimuth = newAz;
+      if (ST.lat && ST.lon && isSysConfigured()) {
+        fetchWeather();
+      }
+    }
+  }
+}
+
+function updateUsableDisplay() {
+  const gross  = parseFloat(document.getElementById('cfgBatt').value) || SYS.battGross || 0;
+  const res    = (parseFloat(document.getElementById('cfgRes').value) || Math.round((SYS.battRes||0.1)*100)) / 100;
+  const usable = gross ? +(gross * (1 - res)).toFixed(2) : '';
+  const uEl = document.getElementById('cfgUsable'); if (uEl) uEl.value = usable !== '' ? usable : '';
+}
+
+function renderConsProfileSlots() {
+  const c = document.getElementById('consProfileSlots');
+  if (!c) return;
+  const slots = SYS.consProfile;
+  c.innerHTML = '';
+  slots.forEach((sl, i) => {
+    const hours = (sl.to === 0 ? 24 : sl.to) - sl.from;
+    const kwh   = +(sl.kw * hours).toFixed(2);
+    const pct   = Math.min(100, sl.kw / 4 * 100);
+    const div   = document.createElement('div');
+    div.style.cssText = 'padding:10px 0;border-bottom:.5px solid var(--br)';
+    const btnStyle = 'width:30px;height:30px;border-radius:50%;border:.5px solid var(--br);background:var(--sf2);color:var(--tx);font-size:16px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;user-select:none';
+    div.innerHTML =
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">' +
+        '<div style="min-width:72px">' +
+          '<div style="font-size:12px;font-weight:500;color:var(--tx)">' + sl.label + '</div>' +
+          '<div style="font-size:10px;color:var(--t2);font-weight:500">' + String(sl.from).padStart(2,'0') + ':00–' + String(sl.to===0?24:sl.to).padStart(2,'0') + ':00</div>' +
+        '</div>' +
+        '<button style="' + btnStyle + '" onclick="nudgeSlider(' + i + ',-0.01)">−</button>' +
+        '<div style="flex:1;text-align:center">' +
+          '<div style="font-size:14px;font-weight:600;color:var(--tx)" id="psVal' + i + '">' + sl.kw.toFixed(2) + ' kW</div>' +
+          '<div style="font-size:10px;color:var(--t3)" id="psKwh' + i + '">' + kwh + ' kWh</div>' +
+        '</div>' +
+        '<button style="' + btnStyle + '" onclick="nudgeSlider(' + i + ',0.01)">+</button>' +
+      '</div>' +
+      '<div class="ps-wrap">' +
+        '<div class="ps-track"><div class="ps-fill" id="psBar' + i + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+        '<div class="ps-thumb" id="psTh' + i + '" style="left:' + pct.toFixed(1) + '%"></div>' +
+        '<input class="ps-input" type="range" min="0" max="4" step="0.01" value="' + sl.kw + '" oninput="onProfileSlider(' + i + ',this.value)">' +
+      '</div>';
+    c.appendChild(div);
+  });
+  if (c.lastChild) c.lastChild.style.borderBottom = 'none';
+  updateProfileTotal();
+}
+
+function nudgeSlider(i, delta) {
+  const newKw = Math.max(0, Math.min(4, +(SYS.consProfile[i].kw + delta).toFixed(2)));
+  SYS.consProfile[i].kw = newKw;
+  const hours = (SYS.consProfile[i].to === 0 ? 24 : SYS.consProfile[i].to) - SYS.consProfile[i].from;
+  const pct = Math.min(100, newKw / 4 * 100).toFixed(1);
+  const valEl = document.getElementById('psVal' + i);
+  const kwhEl = document.getElementById('psKwh' + i);
+  const barEl = document.getElementById('psBar' + i);
+  const thEl  = document.getElementById('psTh' + i);
+  if (valEl) valEl.textContent = newKw.toFixed(2) + ' kW';
+  if (kwhEl) kwhEl.textContent = (newKw * hours).toFixed(2) + ' kWh';
+  if (barEl) barEl.style.width = pct + '%';
+  if (thEl)  thEl.style.left   = pct + '%';
+  const inputs = document.querySelectorAll('.ps-input');
+  if (inputs[i]) inputs[i].value = newKw;
+  updateProfileTotal();
+  applyAutoConsumption();
+}
+
+function onProfileSlider(i, val) {
+  SYS.consProfile[i].kw = +parseFloat(val).toFixed(2);
+  const hours = (SYS.consProfile[i].to === 0 ? 24 : SYS.consProfile[i].to) - SYS.consProfile[i].from;
+  const pct = Math.min(100, SYS.consProfile[i].kw / 4 * 100).toFixed(1);
+  document.getElementById('psVal' + i).textContent = SYS.consProfile[i].kw.toFixed(2) + ' kW';
+  document.getElementById('psKwh' + i).textContent = (SYS.consProfile[i].kw * hours).toFixed(2) + ' kWh';
+  document.getElementById('psBar' + i).style.width = pct + '%';
+  const th = document.getElementById('psTh' + i);
+  if (th) th.style.left = pct + '%';
+  updateProfileTotal();
+  applyAutoConsumption();
+}
+
+function updateProfileTotal() {
+  const lbl = document.getElementById('profileTotalLbl');
+  if (lbl) lbl.textContent = getProfileDailyKwh() + ' kWh/day';
+}
+
+function saveCfgAndApply() {
+  const panel = parseFloat(document.getElementById('cfgPanel').value);
+  const gross = parseFloat(document.getElementById('cfgBatt').value);
+  const res   = parseFloat(document.getElementById('cfgRes').value) / 100;
+  const soc   = parseFloat(document.getElementById('cfgSoc').value);
+  if (!panel || panel <= 0 || panel > 50) {
+    document.getElementById('cfgSavedMsg').textContent = '⚠️ Panel capacity must be 0.5–50 kW';
+    document.getElementById('cfgSavedMsg').style.color = 'var(--am)'; return;
+  }
+  if (!gross || gross <= 0 || gross > 200) {
+    document.getElementById('cfgSavedMsg').textContent = '⚠️ Battery must be 1–200 kWh';
+    document.getElementById('cfgSavedMsg').style.color = 'var(--am)'; return;
+  }
+  if (res < 0.05 || res > 0.30) {
+    document.getElementById('cfgSavedMsg').textContent = '⚠️ Reserve must be 5–30%';
+    document.getElementById('cfgSavedMsg').style.color = 'var(--am)'; return;
+  }
+  SYS.panelKw   = panel;
+  SYS.battGross = gross;
+  SYS.battRes   = res;
+  // Update azimuth FIRST so AppBridge.saveSoc receives the new value
+  const azimuth = parseInt(document.getElementById('cfgAzimuth').value) || 180;
+  SYS.panelAzimuth = azimuth;
+  if (!isNaN(soc) && soc>=0 && soc<=100) {
+    ST.battSoc = socToInternal(soc);
+    lastFlowT  = Date.now();
+    saveCfg({ ...loadCfg(), battSoc: soc });
+  }
+  const maxCEl = document.getElementById('cfgBattBrand');
+  const maxC = parseFloat(maxCEl ? maxCEl.dataset.maxC : '') || SYS._battMaxC || 2.5;
+  const maxD = parseFloat(maxCEl ? maxCEl.dataset.maxD : '') || SYS._battMaxD || 2.5;
+  if (window.AppBridge && AppBridge.saveSoc) {
+    try { AppBridge.saveSoc(ST.battSoc, panel, gross, res, ST.consKw||0, maxC, maxD, SYS.panelAzimuth||180); } catch(e) {}
+  }
+  SYS._battMaxC = maxC;
+  SYS._battMaxD = maxD;
+  const calib = getLearnedFactor(ST.irrWm2 || 0);
+  SYS.pvCalibFactor = calib;
+  saveCfg({
+    panelKw: panel, battGross: gross, battRes: res,
+    battMaxC: maxC, battMaxD: maxD,
+    battSoc: !isNaN(soc) && soc >= 0 && soc <= 100 ? soc : loadCfg().battSoc,
+    consKw: ST.consKw || loadCfg().consKw || 0,
+    consProfile: SYS.consProfile,
+    panelAzimuth: azimuth,
+    tiltDeg: SYS.tiltDeg,
+    pvCalibFactor: calib,
+    panelBrand:    document.getElementById('cfgPanelBrand').value,
+    battBrand:     document.getElementById('cfgBattBrand').value,
+    tiltDeg:       SYS.tiltDeg || 30,
+    notifEnabled:  loadCfg().notifEnabled,
+  });
+  // Push 24-hour consumption profile to Java for accurate SOC catch-up after long sleep
+  if (window.AppBridge && AppBridge.saveConsProfile) {
+    try {
+      const hourly = [];
+      for (let h = 0; h < 24; h++) hourly.push(getProfileConsKw(h));
+      AppBridge.saveConsProfile(JSON.stringify(hourly));
+    } catch(e) {}
+  }
+  updateUsableDisplay();
+  const pill = document.getElementById('cfgSavedPill');
+  const msg  = document.getElementById('cfgSavedMsg');
+  pill.style.display = 'inline-flex';
+  msg.textContent = '✅ Saved — panel ' + panel + ' kW · battery ' + gross + ' kWh · usable ' + f(SYS.battUse,2) + ' kWh · SOC ' + soc + '%';
+  msg.style.color = 'var(--g)';
+  setTimeout(() => { pill.style.display = 'none'; }, 3000);
+  applyAutoConsumption();
+  renderAll();
+  renderSmartSched();
+  // Refetch weather with the new tilt/azimuth so production forecast reflects the change
+  if (ST.lat && ST.lon) fetchWeather();
+}
+
+function showPage(n,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
+  document.getElementById('pg'+n).classList.add('on'); el.classList.add('on');
+  if(n==='Forecast'){renderStrip();selectForecastDay(0);renderForecastProduction();renderAlerts();}
+  if(n==='Log')renderLogTable();
+}
+
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('instBanner').style.display='flex';});
+function installApp(){if(!deferredPrompt)return;deferredPrompt.prompt();deferredPrompt.userChoice.then(()=>{deferredPrompt=null;document.getElementById('instBanner').style.display='none';});}
+window.addEventListener('appinstalled',()=>{document.getElementById('instBanner').style.display='none';});
+if('serviceWorker'in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && e.data.type === 'BACKGROUND_SYNC') {
+      applyAutoConsumption(); renderAll();
+      if (ST.lat && ST.lon) fetchWeather();
+    }
+  });
+}
+
+function renderGridPanel() { /* grid panel removed */ }
+
+function renderForecastProduction() {
+  if (!FORECAST.length || !ST.todayH) return;
+  const fl          = calcFlow();
+  const dailyNeed   = getProfileDailyKwh() || (ST.consKw * 24);
+  const today       = FORECAST[0];
+  const weekTotal   = FORECAST.reduce((a,d) => a+d.yieldKwh, 0);
+  const weekNeed    = dailyNeed * FORECAST.length;
+
+  // Apply the same rain cap used for live production to today's yield estimate.
+  // The weather model regularly overestimates GHI in precipitation — without this,
+  // a rainy day with 0.5 kW live production still shows "Surplus day".
+  const acMax       = SYS.acMax || (SYS.panelKw || 5) * 0.984;
+  const peakHours   = 8; // effective solar hours in a day
+  const wcode       = ST.wxCode || 0;
+  let todayYield    = today.yieldKwh;
+  if      (wcode >= 95) todayYield = Math.min(todayYield, acMax * 0.05 * peakHours);
+  else if (wcode >= 61) todayYield = Math.min(todayYield, acMax * 0.10 * peakHours);
+  else if (wcode >= 51) todayYield = Math.min(todayYield, acMax * 0.20 * peakHours);
+  else if (wcode >= 45) todayYield = Math.min(todayYield, acMax * 0.25 * peakHours);
+  todayYield = +todayYield.toFixed(2);
+
+  const surplus     = todayYield - dailyNeed;
+  const selfSuffPct = Math.min(100, Math.round((Math.min(todayYield, dailyNeed) / dailyNeed) * 100));
+  const pill = document.getElementById('fcProdPill');
+  if (!pill) return;
+  pill.textContent = todayYield >= dailyNeed ? 'Surplus day ✓' : 'Deficit day';
+  pill.className   = todayYield >= dailyNeed ? 'pill p-ok' : 'pill p-warn';
+  let peakH = 12, peakKw = 0;
+  ST.todayH.forEach(h => { if (h.pvKw > peakKw) { peakKw = h.pvKw; peakH = h.hour; } });
+  const _fcb = document.getElementById('fcProdBody'); if (!_fcb) return; _fcb.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">' +
+      '<div style="text-align:center;background:var(--sf2);border-radius:var(--rs);padding:8px 4px">' +
+        '<div style="font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Today est.</div>' +
+        '<div style="font-size:14px;font-weight:700;color:'+(todayYield>=dailyNeed?'var(--g)':'var(--am)')+'">' + f(todayYield,1) + ' kWh</div>' +
+        '<div style="font-size:9px;color:var(--t2)">' + (surplus>=0?'+':'')+f(surplus,1)+' vs need</div>' +
+      '</div>' +
+      '<div style="text-align:center;background:var(--sf2);border-radius:var(--rs);padding:8px 4px">' +
+        '<div style="font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Peak hour</div>' +
+        '<div style="font-size:14px;font-weight:700;color:var(--g)">' + peakH + ':00</div>' +
+        '<div style="font-size:9px;color:var(--t2)">' + f(peakKw,2) + ' kW peak</div>' +
+      '</div>' +
+      '<div style="text-align:center;background:var(--sf2);border-radius:var(--rs);padding:8px 4px">' +
+        '<div style="font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Self-suff.</div>' +
+        '<div style="font-size:14px;font-weight:700;color:'+(selfSuffPct>=80?'var(--g)':selfSuffPct>=50?'var(--am)':'var(--rd)')+'">' + selfSuffPct + '%</div>' +
+        '<div style="font-size:9px;color:var(--t2)">' + ''  +
+      '</div>' +
+    '</div>' +
+    '</div>';
+}
+
+const APPLIANCES = [
+  // kw = peak/rated power   avgKw = realistic duty-cycle average over a full cycle
+  // Washer: heats water ~25% of cycle, rinse/spin much lower → avg ~0.7 kW
+  { id:'washer',  icon:'🫧', name:'Washing machine', kw:2.0, avgKw:0.7, priority:1 },
+  // Dishwasher: heats at start, then pump only (~0.2 kW) most of cycle → avg ~0.7 kW
+  { id:'dish',    icon:'🍽️', name:'Dishwasher',       kw:1.8, avgKw:0.7, priority:2 },
+  // Water heater: thermostat cycling once water is hot → avg ~0.6 kW
+  { id:'heater',  icon:'🌡️', name:'Water heater',     kw:2.0, avgKw:0.6, priority:3 },
+  // Oven: thermostat cycles to maintain temperature → avg ~1.1 kW
+  { id:'oven',    icon:'🍳', name:'Oven / cooking',   kw:2.2, avgKw:1.1, priority:4 },
+  // AC: inverter-driven, modulates with load → avg ~0.9 kW
+  { id:'ac',      icon:'❄️', name:'Air conditioner',  kw:1.5, avgKw:0.9, priority:5 },
+  // Dryer: mostly continuous heating → avg ~2.0 kW
+  { id:'dryer',   icon:'👕', name:'Tumble dryer',     kw:2.5, avgKw:2.0, priority:6 },
+  // EV: constant current charging → avg ~3.0 kW
+  { id:'ev',      icon:'🚗', name:'EV charging',      kw:3.2, avgKw:3.0, priority:7 },
+  // PC: load-dependent, idle/work mixed → avg ~0.25 kW
+  { id:'pc',      icon:'🖥️', name:'PC / workstation', kw:0.3, avgKw:0.25, priority:8 },
+];
+
+const applianceState = {};
+
+// ── Appliance reminders — 30-minute timed ────────────────────────────────────
+// Map of reminderKey → fireAtMs (epoch ms). Keys: app.id or 'id1+id2' for stacks.
+// Stored in localStorage so restarts can recover pending timers.
+const _REMINDER_LS = 'solarReminderTimers';
+const applianceReminders = new Map(
+  (() => {
+    try {
+      const obj = safeJson(_REMINDER_LS, {});
+      // Discard stale entries (already overdue by > 5 min — would confuse user)
+      const now = Date.now();
+      return Object.entries(obj).filter(([,t]) => t > now - 300000);
+    } catch(e) { return []; }
+  })()
+);
+// Active setTimeout handles keyed by reminderKey
+const _reminderTimers = {};
+
+function saveReminders() {
+  try {
+    const obj = {};
+    applianceReminders.forEach((fireAt, key) => { obj[key] = fireAt; });
+    localStorage.setItem(_REMINDER_LS, JSON.stringify(obj));
+  } catch(e) {}
+}
+
+function fireReminderNotif(key) {
+  // Build the appliance label from the key (single id or 'id1+id2')
+  const ids   = key.split('+');
+  const apps  = ids.map(id => APPLIANCES.find(a => a.id === id)).filter(Boolean);
+  if (!apps.length) return;
+  const label = apps.map(a => a.name).join(' and ');
+  showNotification(
+    '🔔 Reminder — ' + apps.map(a => a.icon).join('') + ' ' + label,
+    'As you requested, I am reminding you to use: ' + label + '.',
+    'reminder-' + key
+  );
+}
+
+function scheduleReminderTimer(key, fireAt) {
+  // Clear any existing timer for this key
+  if (_reminderTimers[key]) { clearTimeout(_reminderTimers[key]); delete _reminderTimers[key]; }
+  const msLeft = fireAt - Date.now();
+  if (msLeft <= 0) {
+    // Overdue — fire immediately then clean up
+    fireReminderNotif(key);
+    applianceReminders.delete(key);
+    saveReminders();
+    renderSmartSched();
+    return;
+  }
+  _reminderTimers[key] = setTimeout(() => {
+    delete _reminderTimers[key];
+    fireReminderNotif(key);
+    applianceReminders.delete(key);
+    saveReminders();
+    renderSmartSched();
+  }, msLeft);
+}
+
+// Restore timers for any reminders that survived a restart
+applianceReminders.forEach((fireAt, key) => scheduleReminderTimer(key, fireAt));
+
+function toggleApplianceReminder(id) {
+  if (applianceReminders.has(id)) {
+    // Cancel
+    if (_reminderTimers[id]) { clearTimeout(_reminderTimers[id]); delete _reminderTimers[id]; }
+    applianceReminders.delete(id);
+  } else {
+    // Set 30-minute reminder
+    const fireAt = Date.now() + 30 * 60 * 1000;
+    applianceReminders.set(id, fireAt);
+    scheduleReminderTimer(id, fireAt);
+  }
+  saveReminders();
+  renderSmartSched();
+}
+
+// Set/cancel reminder for an entire stacking combo
+// Helper: remaining minutes label for a reminder key
+function _reminderLabel(key) {
+  const fireAt = applianceReminders.get(key);
+  if (!fireAt) return '';
+  const min = Math.max(1, Math.round((fireAt - Date.now()) / 60000));
+  return min + 'm';
+}
+
+function renderSmartSched() {
+  const fl      = calcFlow();
+  const acMax   = SYS.acMax;
+  const battDischarging = fl.battFlow < -0.05;
+  const lowSolar        = ST.pvKw < 0.5;
+  const surplus = fl.gridExport > 0.05
+    ? fl.gridExport
+    : fl.pv - fl.cons;
+
+  const pill = document.getElementById('surplusPill');
+  if (surplus >= SURPLUS_TRIGGER && !battDischarging && !lowSolar) {
+    pill.textContent = '+' + f(surplus,2) + ' kW surplus';
+    pill.className   = 'pill p-ok';
+  } else if (battDischarging || lowSolar) {
+    pill.textContent = lowSolar ? 'low solar' : 'battery discharging';
+    pill.className   = 'pill p-warn';
+  } else if (surplus > 0.1) {
+    pill.textContent = '+' + f(surplus,2) + ' kW — too low';
+    pill.className   = 'pill p-info';
+  } else {
+    pill.textContent = f(surplus,2) + ' kW deficit';
+    pill.className   = 'pill p-warn';
+  }
+  const barPct  = Math.min(100, Math.max(0, (surplus / acMax) * 100));
+  const barCol  = surplus > 1.0 ? '#00c882' : surplus > 0 ? '#d4a820' : '#e05a28';
+  document.getElementById('surplusBar').innerHTML =
+    '<div style="font-size:9px;color:var(--t2);margin-bottom:3px;display:flex;justify-content:space-between">' +
+    '<span>0</span><span style="font-weight:600;color:' + barCol + '">Surplus ' + f(Math.max(0,surplus),2) + ' kW</span><span>' + f(acMax,1) + ' kW</span></div>' +
+    '<div style="height:6px;border-radius:3px;background:var(--sf2);overflow:hidden">' +
+    '<div style="height:100%;width:' + barPct + '%;background:' + barCol + ';border-radius:3px;transition:width .6s ease"></div>' +
+    '</div>';
+  const firstRunnable = APPLIANCES.find(app => surplus >= SURPLUS_TRIGGER && surplus >= app.kw);
+  const rows = APPLIANCES.map(app => {
+    const canRun    = surplus >= SURPLUS_TRIGGER && surplus >= app.kw && !battDischarging && !lowSolar;
+    const partial   = !canRun && surplus > 0 && surplus >= app.kw * 0.4;
+    const battCovers= !canRun && !partial && stored() > app.kw * 0.5;
+    const deficit   = !canRun && !partial && !battCovers;
+    let statusCls, statusTxt, statusDot;
+    const isFirst = firstRunnable && app.id === firstRunnable.id;
+    if      (canRun && isFirst){ statusCls='sb-b'; statusTxt='Run now ✓'; statusDot='#00c882'; }
+    else if (canRun && !isFirst){ statusCls='sb-o'; statusTxt='Queue';    statusDot='#d4a820'; }
+    else if (partial)     { statusCls='sb-o'; statusTxt='Partial';   statusDot='#d4a820'; }
+    else if (battCovers)  { statusCls='sb-o'; statusTxt='Batt only'; statusDot='#378ADD'; }
+    else                  { statusCls='sb-a'; statusTxt='Wait';      statusDot='#e05a28'; }
+    applianceState[app.id] = canRun;
+    const needed = app.kw - Math.max(0, surplus);
+    const extraInfo = canRun && isFirst
+      ? 'Solar covers it · ' + f(surplus - app.kw, 2) + ' kW left after'
+      : canRun && !isFirst
+      ? 'Queue after current · surplus ' + f(surplus,2) + ' kW'
+      : partial
+      ? 'Need ' + f(needed,2) + ' kW more solar · battery makes up rest'
+      : 'Need ' + f(needed,2) + ' kW more solar · wait for peak';
+    const reminded = applianceReminders.has(app.id);
+    const remindLbl = reminded ? ('🔔 ' + _reminderLabel(app.id)) : '🔕';
+    // Bell only on Queue (solar covers it but another appliance goes first)
+    // and Partial (not quite enough solar but close) — not on Batt only or Wait
+    const showBell = (canRun && !isFirst) || partial;
+    const remindBtn = showBell
+      ? '<button class="sr-btn' + (reminded ? ' sr-on' : '') + '" ' +
+        'onclick="toggleApplianceReminder(\'' + app.id + '\')" ' +
+        'title="' + (reminded ? 'Cancel reminder (fires in ' + _reminderLabel(app.id) + ')' : 'Remind me in 30 min') + '">' +
+        remindLbl +
+        '</button>'
+      : '';
+    return '<div class="si">' +
+      '<div style="width:8px;height:8px;border-radius:50%;background:' + statusDot + ';flex-shrink:0;margin-top:2px"></div>' +
+      '<div class="sic">' + app.icon + '</div>' +
+      '<div class="sinf">' +
+        '<div class="snm">' + app.name + ' <span style="font-size:9px;color:var(--t3);font-weight:400">' + app.kw + ' kW</span></div>' +
+        '<div class="stm">' + extraInfo + (reminded && showBell ? ' · <span style="color:#d4a820;font-weight:600">🔔 reminder in ' + _reminderLabel(app.id) + '</span>' : '') + '</div>' +
+      '</div>' +
+      '<div class="sbg ' + statusCls + '">' + statusTxt + '</div>' +
+      remindBtn +
+    '</div>';
+  }).join('');
+  document.getElementById('smartSched').innerHTML = '<div class="sched">' + rows + '</div>';
+}
+
+const NOTIF_DEBOUNCE_MS = 30 * 1000;
+
+function getProfileConsKw(hour) {
+  const slots = SYS.consProfile || [];
+  for (const s of slots) {
+    const end = s.to === 0 ? 24 : s.to;
+    if (hour >= s.from && hour < end) return s.kw;
+  }
+  return slots[0] ? slots[0].kw : 0.3;
+}
+
+function getProfileDailyKwh() {
+  const slots = SYS.consProfile || [];
+  return +(slots.reduce((s, sl) => s + sl.kw * (sl.to === 0 ? 24 - sl.from : sl.to - sl.from), 0)).toFixed(2);
+}
+
+function applyAutoConsumption() {
+  // Always reset to profile — never let nudges accumulate.
+  // The profile is the only reliable consumption source without FusionSolar.
+  const kw = getProfileConsKw(new Date().getHours());
+  ST.consKw = kw;
+}
+
+// ── Consumption profile learning from rlog history ────────────────
+// Every 6 hours, scan the past 7 days of snapshots and compute the
+// average home consumption per hour-of-day. Blend the learned values
+// into the manual profile (70% learned, 30% manual) so the profile
+// gradually adapts to the user's real usage.
+//
+// Home consumption = pvKw + gridImport - gridExport + battDischarge
+// We approximated as ST.consKw at snapshot time, recorded by snap().
+// Therefore we can re-derive a per-hour average from rlog entries.
+function learnConsumptionProfile() {
+  if (!Array.isArray(rlog) || rlog.length < 24) return; // need at least 24 entries
+  // Group rlog entries by hour of day; record consKw (computed via battery flow + grid)
+  const hourBuckets = Array.from({length:24}, () => []);
+  for (const e of rlog) {
+    try {
+      const t = new Date(e.t);
+      const h = t.getHours();
+      // Derive instantaneous consKw: PV - battery_to_grid + grid_import - grid_export ≈ home load
+      // The recorded snapshot may not directly have consKw; reconstruct from pvKw - net flow
+      // For simplicity, use pvKw - batt (negative batt = discharging adds to home) - grd (negative grd = importing)
+      const pv = +e.pvKw || 0;
+      const batt = +e.batt || 0;  // positive = charging, negative = discharging
+      const grd = +e.grd  || 0;   // positive = exporting, negative = importing
+      // home_load = pv - batt - grd  (energy that flowed to home)
+      const home = Math.max(0, pv - batt - grd);
+      if (home >= 0 && home <= 10) hourBuckets[h].push(home);
+    } catch(e) {}
+  }
+  // Compute average per hour, skip hours with <3 samples
+  const learned = new Array(24).fill(null);
+  for (let h = 0; h < 24; h++) {
+    if (hourBuckets[h].length >= 3) {
+      const sum = hourBuckets[h].reduce((a, b) => a + b, 0);
+      learned[h] = +(sum / hourBuckets[h].length).toFixed(2);
+    }
+  }
+  // Blend into consProfile slots: for each slot, if all hours have learned values,
+  // update the slot's kw value (70% learned, 30% manual)
+  const slots = SYS.consProfile || [];
+  let updated = false;
+  for (const slot of slots) {
+    const end = slot.to === 0 ? 24 : slot.to;
+    const hoursInSlot = [];
+    for (let h = slot.from; h < end; h++) {
+      if (learned[h] !== null) hoursInSlot.push(learned[h]);
+    }
+    if (hoursInSlot.length >= Math.ceil((end - slot.from) / 2)) {
+      const learnedAvg = hoursInSlot.reduce((a, b) => a + b, 0) / hoursInSlot.length;
+      const manual = slot.kw || 0;
+      const blended = +(0.7 * learnedAvg + 0.3 * manual).toFixed(2);
+      if (Math.abs(blended - slot.kw) > 0.05) {
+        slot.kw = blended;
+        updated = true;
+      }
+    }
+  }
+  if (updated) {
+    // Persist and refresh display
+    saveCfg({ ...loadCfg(), consProfile: SYS.consProfile });
+    if (typeof renderConsProfileSlots === 'function') renderConsProfileSlots();
+    // Notify Java so SOC catch-up uses new values
+    if (window.AppBridge && AppBridge.saveConsProfile) {
+      try {
+        const hourly = [];
+        for (let h = 0; h < 24; h++) hourly.push(getProfileConsKw(h));
+        AppBridge.saveConsProfile(JSON.stringify(hourly));
+      } catch(e) {}
+    }
+    console.log('[learning] consProfile auto-updated from rlog');
+  }
+}
+let _lastLearnMs = 0;
+function maybeRunLearning() {
+  const now = Date.now();
+  if (now - _lastLearnMs < 6 * 3600 * 1000) return; // every 6 hours
+  _lastLearnMs = now;
+  try { learnConsumptionProfile(); } catch(e) { console.error('learn error', e); }
+}
+
+let _renderAllTimer = null;
+
+function setEmptyDashboard() {
+  // Clear all displayed values when system not configured
+  const ids = ['pvKwPill','battSocPill','wxTempPill','battKwPill',
+               'pvKwValue','socValue','irrValue','tempValue'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '—';
+  });
+}
+
+function renderAll() {
+  if (!isSysConfigured()) { setEmptyDashboard(); return; }
+  if (_renderAllTimer) clearTimeout(_renderAllTimer);
+  _renderAllTimer = setTimeout(() => {
+    _renderAllTimer = null;
+    renderMetrics(); renderIrr(); renderBattery(); renderFlow();
+    renderGridPanel(); renderForecastProduction(); renderSmartSched(); renderAlerts();
+  }, 80);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('logPill').textContent=rlog.length+' entries';
+initCfgInputs();
+restoreBrandSelects();
+initNotifBar();
+// One-shot migration of legacy GPS users to the new locked-panel-location model
+migrateGpsToPanelLocation();
+updateCurrentPanelLocDisplay();
+
+(function() {
+  if (window.AppBridge && AppBridge.loadSoc) {
+    try {
+      const s = AppBridge.loadSoc();
+      if (s) {
+        const p = s.split(',');
+        const soc = parseFloat(p[0]), panelKw = parseFloat(p[1]);
+        const battGross = parseFloat(p[2]), battRes = parseFloat(p[3]), consKw = parseFloat(p[4]);
+        if (p.length >= 7) {
+          const gridExp  = parseFloat(p[5]) || 0;
+          const gridImp  = parseFloat(p[6]) || 0;
+          const gridDate = (p[7] || '').trim();
+          const pvKwhBg  = parseFloat(p[8]) || 0;
+          const today    = new Date().toDateString();
+          const todayDoy = (function() {
+            const t = new Date(); const s = new Date(t.getFullYear(), 0, 0);
+            return t.getFullYear() + '-' + Math.floor((t - s) / 86400000);
+          })();
+          const gridDateMatch = gridDate && (gridDate === todayDoy || (function() {
             try {
-                return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
-            } catch (Exception e) { return 0; }
-        }
-
-        @JavascriptInterface
-        public String getVersionName() {
-            try {
-                return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-            } catch (Exception e) { return ""; }
-        }
-
-        @JavascriptInterface
-        public void openUrl(String url) {
-            // Open URL using Android Intent — works for Play Store and https URLs
-            try {
-                android.content.Intent intent = new android.content.Intent(
-                    android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse(url)
-                );
-                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                getApplicationContext().startActivity(intent);
-            } catch (Exception e) {
-                android.util.Log.e("AppBridge", "openUrl failed: " + e.getMessage());
+              const [yr, doy] = gridDate.split('-').map(Number);
+              const d = new Date(yr, 0, 1); d.setDate(d.getDate() + doy - 1);
+              return d.toDateString() === today;
+            } catch(e) { return false; }
+          })());
+          if (gridDateMatch) {
+            ST.gridExportKwh = Math.max(ST.gridExportKwh, gridExp);
+            ST.gridImportKwh = Math.max(ST.gridImportKwh, gridImp);
+            if (pvKwhBg > 0) ST.pvKwhToday = Math.max(ST.pvKwhToday, pvKwhBg);
+            ST._lastDate = today;
+            try { localStorage.setItem('solarGridKwh', JSON.stringify({
+              exp: ST.gridExportKwh, imp: ST.gridImportKwh, date: today })); } catch(e) {}
+          } else if (!gridDate) {
+            if (gridExp > 0 || gridImp > 0) {
+              ST.gridExportKwh = Math.max(ST.gridExportKwh, gridExp);
+              ST.gridImportKwh = Math.max(ST.gridImportKwh, gridImp);
+              ST._lastDate = today;
+              try { localStorage.setItem('solarGridKwh', JSON.stringify({
+                exp: ST.gridExportKwh, imp: ST.gridImportKwh, date: today })); } catch(e) {}
             }
+          }
         }
-
-        @JavascriptInterface
-        public String loadSoc() {
-            android.content.SharedPreferences p =
-                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
-            float soc      = p.getFloat("soc",        -1f);
-            float panelKw  = p.getFloat("panel_kw",    0f);
-            float battGross= p.getFloat("batt_gross",  0f);
-            float battRes  = p.getFloat("batt_res",    0f);
-            float consKw    = p.getFloat("cons_kw",        0f);
-            float gridExp   = p.getFloat("grid_export_kwh", 0f);
-            float gridImp   = p.getFloat("grid_import_kwh", 0f);
-            float pvKwh     = p.getFloat("pv_kwh",           0f);
-            String gridDate = p.getString("grid_date",       "");
-            String socStr   = soc >= 0 ? String.valueOf(soc) : "-1";
-            return socStr + "," + panelKw + "," + battGross + "," + battRes + "," + consKw
-                 + "," + gridExp + "," + gridImp + "," + gridDate + "," + pvKwh;
+        if (soc >= 0 && panelKw > 0) {
+          ST.battSoc = soc;
+          SYS.panelKw = panelKw; SYS.battGross = battGross; SYS.battRes = battRes;
+          ST.consKw = consKw;
+          const socEl = document.getElementById('cfgSoc');
+          if (socEl) socEl.value = Math.round(socToDisplay(soc));
+          updateSocDisplay();
         }
-
-        @JavascriptInterface
-        public void saveGps(double lat, double lon, String name) {
-            android.content.SharedPreferences prefs =
-                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
-            prefs.edit()
-                .putFloat("gps_lat", (float) lat)
-                .putFloat("gps_lon", (float) lon)
-                .putString("gps_name", name)
-                .apply();
-        }
-
-        @JavascriptInterface
-        public String loadGps() {
-            android.content.SharedPreferences prefs =
-                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
-            float lat = prefs.getFloat("gps_lat", 0f);
-            float lon = prefs.getFloat("gps_lon", 0f);
-            String name = prefs.getString("gps_name", "");
-            if (lat == 0f && lon == 0f) return "";
-            return lat + "," + lon + "," + name;
-        }
-
-        @JavascriptInterface
-        public boolean locationPermissionGranted() {
-            return checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                == android.content.pm.PackageManager.PERMISSION_GRANTED;
-        }
-
-        @JavascriptInterface
-        public void openLocationSettings() {
-            startActivity(new android.content.Intent(
-                android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS));
-        }
-
-        @JavascriptInterface
-        public void requestLocationPermission() {
-            requestPermissions(new String[]{
-                android.Manifest.permission.ACCESS_FINE_LOCATION,
-                android.Manifest.permission.ACCESS_COARSE_LOCATION}, 2);
-        }
-
-        @JavascriptInterface
-        public void saveConsProfile(String jsonArr) {
-            // 24-hour consumption profile array (kW per hour 0..23)
-            // Used by SOC catch-up in onResume() to integrate consumption correctly
-            // across long sleeps (instead of applying a single consKw for all hours).
-            try {
-                if (jsonArr == null) return;
-                org.json.JSONArray arr = new org.json.JSONArray(jsonArr);
-                if (arr.length() != 24) return;
-                android.content.SharedPreferences.Editor ed =
-                    getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
-                StringBuilder sb = new StringBuilder();
-                for (int h = 0; h < 24; h++) {
-                    if (h > 0) sb.append(",");
-                    sb.append(arr.getDouble(h));
-                }
-                ed.putString("cons_profile_hourly", sb.toString()).apply();
-                android.util.Log.d("AppBridge", "Saved 24h consumption profile");
-            } catch (Exception e) {
-                android.util.Log.e("AppBridge", "saveConsProfile: " + e.getMessage());
+        if (p.length >= 7) {
+          const gridExp  = parseFloat(p[5]) || 0;
+          const gridImp  = parseFloat(p[6]) || 0;
+          const gridDate = p[7] || '';
+          const today    = new Date().toDateString();
+          if (gridDate) {
+            const [yr, doy] = gridDate.split('-').map(Number);
+            const cal = new Date(); cal.setFullYear(yr, 0, 1);
+            cal.setDate(cal.getDate() + doy - 1);
+            const sameDay = cal.toDateString() === today;
+            if (sameDay) {
+              ST.gridExportKwh = Math.max(ST.gridExportKwh, gridExp);
+              ST.gridImportKwh = Math.max(ST.gridImportKwh, gridImp);
+              if (pvKwhBg > 0) ST.pvKwhToday = Math.max(ST.pvKwhToday, pvKwhBg);
+              ST._lastDate = today;
             }
+          }
         }
+      }
+    } catch(e) {}
+  }
 
-        @JavascriptInterface
-        public void saveForecast(float peakKw, int peakHour, float todayKwh) {
-            // Pushed by JS after weather fetch. Used by FGS morning notification.
-            try {
-                getSharedPreferences("solar_prefs", MODE_PRIVATE).edit()
-                    .putFloat("peak_kw", peakKw)
-                    .putInt("peak_hour", peakHour)
-                    .putFloat("forecast_today_kwh", todayKwh)
-                    .apply();
-            } catch (Exception e) {
-                android.util.Log.e("AppBridge", "saveForecast: " + e.getMessage());
-            }
-        }
-
-        
-        @JavascriptInterface
-        public void savePanelLocation(double lat, double lon, String name) {
-            // Store the locked panel location. Used by all background services
-            // (FGS, AlarmReceiver, Worker) and the SOC catch-up. This is what
-            // makes the app independent of where the phone physically is - so
-            // when the user travels, the forecast stays for the panel location.
-            try {
-                android.content.SharedPreferences.Editor ed =
-                    getSharedPreferences("solar_prefs", MODE_PRIVATE).edit();
-                ed.putFloat("panel_lat", (float) lat)
-                  .putFloat("panel_lon", (float) lon);
-                if (name != null) ed.putString("panel_loc_name", name);
-                ed.apply();
-                android.util.Log.d("AppBridge", "Panel location locked: " + lat + "," + lon + " (" + name + ")");
-            } catch (Exception e) {
-                android.util.Log.e("AppBridge", "savePanelLocation: " + e.getMessage());
-            }
-        }
-
-// ── FusionSolar integration ────────────────────────────────────────
-
-
-        // Fetches the CAPTCHA image as base64 so JS can display it in an <img> tag
-
-
-        // Retries login with the user-supplied CAPTCHA code
-    }
-
-    private void requestBatteryOptimizationExemption() {
-        // Samsung (and other OEMs) aggressively kill background tasks.
-        // This prompts the user once to whitelist the app from battery optimization.
-        // Without this, WorkManager periodic tasks may never fire on Samsung S24.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try {
-                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-                if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
-                    Intent intent = new Intent(
-                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                    intent.setData(Uri.parse("package:" + getPackageName()));
-                    startActivity(intent);
-                }
-            } catch (Exception e) {
-                android.util.Log.w("MainActivity", "Battery opt exemption request failed: " + e.getMessage());
-            }
-        }
-    }
-
-    private void scheduleBackgroundWork() {
-        // No network constraint — worker handles offline gracefully.
-        // CONNECTED was causing complete overnight failure on Samsung (WiFi off during sleep).
-        PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(
-            SolarWorker.class, 30, TimeUnit.MINUTES)
-            .build();
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "solar_background",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            work);
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel ch = new NotificationChannel(
-                CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
-            ch.setLightColor(Color.parseColor("#1D9E75"));
-            ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE))
-                .createNotificationChannel(ch);
-        }
-    }
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        mainHandler = new Handler(Looper.getMainLooper());
-        createNotificationChannel();
-        scheduleBackgroundWork();              // WorkManager — tertiary backup
-        SolarAlarmReceiver.schedule(this);    // AlarmManager — secondary backup
-        try { SolarForegroundService.start(this); } catch (Exception e) {
-            android.util.Log.w("MainActivity", "FGS start failed: " + e.getMessage());
-        } // Foreground Service - PRIMARY (Samsung-safe)
-        requestBatteryOptimizationExemption();
-
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
-        webView = new WebView(this);
-        webView.setBackgroundColor(Color.parseColor("#1D9E75"));
-        setContentView(webView);
-
-        // Clear cache on every launch so the latest GitHub Pages index.html
-        // is always fetched. Without this, stale JS with old bugs persists
-        // across installs and updates, causing stuck values and wrong behaviour.
-        // Only clear cache when app version changes - prevents spurious update prompts
-        try {
-            android.content.SharedPreferences bp =
-                getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
-            int lastVer = bp.getInt("last_cached_version", 0);
-            int curVer  = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
-            if (lastVer != curVer) {
-                webView.clearCache(true);
-                bp.edit().putInt("last_cached_version", curVer).apply();
-            }
-        } catch (Exception e) { webView.clearCache(true); }
-
-        WebSettings s = webView.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setDatabaseEnabled(true);
-        s.setGeolocationEnabled(true);
-        s.setAllowFileAccess(true);
-        // NOTE: Do NOT call webView.setLayerType(LAYER_TYPE_HARDWARE) -
-        // it causes ANR on complex pages by double-compositing the renderer.
-        // Hardware acceleration is enabled at manifest level (android:hardwareAccelerated="true").
-        s.setAllowContentAccess(true);
-        s.setLoadWithOverviewMode(true);
-        s.setUseWideViewPort(true);
-        s.setBuiltInZoomControls(false);
-        s.setDisplayZoomControls(false);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
-
-        webView.addJavascriptInterface(new AppBridge(), "AppBridge");
-
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public void onGeolocationPermissionsShowPrompt(String origin,
-                    GeolocationPermissions.Callback cb) { cb.invoke(origin, true, true); }
-            @Override
-            public void onPermissionRequest(android.webkit.PermissionRequest r) {
-                r.grant(r.getResources());
-            }
-        });
-
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
-                return false;
-            }
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                // Inject GPS and state AFTER page has fully loaded
-                // This guarantees JS functions exist when we call them
-                mainHandler.postDelayed(() -> injectLocation(), 200);
-            }
-        });
-
-        // Request location permission if not already granted
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{
-                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                    android.Manifest.permission.ACCESS_COARSE_LOCATION
-                }, 2);
-            }
-        }
-
-        if (savedInstanceState != null) webView.restoreState(savedInstanceState);
-        else webView.loadUrl(APP_URL);
-    }
-
-    @Override
-    protected void onSaveInstanceState(Bundle outState) {
-        super.onSaveInstanceState(outState);
-        webView.saveState(outState);
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        // On resume: try to get last known location from Android LocationManager
-        // This is instant (no GPS fix needed) and works even without network
-        mainHandler.postDelayed(() -> injectLocation(), 300);
-        scheduleMorningAlarm();
-    }
-
-    private void scheduleMorningAlarm() {
-        try {
-            android.app.AlarmManager am =
-                (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
-            if (am == null) return;
-            android.content.Intent intent =
-                new android.content.Intent(this, SolarAlarmReceiver.class);
-            java.util.Calendar cal = java.util.Calendar.getInstance();
-            if (cal.get(java.util.Calendar.HOUR_OF_DAY) >= 8)
-                cal.add(java.util.Calendar.DAY_OF_YEAR, 1);
-            cal.set(java.util.Calendar.HOUR_OF_DAY, 8);
-            cal.set(java.util.Calendar.MINUTE, 0);
-            cal.set(java.util.Calendar.SECOND, 0);
-            cal.set(java.util.Calendar.MILLISECOND, 0);
-            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
-                this, 9999, intent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT |
-                android.app.PendingIntent.FLAG_IMMUTABLE);
-            am.setExactAndAllowWhileIdle(
-                android.app.AlarmManager.RTC_WAKEUP, cal.getTimeInMillis(), pi);
-        } catch (Exception ex) {
-            android.util.Log.w("SolarMain", "scheduleMorningAlarm failed: " + ex);
-        }
-    }
-
-    private void injectLocation() {
-        android.content.SharedPreferences prefs =
-            getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE);
-
-        // ── GPS ──────────────────────────────────────────────────────────────
-        double gpsLat = 0, gpsLon = 0;
-        String gpsName = "";
-        try {
-            android.location.LocationManager lm =
-                (android.location.LocationManager) getSystemService(android.content.Context.LOCATION_SERVICE);
-            android.location.Location loc = null;
-            if (lm != null && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                    == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-
-                // Step 1: Use last known immediately for fast UI response
-                loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
-                if (loc == null)
-                    loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
-                if (loc == null)
-                    loc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
-
-                // Step 2: Also request a FRESH fix in parallel — fires async when ready
-                // Uses NETWORK provider (fast, battery-friendly) then upgrades to GPS if needed
-                try {
-                    android.location.LocationListener freshListener = location -> {
-                        double fLat = location.getLatitude();
-                        double fLon = location.getLongitude();
-                        prefs.edit()
-                            .putFloat("gps_lat", (float) fLat)
-                            .putFloat("gps_lon", (float) fLon)
-                            .apply();
-                        mainHandler.post(() -> webView.evaluateJavascript(
-                            "if(typeof applyGpsFromNative==='function')" +
-                            "applyGpsFromNative(" + fLat + "," + fLon + ",'');", null));
-                    };
-                    if (lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
-                        lm.requestSingleUpdate(android.location.LocationManager.NETWORK_PROVIDER,
-                            freshListener, android.os.Looper.getMainLooper());
-                    }
-                    if (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
-                        lm.requestSingleUpdate(android.location.LocationManager.GPS_PROVIDER,
-                            freshListener, android.os.Looper.getMainLooper());
-                    }
-                } catch (Exception ignored) {}
-            }
-            if (loc != null) {
-                gpsLat = loc.getLatitude();
-                gpsLon = loc.getLongitude();
-                prefs.edit().putFloat("gps_lat", (float)gpsLat)
-                            .putFloat("gps_lon", (float)gpsLon).apply();
-            }
-        } catch (Exception e) { /* fall through */ }
-
-        // Fall back to SharedPreferences if LocationManager had no fix
-        if (gpsLat == 0 && gpsLon == 0) {
-            gpsLat  = prefs.getFloat("gps_lat", 0f);
-            gpsLon  = prefs.getFloat("gps_lon", 0f);
-            gpsName = prefs.getString("gps_name", "");
+  let lat = 0, lon = 0, name = '';
+  if (window.AppBridge && AppBridge.loadGps) {
+    try {
+      const gpsStr = AppBridge.loadGps();
+      if (gpsStr) {
+        const parts = gpsStr.split(',');
+        lat = parseFloat(parts[0]); lon = parseFloat(parts[1]);
+        name = parts.slice(2).join(',');
+      }
+    } catch(e) {}
+  }
+  if (!lat || !lon) {
+    try {
+      const saved = safeJson('solarGps', null);
+      if (saved && saved.lat && saved.lon) {
+        lat = saved.lat; lon = saved.lon; name = saved.name || '';
+      }
+    } catch(e) {}
+  }
+  if (lat && lon) {
+    ST.lat = lat; ST.lon = lon;
+    ST.locName = (name && !name.includes('°')) ? name : 'Locating...';
+    ST.gpsOk = true;
+    setGps('ok', '📍 ' + ST.locName);
+    if (!name || name.includes('°')) {
+      reverseGeocode(lat, lon).then(city => {
+        if (city) {
+          ST.locName = city;
+          setGps('ok', '📍 ' + city);
+          try { localStorage.setItem('solarGps', JSON.stringify({ lat, lon, name: city })); } catch(e) {}
         } else {
-            // Fresh GPS fix — reuse cached city name only if within 1km
-            float storedLat   = prefs.getFloat("gps_lat", 0f);
-            float storedLon   = prefs.getFloat("gps_lon", 0f);
-            String storedName = prefs.getString("gps_name", "");
-            if (!storedName.isEmpty()
-                    && Math.abs(gpsLat - storedLat) < 0.01f
-                    && Math.abs(gpsLon - storedLon) < 0.01f) {
-                gpsName = storedName;
-            }
-            // If we moved more than 1km, clear the saved name so JS re-geocodes
+          ST.locName = lat.toFixed(4) + '°N ' + lon.toFixed(4) + '°E';
+          setGps('ok', '📍 ' + ST.locName);
         }
-
-        if (gpsLat != 0 && gpsLon != 0) {
-            String safeN = gpsName.replace("'", "\\'");
-            webView.evaluateJavascript(
-                "if(typeof applyGpsFromNative==='function')" +
-                "applyGpsFromNative(" + gpsLat + "," + gpsLon + ",'" + safeN + "');", null);
-        }
-
-        // Start FusionSolar live data injection loop (if FS credentials are configured)
-
-        // ── SOC & CONFIG ─────────────────────────────────────────────────────
-        // Always inject — not conditional on GPS success
-        float soc       = prefs.getFloat("soc",        -1f);
-        float panelKw   = prefs.getFloat("panel_kw",    0f);
-        float battGross = prefs.getFloat("batt_gross",  0f);
-        float battRes   = prefs.getFloat("batt_res",    0f);
-        float consKw    = prefs.getFloat("cons_kw",     0f);
-        float bgPvKwRaw = prefs.getFloat("pv_kw",      -1f);
-        long  bgAge     = System.currentTimeMillis() - prefs.getLong("soc_saved_at_ms", 0L);
-        // Only inject last-known pvKw if it's less than 15 min old.
-        // 90 min was too long — stale production data locked the display on app open.
-        float bgPvKw    = (bgAge > 0 && bgAge < 15L * 60 * 1000) ? bgPvKwRaw : -1f;
-
-        // ── SOC CATCH-UP ─────────────────────────────────────────────────────
-        // The alarm fires every 30 min. If the app was closed for only 5 minutes,
-        // the alarm hasn't fired and SharedPreferences SOC is stale.
-        // We catch-up here using elapsed time + last known pvKw/consKw,
-        // so the battery panel shows the correct value immediately on reopen.
-        if (soc >= 0 && battGross > 0 && panelKw > 0) {
-            long socSavedAt = prefs.getLong("soc_saved_at_ms", -1L);
-            if (socSavedAt > 0) {
-                double elapsedH = (System.currentTimeMillis() - socSavedAt) / 3600000.0;
-                // Only apply catch-up if gap is meaningful (>2 min) and not absurd (>12h)
-                // A >12h gap means the alarm should have fired; trust its value instead.
-                if (elapsedH > (2.0 / 60.0) && elapsedH <= 12.0) {
-                    float battMaxC = prefs.getFloat("batt_max_c", 2.5f);
-                    float battMaxD = prefs.getFloat("batt_max_d", 2.5f);
-                    float pvKwLast = bgPvKw >= 0 ? bgPvKw : 0f;  // 0 if alarm never ran
-
-                    double battUse = battGross * (1.0 - battRes);
-                    if (battUse <= 0) battUse = 4.5;
-                    double hardFlr = 0.0;
-                    double rampTop = 2.0;
-                    double battEff = 0.95;
-
-                    // Try to load hourly consumption profile (24 values comma-separated)
-                    String prof = prefs.getString("cons_profile_hourly", "");
-                    double[] profHourly = null;
-                    if (!prof.isEmpty()) {
-                        try {
-                            String[] parts = prof.split(",");
-                            if (parts.length == 24) {
-                                profHourly = new double[24];
-                                for (int h = 0; h < 24; h++) profHourly[h] = Double.parseDouble(parts[h]);
-                            }
-                        } catch (Exception ignored) {}
-                    }
-
-                    double curSoc = soc;
-                    double totalFlow = 0.0;
-                    if (profHourly != null) {
-                        // Walk elapsed time in 1-hour chunks, applying the correct cons for each hour
-                        long startMs = socSavedAt;
-                        long endMs = System.currentTimeMillis();
-                        long step = 15L * 60L * 1000L;  // 15-min steps for granularity
-                        // PV during the gap: estimate using the forecast bell curve.
-                        // JS pushes peak_kw and peak_hour via AppBridge.saveForecast() after every weather fetch.
-                        // The bell-curve model is far more accurate than the old linear-decay-to-zero approach,
-                        // especially when the gap crosses sunrise/sunset.
-                        float catchPeakKw = prefs.getFloat("peak_kw", 0f);
-                        int   catchPeakHr = prefs.getInt("peak_hour", 12);
-                        for (long t = startMs; t < endMs; t += step) {
-                            long chunkEnd = Math.min(t + step, endMs);
-                            double dtH = (chunkEnd - t) / 3600000.0;
-                            java.util.Calendar c = java.util.Calendar.getInstance();
-                            c.setTimeInMillis(t);
-                            int hr = c.get(java.util.Calendar.HOUR_OF_DAY);
-                            int mn = c.get(java.util.Calendar.MINUTE);
-                            double hOfDay = hr + mn / 60.0;
-                            double consH = profHourly[hr];
-                            // Bell-curve PV: peakKw * cos(deltaH * π/12)²  (clamped >= 0, dies at ±6h from peak)
-                            double pvH;
-                            if (catchPeakKw > 0) {
-                                double normDist = (hOfDay - catchPeakHr) / 6.0;
-                                pvH = (Math.abs(normDist) >= 1.0)
-                                    ? 0.0
-                                    : catchPeakKw * Math.pow(Math.cos(normDist * Math.PI / 2.0), 2);
-                            } else {
-                                // No forecast saved yet — fall back to linear decay (legacy behaviour)
-                                double frac = (t - startMs) / (double)(endMs - startMs);
-                                pvH = pvKwLast * Math.max(0.0, 1.0 - frac);
-                            }
-
-                            double s2hH = Math.min(pvH, consH);
-                            double pvSH = pvH - s2hH;
-                            double hDH  = consH - s2hH;
-                            double bCH  = curSoc < 100 ? Math.min(pvSH, battMaxC) : 0;
-                            double bDH;
-                            if      (curSoc <= hardFlr) bDH = 0;
-                            else if (curSoc <= rampTop) { double f=(curSoc-hardFlr)/rampTop; bDH=Math.min(hDH*f, battMaxD); }
-                            else                        bDH = Math.min(hDH, battMaxD);
-
-                            double bf = bCH - bDH;
-                            double eff = bf > 0 ? bf * battEff : bf;
-                            curSoc += (eff / battUse) * dtH * 100.0;
-                            curSoc = Math.max(hardFlr, Math.min(100.0, curSoc));
-                            totalFlow += bf * dtH;
-                        }
-                        android.util.Log.d("MainActivity", String.format(
-                            "SOC catch-up (bell curve, peak=%.2fkW@%dh): %.1f min, total battFlow=%.2fkWh, soc %.1f->%.1f",
-                            catchPeakKw, catchPeakHr, elapsedH * 60, totalFlow, (double) soc, curSoc));
-                    } else {
-                        // Legacy fallback: single consKw value
-                        double s2h = Math.min(pvKwLast, consKw);
-                        double pvS = pvKwLast - s2h;
-                        double hD  = consKw - s2h;
-                        double bC  = soc < 100 ? Math.min(pvS, battMaxC) : 0;
-                        double bD;
-                        if      (soc <= hardFlr) bD = 0;
-                        else if (soc <= rampTop) { double f=(soc-hardFlr)/rampTop; bD=Math.min(hD*f, (double)battMaxD); }
-                        else                     bD = Math.min(hD, (double) battMaxD);
-                        double battFlow = bC - bD;
-                        double effFlow  = battFlow > 0 ? battFlow * battEff : battFlow;
-                        curSoc = soc + (effFlow / battUse) * elapsedH * 100.0;
-                        curSoc = Math.max(hardFlr, Math.min(100.0, curSoc));
-                        android.util.Log.d("MainActivity", String.format(
-                            "SOC catch-up (legacy): %.1f min, pv=%.2fkW cons=%.2fkW flow=%.2fkW soc %.1f->%.1f",
-                            elapsedH * 60, pvKwLast, (double) consKw, battFlow, (double) soc, curSoc));
-                    }
-
-                    prefs.edit()
-                         .putFloat("soc", (float) curSoc)
-                         .putLong("soc_saved_at_ms", System.currentTimeMillis())
-                         .apply();
-                    soc = (float) curSoc;
-                }
-            }
-        }
-
-        if (soc >= 0 && panelKw > 0 && battGross > 0) {
-            webView.evaluateJavascript(
-                "if(typeof applyStateFromNative==='function')" +
-                "applyStateFromNative(" + soc + "," + panelKw + "," +
-                battGross + "," + battRes + "," + consKw + "," + bgPvKw + ");", null);
-        }
+      });
     }
+    fetchWeather();
+    // Aggressive retry ladder — network may not be ready on fresh install.
+    // 5s: catches immediate network-ready case
+    // 20s: catches slow GPS/network startup
+    // 45s: safety net before 60s interval kicks in
+    setTimeout(() => { if (!ST.apiOk && ST.lat && ST.lon) fetchWeather(); },  5000);
+    setTimeout(() => { if (!ST.apiOk && ST.lat && ST.lon) fetchWeather(); }, 20000);
+    setTimeout(() => { if (!ST.apiOk && ST.lat && ST.lon) fetchWeather(); }, 45000);
+    setTimeout(checkForUpdate, 5000);
+    setTimeout(() => {
+      if (!('geolocation' in navigator)) return;
+      navigator.geolocation.getCurrentPosition(
+        pos => applyPosition(pos),
+        () => {},
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
+      );
+    }, 3000);
+  } else {
+    setTimeout(requestLocation, 1000);
+  }
+})();
 
+setInterval(() => {
+  if (!ST.lat || !ST.lon) {
+    try {
+      const saved = safeJson('solarGps', null);
+      if (saved && saved.lat && saved.lon) {
+        ST.lat = saved.lat; ST.lon = saved.lon;
+        ST.locName = (saved.name && !saved.name.includes('°')) ? saved.name : 'Locating...';
+        ST.gpsOk = true;
+      }
+    } catch(e) {}
+  }
+  fetchWeather();
+  // Silently refresh GPS every minute to keep location current
+  if (navigator.geolocation && ST.gpsOk) {
+    navigator.geolocation.getCurrentPosition(
+      pos => applyPosition(pos),
+      () => {},
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+    );
+  }
+}, 60*1000);
 
-    // ── FusionSolar live data injection ───────────────────────────────────────
-    private android.os.Handler fsHandler;
-    private Runnable           fsRunnable;
+setInterval(()=>{
+  if (!isSysConfigured()) {
+    // System not configured - don't render fake values
+    return;
+  }
+  applyAutoConsumption();
+  renderAll();
+  const socEl = document.getElementById('cfgSoc');
+  if (socEl && document.activeElement !== socEl && isSysConfigured()) {
+    socEl.value = Math.round(socToDisplay(ST.battSoc));
+    updateSocDisplay();
+  }
+  if (isSysConfigured()) snap();
+}, 30000);
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 2) {
-            // Location permission result — trigger JS to retry GPS
-            mainHandler.postDelayed(() ->
-                webView.evaluateJavascript("if(typeof requestLocation==='function')requestLocation();", null),
-            500);
+setInterval(()=>{
+  if (!isSysConfigured()) return;
+  applyAutoConsumption();
+  evolveSoc();
+  renderBattery();
+  renderMetrics();
+  renderFlow();
+  renderGridPanel();
+  const socEl = document.getElementById('cfgSoc');
+  if (socEl && document.activeElement !== socEl && isSysConfigured()) {
+    socEl.value = Math.round(socToDisplay(ST.battSoc));
+    updateSocDisplay();
+  }
+}, 5000);
+
+setInterval(updateClock, 1000);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    if (isSysConfigured()) {
+      const bgGapH = Math.min(6, (Date.now() - lastFlowT) / 3600000);
+      if (bgGapH > 1 / 60) {
+        let avgPvKw = ST.pvKw || 0;
+        if (ST.todayH && ST.todayH.length) {
+          const utcOff = ST._utcOffsetSec || 0;
+          const startH = new Date(lastFlowT + utcOff * 1000).getUTCHours();
+          const endH   = new Date(Date.now() + utcOff * 1000).getUTCHours();
+          const hrs = ST.todayH.filter(h =>
+            startH <= endH ? (h.hour >= startH && h.hour <= endH)
+                           : (h.hour >= startH || h.hour <= endH)
+          );
+          if (hrs.length) avgPvKw = hrs.reduce((s, h) => s + h.pvKw, 0) / hrs.length;
         }
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (webView.canGoBack()) webView.goBack();
-        else super.onBackPressed();
-    }
-}
-""")
-
-
-
-
-
-write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarForegroundService.java"), """package com.dumitriualxlang.solardasboard;
-
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.app.Service;
-import android.content.Context;
-import android.content.Intent;
-import android.content.SharedPreferences;
-import android.graphics.Color;
-import android.os.Build;
-import android.os.Handler;
-import android.os.IBinder;
-import android.os.Looper;
-import androidx.core.app.NotificationCompat;
-import org.json.JSONObject;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-
-/**
- * SolarForegroundService — the PRIMARY background engine.
- *
- * A Foreground Service is the ONLY mechanism that cannot be killed by Samsung's
- * Device Care, even with battery optimization enabled. It runs permanently until
- * the user explicitly stops it or the app is uninstalled.
- *
- * Every 30 minutes it:
- *   1. Fetches weather from Open-Meteo
- *   2. Calculates solar production using the same physics model as the JS app
- *   3. Runs the energy flow model (Solar → Home → Battery → Grid)
- *   4. Evolves battery SOC over elapsed time
- *   5. Persists soc + pv_kw + soc_saved_at_ms to SharedPreferences
- *   6. Fires a notification if any alert rule matches
- *
- * The persistent "Solar monitoring active" notification is required by Android
- * for foreground services — it cannot be dismissed but can be minimised.
- */
-public class SolarForegroundService extends Service {
-
-    private static final String CHANNEL_ID    = "solar_alerts";
-    private static final String CHANNEL_FG_ID = "solar_fg";
-    private static final String PREFS         = "SolarDashboard";
-    private static final int    FG_NOTIF_ID   = 999;
-    private static final long   INTERVAL_MS   = 30 * 60 * 1000L;  // 30 minutes
-    private static int          alertNotifId  = 3000;
-    private volatile boolean    isWorking     = false;
-
-    private Handler  handler;
-    private Runnable checker;
-
-    // ── Public API ────────────────────────────────────────────────────────────
-    public static void start(Context ctx) {
-        Intent intent = new Intent(ctx, SolarForegroundService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ctx.startForegroundService(intent);
-        } else {
-            ctx.startService(intent);
+        const savedPvKw = ST.pvKw;
+        ST.pvKw = avgPvKw;
+        const fl = calcFlow();
+        ST.pvKw = savedPvKw;
+        const hardFlr = Math.round((SYS.battRes || 0.1) * 50);
+        const battEff = 0.95;
+        const effFlow = fl.battFlow > 0 ? fl.battFlow * battEff : fl.battFlow;
+        ST.battSoc = Math.max(hardFlr, Math.min(100,
+          ST.battSoc + (effFlow / (SYS.battUse || 4.5)) * bgGapH * 100
+        ));
+        if (window.AppBridge && AppBridge.saveSoc && isSysConfigured()) {
+          try { AppBridge.saveSoc(ST.battSoc, SYS.panelKw||0, SYS.battGross||0, SYS.battRes||0.1, ST.consKw||0, SYS.battMaxC||2.5, SYS.battMaxD||2.5, SYS.panelAzimuth||180); } catch(e) {}
         }
+      }
     }
-
-    public static void stop(Context ctx) {
-        ctx.stopService(new Intent(ctx, SolarForegroundService.class));
+    // Restore SharedPreferences from Java on every resume
+    if (window.AppBridge && AppBridge.loadSoc) {
+      try {
+        const s = AppBridge.loadSoc();
+        if (s) {
+          const p = s.split(',');
+          const soc = parseFloat(p[0]);
+          const panelKw = parseFloat(p[1]) || 0;
+          const battGross = parseFloat(p[2]) || 0;
+          const battRes = parseFloat(p[3]) || 0.1;
+          const consKw = parseFloat(p[4]) || 0;
+          applyStateFromNative(soc, panelKw, battGross, battRes, consKw, 0);
+        }
+      } catch(e) {}
     }
-
-    // ── Service lifecycle ─────────────────────────────────────────────────────
-    @Override
-    public void onCreate() {
-        super.onCreate();
-        handler = new Handler(Looper.getMainLooper());
-        createChannels();
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            startForeground(FG_NOTIF_ID, buildFgNotification("Solar monitoring active"),
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
-        } else {
-            startForeground(FG_NOTIF_ID, buildFgNotification("Solar monitoring active"));
+    if (window.AppBridge && AppBridge.loadGps) {
+      try {
+        const gpsStr = AppBridge.loadGps();
+        if (gpsStr) {
+          const parts = gpsStr.split(',');
+          if (parts.length >= 2) {
+            const lat = parseFloat(parts[0]), lon = parseFloat(parts[1]);
+            const name = parts.slice(2).join(',');
+            if (lat && lon) { ST.lat = lat; ST.lon = lon; ST.locName = name || ST.locName; ST.gpsOk = true; }
+          }
         }
-        android.util.Log.d("SolarFGS", "Service created — starting 30-min check loop");
+      } catch(e) {}
     }
-
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        // ANDROID 14+ FIX: dataSync FGS has a 6-hour cumulative-per-day limit.
-        // Previously we ran continuously via handler.postDelayed and were killed
-        // by ForegroundServiceDidNotStopInTimeException after 6 hours.
-        // New architecture: do ONE check, then stop. AlarmReceiver wakes us up
-        // every 30 min for the next check, keeping cumulative FGS time minimal.
-        if (isWorking) {
-            android.util.Log.d("SolarFGS", "Already working - ignoring duplicate start");
-            return START_NOT_STICKY;
-        }
-        isWorking = true;
-        new Thread(() -> {
-            try {
-                doSolarCheck();
-            } catch (Exception e) {
-                android.util.Log.e("SolarFGS", "Check error: " + e.getMessage());
-            } finally {
-                // Always stop the FGS after one check so we stay well under the
-                // 6-hour cumulative-runtime limit for dataSync foreground services.
-                isWorking = false;
-                handler.post(() -> {
-                    try {
-                        stopForeground(true);
-                        stopSelf();
-                        android.util.Log.d("SolarFGS", "Check complete - service stopped");
-                    } catch (Exception ignored) {}
-                });
-            }
-        }).start();
-        // Make sure AlarmReceiver is scheduled so we wake up again in 30 min
-        SolarAlarmReceiver.schedule(getApplicationContext());
-        // START_NOT_STICKY: do not auto-restart - SAR will restart us at the next alarm
-        return START_NOT_STICKY;
+    catchUpLog(lastFlowT);
+    lastFlowT = Date.now();
+    applyAutoConsumption();
+    renderAll();
+    // Force-clear _fetchInProgress on resume — Android suspends JS timers when
+    // backgrounded, so the 30s timeout may never have fired while the app was hidden.
+    // Any in-flight AppBridge request is now stale; discard it and re-fetch fresh data.
+    if (ST._fetchInProgress) {
+      ST._fetchInProgress = false;
+      ST._fetchStartMs = 0;
+      if (window.__nativeWeatherResult) delete window.__nativeWeatherResult;
     }
-
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        if (handler != null && checker != null) {
-            handler.removeCallbacks(checker);
-        }
-        // NOTE: We no longer schedule a 1-minute restart alarm on destroy.
-        // Under the new one-shot architecture, every onDestroy is expected
-        // (we stopped ourselves intentionally). AlarmReceiver handles the
-        // next periodic wake-up in 30 min.
-        android.util.Log.d("SolarFGS", "Service destroyed (expected after one-shot check)");
-    }
-
-    private void scheduleRestartAlarm() {
-        try {
-            android.app.AlarmManager am =
-                (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
-            if (am == null) return;
-            Intent ri = new Intent(this, SolarAlarmReceiver.class)
-                .setAction("com.dumitriualxlang.solardasboard.RESTART_FGS");
-            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
-                this, 9001, ri,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT |
-                android.app.PendingIntent.FLAG_IMMUTABLE);
-            long at = System.currentTimeMillis() + 60_000L; // 1 minute
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && am.canScheduleExactAlarms()) {
-                am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, at, pi);
-            } else {
-                am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, at, pi);
-            }
-        } catch (Exception e) {
-            android.util.Log.e("SolarFGS", "Restart alarm failed: " + e.getMessage());
-        }
-    }
-
-    @Override
-    public IBinder onBind(Intent intent) { return null; }
-
-    // ── Core physics check ────────────────────────────────────────────────────
-    private void doSolarCheck() {
-        SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        long nowMs = System.currentTimeMillis();
-
-        // Elapsed time since last run
-        long lastMs = prefs.getLong("fgs_last_run_ms", nowMs);
-        double dtH  = (nowMs - lastMs) / 3600000.0;
-        if (dtH <= 0 || dtH > 1.5) dtH = 0.5;  // cap: service restarts can cause gaps
-        prefs.edit().putLong("fgs_last_run_ms", nowMs).apply();
-
-        // Read config
-        float soc      = prefs.getFloat("soc",       -1f);
-        float panelKw  = prefs.getFloat("panel_kw",   0f);
-        float battGross= prefs.getFloat("batt_gross", 0f);
-        float battRes  = prefs.getFloat("batt_res",   0.1f);
-        float consKw   = prefs.getFloat("cons_kw",    0f);
-        float battMaxC = prefs.getFloat("batt_max_c", 2.5f);
-        float battMaxD = prefs.getFloat("batt_max_d", 2.5f);
-        // PANEL LOCATION LOCK: prefer the user-set panel coords over phone GPS.
-        // This way the forecast stays for the panels even when the user travels.
-        float lat      = prefs.getFloat("panel_lat", 0f);
-        float lon      = prefs.getFloat("panel_lon", 0f);
-        if (lat == 0f || lon == 0f) {
-            // No panel lock yet (first run before user sets it) - fall back to phone GPS
-            lat = prefs.getFloat("gps_lat", 0f);
-            lon = prefs.getFloat("gps_lon", 0f);
-        }
-        // Skip if system not configured - prevents fake data on fresh install
-        if (panelKw <= 0 || battGross <= 0) {
-            android.util.Log.d("SolarFGS", "System not configured - skipping");
-            return;
-        }
-        if (soc < 0) soc = 50f; // default only after system is configured
-
-        // GPS fallback via LocationManager
-        if (lat == 0f || lon == 0f) {
-            try {
-                android.location.LocationManager lm =
-                    (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
-                if (lm != null) {
-                    android.location.Location loc =
-                        lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
-                    if (loc == null)
-                        loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
-                    if (loc == null)
-                        loc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
-                    if (loc != null) {
-                        lat = (float) loc.getLatitude();
-                        lon = (float) loc.getLongitude();
-                        prefs.edit().putFloat("gps_lat", lat).putFloat("gps_lon", lon).apply();
-                    }
-                }
-            } catch (Exception e) { android.util.Log.w("SolarFGS", "GPS fallback: " + e.getMessage()); }
-        }
-        if (lat == 0f || lon == 0f) {
-            android.util.Log.w("SolarFGS", "No GPS available — skipping");
-            return;
-        }
-
-        // ── Try FusionSolar first if credentials are configured ────────────
-        // If successful, real inverter data overrides all satellite estimates.
-
-        // Fetch weather — skip gracefully if offline, still evolve SOC
-        String url = "https://api.open-meteo.com/v1/forecast?"
-            + "latitude=" + lat + "&longitude=" + lon
-            + "&current=temperature_2m,cloud_cover,shortwave_radiation,"
-            + "direct_radiation,diffuse_radiation,direct_normal_irradiance"
-            + "&timezone=auto";
-        String raw = httpGet(url);
-        boolean hasWeather = raw != null && !raw.startsWith("ERR");
-        if (!hasWeather) android.util.Log.w("SolarFGS", "Weather unavailable — SOC evolves with last pvKw");
-
-        // Use last known pvKw when offline; weather fetch overwrites if successful
-        double pvKw = prefs.getFloat("pv_kw", 0f);
-        double gridImport = 0, battFlow = 0;
-        double newSoc = soc;
-        double battUse = battGross > 0 ? battGross * (1.0 - battRes) : 4.5;
-
-        // Calendar declared here so hourNow is available in notifications section
-        // regardless of whether weather fetch succeeded
-        final Calendar nowCal = Calendar.getInstance();
-
-        try {
-            if (hasWeather) {
-            JSONObject cur = new JSONObject(raw).getJSONObject("current");
-            double directRad  = cur.optDouble("direct_radiation",  0);
-            double diffuseRad = cur.optDouble("diffuse_radiation", 0);
-            double tempC      = cur.optDouble("temperature_2m", 25);
-
-            // ── Solar position (same algorithm as JS solarPosition()) ──────────
-            Calendar cal = Calendar.getInstance();
-            long dayOfYear = (nowMs - new GregorianCalendar(
-                cal.get(Calendar.YEAR), 0, 1).getTimeInMillis()) / 86400000L;
-            double utcH  = cal.get(Calendar.HOUR_OF_DAY)
-                         + cal.get(Calendar.MINUTE) / 60.0
-                         + cal.get(Calendar.SECOND) / 3600.0
-                         - cal.getTimeZone().getOffset(nowMs) / 3600000.0;
-            double decl  = 23.45 * Math.sin((360.0/365.0*(dayOfYear-81)) * Math.PI/180.0);
-            double ha    = (utcH - 12) * 15 + lon;
-            double latR  = lat * Math.PI/180.0, decR = decl * Math.PI/180.0;
-            double sinAlt= Math.sin(latR)*Math.sin(decR)
-                         + Math.cos(latR)*Math.cos(decR)*Math.cos(ha*Math.PI/180.0);
-            double alt   = Math.asin(Math.max(-1,Math.min(1,sinAlt)))*180.0/Math.PI;
-
-            double solAzDeg = 180.0;
-            if (alt > 0) {
-                double sinAz = Math.cos(decR) * Math.sin(ha * Math.PI/180.0)
-                    / Math.max(0.001, Math.cos(alt * Math.PI/180.0));
-                solAzDeg = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
-                if (ha > 0) solAzDeg = 180.0 - solAzDeg;
-                else        solAzDeg = 180.0 + solAzDeg;
-            }
-
-            if (alt > 2.0) {
-                float  panelAz  = prefs.getFloat("panel_azimuth", 180f);
-                double tiltR    = 30.0 * Math.PI / 180.0;
-                double altR     = alt      * Math.PI / 180.0;
-                double solAzR   = solAzDeg * Math.PI / 180.0;
-                double pnlAzR   = panelAz  * Math.PI / 180.0;
-                double cosAOI   = Math.sin(altR)*Math.cos(tiltR)
-                                + Math.cos(altR)*Math.sin(tiltR)*Math.cos(solAzR - pnlAzR);
-                double poaBeam  = Math.max(0, cosAOI) * Math.max(0, directRad);
-                double poaSky   = Math.max(0, diffuseRad) * (1 + Math.cos(tiltR)) / 2.0;
-                double poaGnd   = (directRad + diffuseRad) * 0.20 * (1 - Math.cos(tiltR)) / 2.0;
-                double poa_in   = poaBeam + poaSky + poaGnd;
-                double cellT    = tempC + (45.0 - 20.0) * (poa_in / 800.0);
-                double tFac     = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
-                pvKw = Math.max(0, Math.min(panelKw * 0.984,
-                    (poa_in / 1000.0) * panelKw * 0.984 * tFac));
-            } else {
-                pvKw = 0; // sun below horizon
-            }
-            } // end if(hasWeather)
-
-            // ── Energy flow (same model as JS calcFlow()) ─────────────────────
-            double hardFlr = 0.0;
-            double rampTop = 2.0;
-            double s2h = Math.min(pvKw, consKw);
-            double pvS = pvKw - s2h, hD = consKw - s2h;
-            double bC  = soc < 100 ? Math.min(pvS, battMaxC) : 0;
-            double bD;
-            if      (soc <= hardFlr) bD = 0;
-            else if (soc <= rampTop) { double frac=(soc-hardFlr)/rampTop; bD=Math.min(hD*frac,battMaxD); }
-            else                     bD = Math.min(hD, battMaxD);
-            battFlow   = bC - bD;
-            gridImport = Math.max(0, hD - bD);
-            double gridExport = Math.max(0, pvS - bC);
-
-            // ── Evolve SOC ────────────────────────────────────────────────────
-            // Huawei Luna 2000 round-trip efficiency = 0.92
-            double battEff = 0.95;
-            double effFlow = battFlow > 0 ? battFlow * battEff : battFlow; // discharge: no penalty
-            newSoc = soc + (effFlow / battUse) * dtH * 100.0;
-            newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
-
-            // ── Persist all state ─────────────────────────────────────────────
-            int nm = nowCal.get(Calendar.MONTH)+1, nd = nowCal.get(Calendar.DAY_OF_MONTH);
-            String todayStr = nowCal.get(Calendar.YEAR)
-                + "-" + (nm<10?"0":"") + nm + "-" + (nd<10?"0":"") + nd;
-            String lastGridDate = prefs.getString("grid_date", "");
-            float prevExp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
-            float prevImp = lastGridDate.equals(todayStr) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
-            float prevPv  = lastGridDate.equals(todayStr) ? prefs.getFloat("pv_kwh",          0f) : 0f;
-            float newExp  = prevExp + (float) gridExport * (float) dtH;
-            float newImp  = prevImp + (float) gridImport * (float) dtH;
-            float newPv   = prevPv  + (float) pvKw       * (float) dtH;
-            prefs.edit()
-                 .putFloat("soc",            (float) newSoc)
-                 .putFloat("pv_kw",          (float) pvKw)
-                 .putFloat("grid_export_kwh", newExp)
-                 .putFloat("grid_import_kwh", newImp)
-                 .putFloat("pv_kwh",          newPv)
-                 .putString("grid_date",      todayStr)
-                 .putLong ("soc_saved_at_ms", nowMs)
-                 .apply();
-
-            // Update the foreground notification with live values
-            String status = String.format("☀️ %.2fkW · 🏠 %.2fkW · 🔋 %.0f%%",
-                pvKw, (double) consKw, newSoc);
-            updateFgNotification(status);
-
-            android.util.Log.d("SolarFGS", String.format(
-                "dtH=%.2fh pv=%.2f cons=%.2f flow=%.3f soc %.1f→%.1f grid=%.2f",
-                dtH, pvKw, (double)consKw, battFlow, (double)soc, newSoc, gridImport));
-
-            
-            // ── Quiet hours: no notifications 22:00–08:00 ────────────────────
-            int hourNow = nowCal.get(Calendar.HOUR_OF_DAY);
-            int minuteNow = nowCal.get(Calendar.MINUTE);
-            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
-            String todayKey = sdf.format(new java.util.Date(nowMs));
-            String morningSentDate = prefs.getString("morning_sent_date", "");
-            String eveningSentDate = prefs.getString("evening_sent_date", "");
-
-            // NIGHT-TIME: no proactive notifications between 21:00 and 07:00
-            if (hourNow >= 7 && hourNow < 21) {
-                double surplus   = pvKw - (double) consKw;
-                double storedKwh = battUse * (newSoc / 100.0);
-                double dispSoc   = 10.0 + (newSoc / 100.0) * 90.0;
-                long now2H       = 2L * 60 * 60 * 1000;
-
-                // RULE A: MORNING "Production started" (once per day, 7-12h)
-                if (hourNow >= 7 && hourNow < 12 && pvKw > 0.3
-                        && !todayKey.equals(morningSentDate)) {
-                    float  peakKw   = prefs.getFloat("peak_kw", (float) pvKw);
-                    int    peakHr   = prefs.getInt("peak_hour", 12);
-                    float  todayKwh = prefs.getFloat("forecast_today_kwh", 0f);
-                    String body;
-                    if (peakKw > 0 && peakHr > 0) {
-                        body = String.format(
-                            "Now: %.2f kW. Peak ~%.1f kW at %02d:00. Battery %d%%. Forecast: %.1f kWh today.",
-                            pvKw, peakKw, peakHr, (int) dispSoc, todayKwh);
-                    } else {
-                        body = String.format("Production started \u2014 %.2f kW. Battery %d%%.", pvKw, (int) dispSoc);
-                    }
-                    sendAlert(ALERT_ID_MORNING, "Production started", body);
-                    prefs.edit().putString("morning_sent_date", todayKey).apply();
-                }
-
-                // RULE B: HOURLY status (every full hour, 08-20h)
-                long lastHourly = prefs.getLong("notif_last_hourly", 0);
-                if (hourNow >= 8 && hourNow < 20 && pvKw > 0.3
-                        && minuteNow < 10
-                        && (nowMs - lastHourly) > 55L * 60 * 1000) {
-                    String body = String.format(
-                        "Current %.2f kW. Battery %d%% (%.1f kWh stored).",
-                        pvKw, (int) dispSoc, storedKwh);
-                    sendAlert(ALERT_ID_HOURLY, "Solar update", body);
-                    prefs.edit().putLong("notif_last_hourly", nowMs).apply();
-                }
-
-                // RULE C: EVENING "Production ended" (once per day, 16-21h)
-                if (hourNow >= 16 && hourNow < 21
-                        && pvKw < (double) consKw - 0.1
-                        && battFlow < -0.1
-                        && !todayKey.equals(eveningSentDate)) {
-                    double backupHrs = storedKwh / Math.max(0.1, (double) consKw);
-                    String body = String.format(
-                        "Production %.2f kW < load %.2f kW. Battery %d%% \u2014 ~%.1fh backup remaining.",
-                        pvKw, (double) consKw, (int) dispSoc, backupHrs);
-                    sendAlert(ALERT_ID_SUN_END, "Production ended", body);
-                    prefs.edit().putString("evening_sent_date", todayKey).apply();
-                }
-
-                // RULE D: BATTERY LOW (critical, daytime, 8h cooldown)
-                long lBattLo = prefs.getLong("notif_last_batt_low", 0);
-                if (storedKwh < battUse * 0.10 && dispSoc < 15.0
-                        && (nowMs - lBattLo) > 4 * now2H) {
-                    String body = String.format(
-                        "Battery %d%% (%.1f kWh). Grid backup active. Solar: %.2f kW.",
-                        (int) dispSoc, storedKwh, pvKw);
-                    sendAlert(ALERT_ID_BATT_LOW, "Battery very low", body);
-                    prefs.edit().putLong("notif_last_batt_low", nowMs).apply();
-                }
-            }  // end night-time gate
-
-            prefs.edit().putFloat("last_notif_pv_kw", (float) pvKw).commit();
-
-
-                    } catch (Exception e) {
-            android.util.Log.e("SolarFGS", "doSolarCheck exception: " + e.getMessage());
-        }
-    }
-
-    // ── Notifications ─────────────────────────────────────────────────────────
-    private Notification buildFgNotification(String text) {
-        Intent open = new Intent(this, MainActivity.class)
-            .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent pi = PendingIntent.getActivity(this, 0, open,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new NotificationCompat.Builder(this, CHANNEL_FG_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Solar Dashboard")
-            .setContentText(text)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setColor(Color.parseColor("#1D9E75"))
-            .setContentIntent(pi)
-            .build();
-    }
-
-    private void updateFgNotification(String text) {
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (nm != null) nm.notify(FG_NOTIF_ID, buildFgNotification(text));
-    }
-
-    // Stable notification IDs per alert type - same type replaces previous,
-    // preventing stacking of multiple notifications with different SOC values.
-    static final int ALERT_ID_SURPLUS    = 3001;
-    static final int ALERT_ID_SUN_END    = 3002;
-    static final int ALERT_ID_GOOD_DAY   = 3003;
-    static final int ALERT_ID_BATT_LOW   = 3004;
-    static final int ALERT_ID_MORNING    = 3005;
-    static final int ALERT_ID_HIGH_CONS  = 3006;
-    static final int ALERT_ID_PV_DROP    = 3007;
-    static final int ALERT_ID_HOURLY     = 3008;
-
-    private void sendAlert(int alertId, String title, String body) {
-        try {
-            Intent open = new Intent(this, MainActivity.class)
-                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            PendingIntent pi = PendingIntent.getActivity(this, 0, open,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            NotificationCompat.Builder nb = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(title).setContentText(body)
-                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .setColor(Color.parseColor("#1D9E75"))
-                .setContentIntent(pi);
-            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm != null) nm.notify(alertId, nb.build());
-            android.util.Log.d("SolarFGS", "Alert sent (id=" + alertId + "): " + title);
-        } catch (Exception e) {
-            android.util.Log.e("SolarFGS", "sendAlert: " + e.getMessage());
-        }
-    }
-
-    private void createChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm == null) return;
-            // Foreground service channel — low priority, no sound
-            if (nm.getNotificationChannel(CHANNEL_FG_ID) == null) {
-                NotificationChannel fg = new NotificationChannel(
-                    CHANNEL_FG_ID, "Solar background monitor", NotificationManager.IMPORTANCE_LOW);
-                fg.setDescription("Keeps solar physics running in background");
-                fg.setShowBadge(false);
-                nm.createNotificationChannel(fg);
-            }
-            // Alert channel — high priority, for solar/battery alerts
-            if (nm.getNotificationChannel(CHANNEL_ID) == null) {
-                NotificationChannel al = new NotificationChannel(
-                    CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
-                al.setDescription("Solar production and battery alerts");
-                al.setLightColor(Color.parseColor("#1D9E75"));
-                al.enableLights(true);
-                al.enableVibration(true);
-                nm.createNotificationChannel(al);
-            }
-        }
-    }
-
-    private String httpGet(String urlStr) {
-        try {
-            HttpURLConnection c = (HttpURLConnection) new URL(urlStr).openConnection();
-            c.setConnectTimeout(15000); c.setReadTimeout(15000);
-            c.setRequestProperty("User-Agent","SolarDashboard/1.0");
-            if (c.getResponseCode() == 200) {
-                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"));
-                StringBuilder sb = new StringBuilder(); String ln;
-                while ((ln=br.readLine())!=null) sb.append(ln);
-                br.close(); c.disconnect(); return sb.toString();
-            }
-            c.disconnect(); return "ERR_HTTP_"+c.getResponseCode();
-        } catch (Exception e) { return "ERR_"+e.getMessage(); }
-    }
-}
-""")
-
-
-write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarAlarmReceiver.java"), """package com.dumitriualxlang.solardasboard;
-
-import android.app.AlarmManager;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.SharedPreferences;
-import android.graphics.Color;
-import android.os.Build;
-import androidx.core.app.NotificationCompat;
-import org.json.JSONObject;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-
-public class SolarAlarmReceiver extends BroadcastReceiver {
-
-    static final String ACTION      = "com.dumitriualxlang.solardasboard.SOLAR_CHECK";
-    static final String CHANNEL_ID  = "solar_alerts";
-    static final String PREFS       = "SolarDashboard";
-    static final int    INTERVAL_MS = 30 * 60 * 1000;
-
-    public static void schedule(Context ctx) {
-        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
-        if (am == null) return;
-        PendingIntent pi = getPendingIntent(ctx);
-        long triggerAt = System.currentTimeMillis() + INTERVAL_MS;
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (am.canScheduleExactAlarms()) {
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-                } else {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-                }
-            } else {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-            }
-            android.util.Log.d("SolarAlarm", "Next check in 30 min");
-        } catch (Exception e) {
-            android.util.Log.e("SolarAlarm", "Failed to schedule: " + e.getMessage());
-        }
-    }
-
-    private static PendingIntent getPendingIntent(Context ctx) {
-        Intent intent = new Intent(ctx, SolarAlarmReceiver.class).setAction(ACTION);
-        return PendingIntent.getBroadcast(ctx, 1001, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-    }
-
-    @Override
-    public void onReceive(Context ctx, Intent intent) {
-        android.util.Log.d("SolarAlarm", "Alarm fired: " + intent.getAction());
-        // Always restart the foreground service — it may have been killed by Samsung
-        // battery optimisation. Starting an already-running service is a no-op.
-        try { SolarForegroundService.start(ctx); } catch (Exception e) {
-            // On Android 12+, starting FGS from background may be restricted
-            // Schedule via WorkManager as fallback
-            android.util.Log.w("SolarAlarm", "FGS start restricted: " + e.getMessage());
-            try {
-                androidx.work.OneTimeWorkRequest wr =
-                    new androidx.work.OneTimeWorkRequest.Builder(SolarWorker.class).build();
-                androidx.work.WorkManager.getInstance(ctx).enqueue(wr);
-            } catch (Exception ignored) {}
-        }
-
-        // RESTART_FGS action is only for reviving the service — no solar check needed
-        if ("com.dumitriualxlang.solardasboard.RESTART_FGS".equals(intent.getAction())) {
-            android.util.Log.d("SolarAlarm", "FGS restart triggered");
-            return;
-        }
-
-        createChannel(ctx);
-        // ARCHITECTURE: FGS is now the single source of truth for SOC computation.
-        // Previously SAR ran its own doSolarCheck on a goAsync thread, racing with
-        // the FGS check that we just kicked off. Both wrote to "soc" pref -
-        // last write wins, sometimes overwriting the more accurate value.
-        //
-        // We only fall back to running our own check if FGS start failed AND
-        // WorkManager fallback also failed.
-        schedule(ctx);  // reschedule next 30-min alarm before we return
-    }
-
-    private void doSolarCheck(Context ctx) {
-        SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        long nowMs     = System.currentTimeMillis();
-        long lastRunMs = prefs.getLong("last_alarm_run_ms", nowMs);
-        double dtH     = (nowMs - lastRunMs) / 3600000.0;
-        if (dtH <= 0 || dtH > 1.0) dtH = 0.5;
-        prefs.edit().putLong("last_alarm_run_ms", nowMs).apply();
-
-        float soc       = prefs.getFloat("soc",        -1f);
-        float panelKw   = prefs.getFloat("panel_kw",    0f);
-        float battGross = prefs.getFloat("batt_gross",  0f);
-        float battRes   = prefs.getFloat("batt_res",    0.1f);
-        float consKw    = prefs.getFloat("cons_kw",     0f);
-        float battMaxC  = prefs.getFloat("batt_max_c",  2.5f);
-        float battMaxD  = prefs.getFloat("batt_max_d",  2.5f);
-        // PANEL LOCATION LOCK: prefer the user-set panel coords over phone GPS.
-        float lat       = prefs.getFloat("panel_lat",  0f);
-        float lon       = prefs.getFloat("panel_lon",  0f);
-        if (lat == 0f || lon == 0f) {
-            lat = prefs.getFloat("gps_lat", 0f);
-            lon = prefs.getFloat("gps_lon", 0f);
-        }
-        if (panelKw <= 0 || battGross <= 0) return;
-        if (soc < 0) soc = 50f;
-
-        if (lat == 0f || lon == 0f) {
-            try {
-                android.location.LocationManager lm = (android.location.LocationManager)
-                    ctx.getSystemService(Context.LOCATION_SERVICE);
-                if (lm != null) {
-                    android.location.Location loc =
-                        lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
-                    if (loc == null) loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
-                    if (loc == null) loc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
-                    if (loc != null) {
-                        lat = (float) loc.getLatitude();
-                        lon = (float) loc.getLongitude();
-                        prefs.edit().putFloat("gps_lat", lat).putFloat("gps_lon", lon).apply();
-                    }
-                }
-            } catch (Exception e) { /* no permission */ }
-        }
-        if (lat == 0f || lon == 0f) { android.util.Log.w("SolarAlarm", "No GPS"); return; }
-
-        String url = "https://api.open-meteo.com/v1/forecast?"
-            + "latitude=" + lat + "&longitude=" + lon
-            + "&current=temperature_2m,cloud_cover,shortwave_radiation,"
-            + "direct_radiation,diffuse_radiation,direct_normal_irradiance"
-            + "&timezone=auto";
-        String raw = httpGet(url);
-        boolean hasWx = raw != null && !raw.startsWith("ERR");
-        if (!hasWx) android.util.Log.w("SolarAlarm", "Weather unavailable — SOC evolves with last pvKw");
-
-        double pvKw = prefs.getFloat("pv_kw", 0f); // use last known; overwritten if fetch succeeds
-        double gridImport = 0, gridExport = 0, battFlow = 0;
-        double newSoc = soc;
-
-        try {
-            if (hasWx) {
-            JSONObject cur = new JSONObject(raw).getJSONObject("current");
-            double directRad  = cur.optDouble("direct_radiation",  0);
-            double diffuseRad = cur.optDouble("diffuse_radiation", 0);
-            double tempC      = cur.optDouble("temperature_2m", 25);
-
-            // Solar position
-            Calendar cal = Calendar.getInstance();
-            long dayOfYear = (nowMs - new GregorianCalendar(cal.get(Calendar.YEAR), 0, 1).getTimeInMillis()) / 86400000L;
-            double utcH  = cal.get(Calendar.HOUR_OF_DAY) + cal.get(Calendar.MINUTE) / 60.0
-                         + cal.get(Calendar.SECOND) / 3600.0 - cal.getTimeZone().getOffset(nowMs) / 3600000.0;
-            double decl  = 23.45 * Math.sin((360.0 / 365.0 * (dayOfYear - 81)) * Math.PI / 180.0);
-            double ha    = (utcH - 12) * 15 + lon;
-            double latR  = lat * Math.PI / 180.0, decR = decl * Math.PI / 180.0;
-            double sinAlt = Math.sin(latR) * Math.sin(decR) + Math.cos(latR) * Math.cos(decR) * Math.cos(ha * Math.PI / 180.0);
-            double alt   = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180.0 / Math.PI;
-
-            double solAzDeg = 180.0;
-            if (alt > 0) {
-                double sinAz = Math.cos(decR) * Math.sin(ha * Math.PI/180.0)
-                    / Math.max(0.001, Math.cos(alt * Math.PI/180.0));
-                solAzDeg = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
-                if (ha > 0) solAzDeg = 180.0 - solAzDeg;
-                else        solAzDeg = 180.0 + solAzDeg;
-            }
-
-            // Calibrated solar model
-            if (alt > 2.0) {
-                float  panelAz  = prefs.getFloat("panel_azimuth", 180f);
-                double tiltR    = 30.0 * Math.PI / 180.0;
-                double altR     = alt      * Math.PI / 180.0;
-                double solAzR   = solAzDeg * Math.PI / 180.0;
-                double pnlAzR   = panelAz  * Math.PI / 180.0;
-                double cosAOI   = Math.sin(altR) * Math.cos(tiltR)
-                                + Math.cos(altR) * Math.sin(tiltR) * Math.cos(solAzR - pnlAzR);
-                double poaBeam  = Math.max(0, cosAOI) * Math.max(0, directRad);
-                double poaSky   = Math.max(0, diffuseRad) * (1 + Math.cos(tiltR)) / 2.0;
-                double poaGnd   = (directRad + diffuseRad) * 0.20 * (1 - Math.cos(tiltR)) / 2.0;
-                double poa_in   = poaBeam + poaSky + poaGnd;
-                double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
-                double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
-                pvKw = Math.max(0, Math.min(panelKw * 0.984, (poa_in / 1000.0) * panelKw * 0.984 * tFac));
-            } else {
-                pvKw = 0; // sun below horizon
-            }
-            } // end if(hasWx)
-
-            // Energy flow
-            double battUse = battGross > 0 ? battGross * (1.0 - battRes) : 4.5;
-            double hardFlr = 0.0, rampTop = 2.0;
-            double s2h = Math.min(pvKw, consKw), pvS = pvKw - s2h, hD = consKw - s2h;
-            double bC  = soc < 100 ? Math.min(pvS, battMaxC) : 0;
-            double bD;
-            if      (soc <= hardFlr) bD = 0;
-            else if (soc <= rampTop) { double f = (soc - hardFlr) / rampTop; bD = Math.min(hD * f, battMaxD); }
-            else                     bD = Math.min(hD, battMaxD);
-            battFlow   = bC - bD;
-            gridExport = Math.max(0, pvS - bC);
-            gridImport = Math.max(0, hD - bD);
-
-            // Evolve SOC with Huawei Luna 2000 efficiency
-            double battEff = 0.95;
-            double effFlow = battFlow > 0 ? battFlow * battEff : battFlow; // discharge: no penalty
-            newSoc = soc + (effFlow / battUse) * dtH * 100.0;
-            newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
-
-            // Persist
-            Calendar nowCalAR = Calendar.getInstance();
-            int arm = nowCalAR.get(Calendar.MONTH)+1, ard = nowCalAR.get(Calendar.DAY_OF_MONTH);
-            String todayStr = nowCalAR.get(Calendar.YEAR)
-                + "-" + (arm<10?"0":"") + arm + "-" + (ard<10?"0":"") + ard;
-            String lastDate = prefs.getString("grid_date", "");
-            float prevExp = lastDate.equals(todayStr) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
-            float prevImp = lastDate.equals(todayStr) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
-            float prevPv  = lastDate.equals(todayStr) ? prefs.getFloat("pv_kwh",          0f) : 0f;
-            prefs.edit()
-                 .putFloat("soc",            (float) newSoc)
-                 .putFloat("pv_kw",          (float) pvKw)
-                 .putFloat("grid_export_kwh", prevExp + (float) gridExport * (float) dtH)
-                 .putFloat("grid_import_kwh", prevImp + (float) gridImport * (float) dtH)
-                 .putFloat("pv_kwh",          prevPv  + (float) pvKw       * (float) dtH)
-                 .putString("grid_date",      todayStr)
-                 .putLong("soc_saved_at_ms",  nowMs)
-                 .apply();
-
-            android.util.Log.d("SolarAlarm", String.format(
-                "dtH=%.2fh pv=%.2f soc %.1f->%.1f grid_in=%.2f batt=%.2f", dtH, pvKw, (double)soc, newSoc, gridImport, battFlow));
-
-            // Notifications
-            boolean notifEnabled;
-            try { notifEnabled = ((NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE)).areNotificationsEnabled(); }
-            catch (Exception e) { notifEnabled = true; }
-            if (!notifEnabled) return;
-
-            // Quiet hours: no notifications 22:00-08:00
-            int hourNow = nowCalAR.get(Calendar.HOUR_OF_DAY);
-            if (hourNow >= 8 && hourNow < 22) {
-                long lHigh    = prefs.getLong("notif_last_high",     0);
-                long lLow     = prefs.getLong("notif_last_low",      0);
-                long lEve     = prefs.getLong("notif_last_eve",      0);
-                long lBattLo  = prefs.getLong("notif_last_batt_low", 0);
-                long lHighC   = prefs.getLong("notif_last_high_cons",0);
-                long lMorning = prefs.getLong("notif_last_morning",  0);
-                long now30M   = 30L * 60 * 1000, now1H = 60L * 60 * 1000, now2H = 2L * 60 * 60 * 1000, now12H = 12L * 60 * 60 * 1000;
-                double surplus   = pvKw - (double) consKw;
-                double storedKwh = battUse * (newSoc / 100.0);
-                double dispSoc   = 10.0 + (newSoc / 100.0) * 90.0;
-                if (surplus >= 2.0 && (nowMs - lHigh) > now1H) {
-                    sendNotif(ctx, "Solar surplus — run large appliances",
-                        String.format("+%.1f kW surplus. Battery: %.0f%%.", surplus, dispSoc));
-                    prefs.edit().putLong("notif_last_high", nowMs).apply();
-                } else if (pvKw <= 0.20 && consKw > 0.1 && hourNow >= 16 && (nowMs - lLow) > now2H) {
-                    sendNotif(ctx, "Solar ended for today",
-                        String.format("Production ended. Battery at %.0f%%. ~%.1fh backup remaining.", dispSoc, storedKwh / Math.max(0.01, consKw)));
-                    prefs.edit().putLong("notif_last_low", nowMs).apply();
-                } else if (hourNow == 20 && pvKw > 0.20 && (nowMs - lEve) > now2H) {
-                    sendNotif(ctx, "Good solar today",
-                        String.format("Still %.1f kW. Battery %.0f%%.", pvKw, dispSoc));
-                    prefs.edit().putLong("notif_last_eve", nowMs).apply();
-                }
-                if (storedKwh < battUse * 0.15 && dispSoc < 20.0 && (nowMs - lBattLo) > now2H) {
-                    sendNotif(ctx, "Battery low — grid activating",
-                        String.format("Battery %.0f%% — reserve approaching.", dispSoc));
-                    prefs.edit().putLong("notif_last_batt_low", nowMs).apply();
-                }
-                if (hourNow >= 7 && hourNow <= 11 && pvKw > 0.5 && (nowMs - lMorning) > now12H) {
-                    boolean socConfirmed = prefs.getBoolean("soc_confirmed", false);
-                    String battStr = socConfirmed
-                        ? String.format(" Battery at %.0f%%.", dispSoc) : "";
-                    sendNotif(ctx, "Good morning — solar production started",
-                        String.format("Panels producing %.1f kW.", pvKw) + battStr);
-                    prefs.edit().putLong("notif_last_morning", nowMs).apply();
-                }
-                if (gridImport > 1.0 && battFlow < -0.2 && (nowMs - lHighC) > now2H) {
-                    sendNotif(ctx, "High consumption — grid + battery active",
-                        String.format("Grid %.1f kW + battery %.1f kW. Battery %.0f%%.", gridImport, Math.abs(battFlow), dispSoc));
-                    prefs.edit().putLong("notif_last_high_cons", nowMs).apply();
-                }
-            }
-                // Rule 7: Production drop — notify to pause large appliances
-                float lastPvKw = prefs.getFloat("last_notif_pv_kw", -1f);
-                prefs.edit().putFloat("last_notif_pv_kw", (float) pvKw).commit();
-                if (lastPvKw >= 1.5f && pvKw < 1.5f && (lastPvKw - (float) pvKw) > 1.0f
-                        && hourNow >= 8 && hourNow < 22
-                        && (nowMs - prefs.getLong("notif_last_drop", 0L)) > 30L * 60 * 1000) {
-                    prefs.edit().putLong("notif_last_drop", nowMs).apply();
-                    sendNotif(ctx, "☁️ Solar dropped — pause large appliances",
-                        String.format("Production fell from %.2f kW to %.2f kW. Pause high-load appliances.", lastPvKw, (float) pvKw));
-                }
-
-
-        } catch (Exception e) {
-            android.util.Log.e("SolarAlarm", "doSolarCheck error: " + e.getMessage());
-        }
-    }
-
-    private void sendNotif(Context ctx, String title, String body) {
-        // No-op: SolarForegroundService is the single source of truth for notifications.
-        // Previously this raced with the FGS to update the shared notification ID 999,
-        // causing inconsistent SOC values in consecutive notifications.
-        android.util.Log.d("SolarAlarm", "sendNotif suppressed (FGS handles it): " + title);
-    }
-
-    private void createChannel(Context ctx) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm != null && nm.getNotificationChannel(CHANNEL_ID) == null) {
-                NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
-                ch.setLightColor(Color.parseColor("#1D9E75")); ch.enableLights(true); ch.enableVibration(true);
-                nm.createNotificationChannel(ch);
-            }
-        }
-    }
-
-    private String httpGet(String urlStr) {
-        try {
-            HttpURLConnection c = (HttpURLConnection) new URL(urlStr).openConnection();
-            c.setConnectTimeout(15000); c.setReadTimeout(15000);
-            c.setRequestProperty("User-Agent", "SolarDashboard/1.0");
-            if (c.getResponseCode() == 200) {
-                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
-                StringBuilder sb = new StringBuilder(); String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close(); c.disconnect(); return sb.toString();
-            }
-            c.disconnect(); return "ERR_HTTP_" + c.getResponseCode();
-        } catch (Exception e) { return "ERR_" + e.getMessage(); }
-    }
-}""")
-
-
-write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "BootReceiver.java"), """package com.dumitriualxlang.solardasboard;
-
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import androidx.work.Constraints;
-import androidx.work.ExistingPeriodicWorkPolicy;
-import androidx.work.NetworkType;
-import androidx.work.PeriodicWorkRequest;
-import androidx.work.WorkManager;
-import java.util.concurrent.TimeUnit;
-
-// Reschedules SolarWorker after device reboot or app update.
-// Samsung and other OEMs may kill WorkManager state on reboot —
-// this ensures the background solar monitoring always restarts.
-public class BootReceiver extends BroadcastReceiver {
-    @Override
-    public void onReceive(Context context, Intent intent) {
-        String action = intent.getAction();
-        if (action == null) return;
-        if (!action.equals(Intent.ACTION_BOOT_COMPLETED)
-            && !action.equals(Intent.ACTION_MY_PACKAGE_REPLACED)) return;
-
-        android.util.Log.d("BootReceiver", "Received: " + action + " — restarting solar background");
-        // Start the foreground service first — most reliable on Samsung
-        SolarForegroundService.start(context);
-        try {
-            // NO network constraint — worker handles offline gracefully (SOC evolution
-            // still works without internet; weather fetch skipped if no connection).
-            // CONNECTED constraint caused complete overnight failure when Samsung
-            // turns off WiFi to save battery during sleep.
-            PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(
-                SolarWorker.class, 30, TimeUnit.MINUTES)
-                .build();
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "solar_background",
-                ExistingPeriodicWorkPolicy.UPDATE,
-                work);
-            // Also reschedule AlarmManager chain — most reliable on Samsung
-            SolarAlarmReceiver.schedule(context);
-        } catch (Exception e) {
-            android.util.Log.e("BootReceiver", "Failed to schedule worker: " + e.getMessage());
-        }
-    }
-}
-""")
-
-
-write(os.path.join(MAIN, "java", "com", "dumitriualxlang", "solardashboard", "SolarWorker.java"), """package com.dumitriualxlang.solardasboard;
-
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.content.Context;
-import android.content.Intent;
-import android.content.SharedPreferences;
-import android.graphics.Color;
-import android.os.Build;
-import androidx.annotation.NonNull;
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
-import androidx.work.Worker;
-import androidx.work.WorkerParameters;
-import org.json.JSONObject;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-
-public class SolarWorker extends Worker {
-    private static final String CHANNEL_ID = "solar_alerts";
-    private static final String PREFS      = "SolarDashboard";
-
-    public SolarWorker(@NonNull Context ctx, @NonNull WorkerParameters p) {
-        super(ctx, p);
-    }
-
-    @NonNull @Override
-    public Result doWork() {
-        Context ctx = getApplicationContext();
-        createChannel(ctx);
-        // Failover: revive FGS if killed by Samsung battery optimizer
-        try { SolarForegroundService.start(ctx); } catch (Exception e) {}
-
-        SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-
-        // ── Elapsed time since last worker run ───────────────────────────────
-        // This is the key: we know exactly how many hours passed and can evolve
-        // SOC accordingly even while the app is fully closed.
-        long nowMs     = System.currentTimeMillis();
-        long lastRunMs = prefs.getLong("last_worker_run_ms", nowMs);
-        double dtH     = (nowMs - lastRunMs) / 3600000.0;
-        // Cap elapsed time at 1 hour to avoid huge SOC jumps after long gaps,
-        // phone restarts, or first run. WorkManager fires every 30 min so
-        // normally dtH will be 0.4–0.6h.
-        if (dtH <= 0 || dtH > 1.0) dtH = 0.5;
-        prefs.edit().putLong("last_worker_run_ms", nowMs).apply();
-
-        // ── Read all system config from SharedPreferences ────────────────────
-        float soc       = prefs.getFloat("soc",        50f);
-        float panelKw   = prefs.getFloat("panel_kw",    5f);
-        float battGross = prefs.getFloat("batt_gross",  0f);
-        float battRes   = prefs.getFloat("batt_res",    0.1f);
-        float consKw    = prefs.getFloat("cons_kw",     0f);
-        float battMaxC  = prefs.getFloat("batt_max_c",  2.5f);
-        float battMaxD  = prefs.getFloat("batt_max_d",  2.5f);
-        // PANEL LOCATION LOCK: prefer the user-set panel coords over phone GPS.
-        float lat       = prefs.getFloat("panel_lat",  0f);
-        float lon       = prefs.getFloat("panel_lon",  0f);
-        if (lat == 0f || lon == 0f) {
-            lat = prefs.getFloat("gps_lat", 0f);
-            lon = prefs.getFloat("gps_lon", 0f);
-        }
-
-        // ── GPS fallback via LocationManager ────────────────────────────────
-        if (lat == 0f || lon == 0f) {
-            try {
-                android.location.LocationManager lm = (android.location.LocationManager)
-                    ctx.getSystemService(Context.LOCATION_SERVICE);
-                if (lm != null) {
-                    android.location.Location loc =
-                        lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
-                    if (loc == null)
-                        loc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
-                    if (loc == null)
-                        loc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
-                    if (loc != null) {
-                        lat = (float) loc.getLatitude();
-                        lon = (float) loc.getLongitude();
-                        // Persist so next run has it immediately
-                        prefs.edit().putFloat("gps_lat", lat).putFloat("gps_lon", lon).apply();
-                    }
-                }
-            } catch (Exception e) { /* no location permission */ }
-        }
-
-        // Still no GPS — cannot calculate production, skip this run
-        if (lat == 0f || lon == 0f) return Result.retry();
-
-        // ── Fetch current weather from Open-Meteo (skip if offline) ──────────
-        String url = "https://api.open-meteo.com/v1/forecast?"
-            + "latitude="  + lat + "&longitude=" + lon
-            + "&current=temperature_2m,cloud_cover,shortwave_radiation,"
-            + "direct_radiation,diffuse_radiation,direct_normal_irradiance"
-            + "&timezone=auto";
-        String raw = null;
-        try {
-            android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
-                ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
-            android.net.NetworkInfo ni = cm != null ? cm.getActiveNetworkInfo() : null;
-            if (ni != null && ni.isConnected()) {
-                raw = httpGet(url);
-            }
-        } catch (Exception e) { /* ignore connectivity check errors */ }
-        // If offline or fetch failed — still do SOC evolution below, just skip pvKw calc
-        boolean hasWeather = raw != null && !raw.startsWith("ERR");
-
-        double pvKw = hasWeather ? 0 : prefs.getFloat("pv_kw", 0f);
-        if (hasWeather) try {
-            JSONObject d   = new JSONObject(raw);
-            JSONObject cur = d.getJSONObject("current");
-            double directRad  = cur.optDouble("direct_radiation",  0);
-            double diffuseRad = cur.optDouble("diffuse_radiation", 0);
-            double swr        = cur.optDouble("shortwave_radiation", directRad + diffuseRad);
-            double tempC      = cur.optDouble("temperature_2m", 25);
-            double cloud      = cur.optDouble("cloud_cover", 0);
-
-            // ── Solar position ────────────────────────────────────────────────
-            // Uses the same algorithm as the JS solarPosition() function
-            Calendar cal = Calendar.getInstance();
-            long dayOfYear = (nowMs - new java.util.GregorianCalendar(
-                cal.get(Calendar.YEAR), 0, 1).getTimeInMillis()) / 86400000L;
-            double utcH   = cal.get(Calendar.HOUR_OF_DAY)
-                          + cal.get(Calendar.MINUTE) / 60.0
-                          + cal.get(Calendar.SECOND) / 3600.0
-                          - cal.getTimeZone().getOffset(nowMs) / 3600000.0;
-            double decl   = 23.45 * Math.sin((360.0 / 365.0 * (dayOfYear - 81)) * Math.PI / 180.0);
-            double ha     = (utcH - 12) * 15 + lon;
-            double latR   = lat  * Math.PI / 180.0;
-            double decR   = decl * Math.PI / 180.0;
-            double haR    = ha   * Math.PI / 180.0;
-            double sinAlt = Math.sin(latR) * Math.sin(decR)
-                          + Math.cos(latR) * Math.cos(decR) * Math.cos(haR);
-            double alt    = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180.0 / Math.PI;
-
-                // Solar azimuth (degrees from North, clockwise)
-            double solAzDeg = 180.0;
-            if (alt > 0) {
-                double sinAz = Math.cos(decR) * Math.sin(ha * Math.PI/180.0)
-                    / Math.max(0.001, Math.cos(alt * Math.PI/180.0));
-                solAzDeg = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinAz))));
-                if (ha > 0) solAzDeg = 180.0 - solAzDeg;
-                else        solAzDeg = 180.0 + solAzDeg;
-            }
-
-            // Night or sun below horizon — production is zero
-            if (alt > 2.0) {
-            // Calibrated model: direct*0.9 + diffuse (validated vs FusionSolar ±5%)
-            // Panel orientation-aware POA (matches JS calcPOA() exactly)
-                float  panelAz  = prefs.getFloat("panel_azimuth", 180f);
-                double tiltR    = 30.0 * Math.PI / 180.0;
-                double altR     = alt       * Math.PI / 180.0;
-                double solAzR   = solAzDeg  * Math.PI / 180.0;
-                double pnlAzR   = panelAz   * Math.PI / 180.0;
-                double cosAOI   = Math.sin(altR) * Math.cos(tiltR)
-                                + Math.cos(altR) * Math.sin(tiltR) * Math.cos(solAzR - pnlAzR);
-                double poaBeam  = Math.max(0, cosAOI) * Math.max(0, directRad);
-                double poaSky   = Math.max(0, diffuseRad) * (1 + Math.cos(tiltR)) / 2.0;
-                double poaGnd   = (directRad + diffuseRad) * 0.20 * (1 - Math.cos(tiltR)) / 2.0;
-                double poa_in   = poaBeam + poaSky + poaGnd;
-            double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
-            double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
-            pvKw = Math.max(0, Math.min(panelKw * 0.984,
-                (poa_in / 1000.0) * panelKw * 0.984 * tFac));
-        }
-
-        // ── Energy flow model (mirrors JS calcFlow) ──────────────────────────
-        // Priority: Solar → Home → Battery → Grid
-        // Internal SOC scale: 0% = display floor (10%), 100% = display ceiling (90%)
-        // hardFlr=0 internal = display 10% reserve — discharge stops here
-        // rampTop=2 internal = display ~11.6% — full discharge rate above this
-        double hardFlr = 0.0;
-        double rampTop = 2.0;
-        double battUse = battGross > 0 ? battGross * (1.0 - battRes) : 4.5;
-
-        double s2h  = Math.min(pvKw, consKw);
-        double pvS  = pvKw  - s2h;
-        double hD   = consKw - s2h;
-
-        // Battery charge — from solar surplus only, never from grid
-        double bC = soc < 100 ? Math.min(pvS, battMaxC) : 0;
-
-        // Battery discharge — mirrors JS calcFlow()
-        double bD;
-        if      (soc <= hardFlr) bD = 0;
-        else if (soc <= rampTop) { double frac=(soc-hardFlr)/rampTop; bD=Math.min(hD*frac,battMaxD); }
-        else                     bD = Math.min(hD, battMaxD);
-
-        double battFlow  = bC - bD;
-        double gridExport = Math.max(0, pvS - bC);
-        double gridImport = Math.max(0, hD - bD);
-
-        // ── Evolve SOC over elapsed time ─────────────────────────────────────
-        // Battery round-trip efficiency: Huawei Luna 2000 = 0.92
-        double battEff = 0.95;
-        double effFlow = battFlow > 0 ? battFlow * battEff : battFlow; // discharge: no penalty
-        double newSoc = soc + (effFlow / battUse) * dtH * 100.0;
-        newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
-
-        // ── Persist evolved state back to SharedPreferences ──────────────────
-        // JS reads these on resume via applyStateFromNative / injectLocation
-        Calendar calSW = Calendar.getInstance();
-        int swm = calSW.get(Calendar.MONTH)+1, swd = calSW.get(Calendar.DAY_OF_MONTH);
-        String todaySW = calSW.get(Calendar.YEAR)
-            + "-" + (swm<10?"0":"") + swm + "-" + (swd<10?"0":"") + swd;
-        String lastDateSW = prefs.getString("grid_date", "");
-        float prevExpSW = lastDateSW.equals(todaySW) ? prefs.getFloat("grid_export_kwh", 0f) : 0f;
-        float prevImpSW = lastDateSW.equals(todaySW) ? prefs.getFloat("grid_import_kwh", 0f) : 0f;
-        float prevPvSW  = lastDateSW.equals(todaySW) ? prefs.getFloat("pv_kwh",          0f) : 0f;
-        prefs.edit()
-            .putFloat("soc",            (float) newSoc)
-            .putFloat("pv_kw",          (float) pvKw)
-            .putFloat("grid_export_kwh", prevExpSW + (float) gridExport * (float) dtH)
-            .putFloat("grid_import_kwh", prevImpSW + (float) gridImport * (float) dtH)
-            .putFloat("pv_kwh",          prevPvSW  + (float) pvKw       * (float) dtH)
-            .putString("grid_date",      todaySW)
-            .putLong("soc_saved_at_ms",  nowMs)
-            .apply();
-
-        android.util.Log.d("SolarWorker",
-            String.format("dtH=%.2fh pvKw=%.2f soc %.1f->%.1f battFlow=%.3f",
-                dtH, pvKw, (double) soc, newSoc, battFlow));
-
-        
-            // ── Quiet hours: no notifications 22:00–08:00 ────────────────────
-            int hourNow = calSW.get(Calendar.HOUR_OF_DAY);
-            if (hourNow >= 8 && hourNow < 22) {
-                // Shared throttle keys — all services read/write the same keys
-                // so no duplicate or missed notifications across FGS/AR/Worker
-                long lHigh    = prefs.getLong("notif_last_high",     0);
-                long lLow     = prefs.getLong("notif_last_low",      0);
-                long lEve     = prefs.getLong("notif_last_eve",      0);
-                long lBattLo  = prefs.getLong("notif_last_batt_low", 0);
-                long lHighC   = prefs.getLong("notif_last_high_cons",0);
-                long lMorning = prefs.getLong("notif_last_morning",  0);
-                long now30M   = 30L * 60 * 1000;
-                long now1H    = 60L * 60 * 1000;
-                long now2H    = 2L * 60 * 60 * 1000;
-                long now12H   = 12L * 60 * 60 * 1000;
-                double surplus   = pvKw - (double) consKw;
-                double storedKwh = battUse * (newSoc / 100.0);
-                double dispSoc   = 10.0 + (newSoc / 100.0) * 90.0;
-
-                // Rule 1: Solar surplus ≥ 2kW — run appliances
-                if (surplus >= 2.0 && (nowMs - lHigh) > now1H) {
-                    sendNotif(ctx, "Solar surplus — run large appliances",
-                        String.format("+%.1f kW surplus. Good time to run washing machine, dishwasher or water heater. Battery: %.0f%%.", surplus, dispSoc));
-                    prefs.edit().putLong("notif_last_high", nowMs).apply();
-
-                // Rule 2: Solar ended — pvKw dropped to ≤ 0.20 kW after 16:00
-                } else if (pvKw <= 0.20 && consKw > 0.1 && hourNow >= 16 && (nowMs - lLow) > now2H) {
-                    double bkp = storedKwh / Math.max(0.01, (double) consKw);
-                    sendNotif(ctx, "Solar ended for today",
-                        String.format("Production ended. Battery at %.0f%%. ~%.1fh backup remaining.", dispSoc, bkp));
-                    prefs.edit().putLong("notif_last_low", nowMs).apply();
-
-                // Rule 3: Evening summary at 20:00 if solar still running
-                } else if (hourNow == 20 && pvKw > 0.20 && (nowMs - lEve) > now2H) {
-                    sendNotif(ctx, "Good solar today",
-                        String.format("Still producing %.1f kW. Battery %.0f%%. Plan appliances for tomorrow mid-day.", pvKw, dispSoc));
-                    prefs.edit().putLong("notif_last_eve", nowMs).apply();
-                }
-
-                // Rule 4: Battery low
-                if (storedKwh < battUse * 0.15 && dispSoc < 20.0 && (nowMs - lBattLo) > now2H) {
-                    sendNotif(ctx, "Battery low — grid activating",
-                        String.format("Battery %.0f%% — reserve approaching. Grid activating. Solar: %.1f kW.", dispSoc, pvKw));
-                    prefs.edit().putLong("notif_last_batt_low", nowMs).apply();
-                }
-
-                // Rule 5: Morning production started (fires at first solar > 0.5kW after sunrise)
-                // Only between 07:00–11:00, once per 12h
-                if (hourNow >= 7 && hourNow <= 11 && pvKw > 0.5 && (nowMs - lMorning) > now12H) {
-                    boolean socConfirmed = prefs.getBoolean("soc_confirmed", false);
-                    String battStr = socConfirmed
-                        ? String.format(" Battery at %.0f%%.", dispSoc) : "";
-                    sendNotif(ctx, "Good morning — solar production started",
-                        String.format("Panels producing %.1f kW.", pvKw) + battStr);
-                    prefs.edit().putLong("notif_last_morning", nowMs).apply();
-                }
-
-                // Rule 6: High consumption — grid + battery both active
-                if (gridImport > 1.0 && battFlow < -0.2 && (nowMs - lHighC) > now2H) {
-                    sendNotif(ctx, "High consumption — grid + battery active",
-                        String.format("Drawing %.1f kW from grid + %.1f kW battery. Solar %.1f kW. Battery %.0f%%.",
-                            gridImport, Math.abs(battFlow), pvKw, dispSoc));
-                    prefs.edit().putLong("notif_last_high_cons", nowMs).apply();
-                }
-            } // end quiet hours
-                // Rule 7: Production drop — notify to pause large appliances
-                float lastPvKw = prefs.getFloat("last_notif_pv_kw", -1f);
-                prefs.edit().putFloat("last_notif_pv_kw", (float) pvKw).commit();
-                if (lastPvKw >= 1.5f && pvKw < 1.5f && (lastPvKw - (float) pvKw) > 1.0f
-                        && hourNow >= 8 && hourNow < 22
-                        && (nowMs - prefs.getLong("notif_last_drop", 0L)) > 30L * 60 * 1000) {
-                    prefs.edit().putLong("notif_last_drop", nowMs).apply();
-                    sendNotif(ctx, "☁️ Solar dropped — pause large appliances",
-                        String.format("Production fell from %.2f kW to %.2f kW. Pause high-load appliances.", lastPvKw, (float) pvKw));
-                }
-
-
-        } catch (Exception e) {
-            android.util.Log.e("SolarWorker", "Error: " + e.getMessage());
-        }
-        return Result.success();
-    }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private void sendNotif(Context ctx, String title, String body) {
-        // No-op: SolarForegroundService is the single source of truth for notifications.
-        // Previously this raced with FGS to update notification ID 999, causing
-        // inconsistent SOC values in consecutive notifications.
-        android.util.Log.d("SolarWorker", "sendNotif suppressed (FGS handles it): " + title);
-    }
-
-    private void createChannel(Context ctx) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                NotificationManager nm = (NotificationManager)
-                    ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-                if (nm != null && nm.getNotificationChannel(CHANNEL_ID) == null) {
-                    NotificationChannel ch = new NotificationChannel(
-                        CHANNEL_ID, "Solar Alerts", NotificationManager.IMPORTANCE_HIGH);
-                    ch.setDescription("Solar production and battery alerts");
-                    ch.setLightColor(Color.parseColor("#1D9E75"));
-                    ch.enableLights(true);
-                    ch.enableVibration(true);
-                    nm.createNotificationChannel(ch);
-                }
-            } catch (Exception e) {
-                android.util.Log.e("SolarWorker", "createChannel: " + e.getMessage());
-            }
-        }
-    }
-
-    private String httpGet(String urlStr) {
-        try {
-            HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
-            conn.setRequestProperty("User-Agent", "SolarDashboard/1.0");
-            if (conn.getResponseCode() == 200) {
-                BufferedReader br = new BufferedReader(
-                    new InputStreamReader(conn.getInputStream(), "UTF-8"));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close();
-                conn.disconnect();
-                return sb.toString();
-            }
-            conn.disconnect();
-            return "ERR_HTTP_" + conn.getResponseCode();
-        } catch (Exception e) {
-            return "ERR_" + e.getMessage();
-        }
-    }
-}
-""")
-
-
-write(os.path.join(RES, "xml", "network_security_config.xml"), """<?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-    <base-config cleartextTrafficPermitted="true">
-        <trust-anchors>
-            <certificates src="system"/>
-            <certificates src="user"/>
-        </trust-anchors>
-    </base-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">api.forecast.solar</domain>
-        <domain includeSubdomains="true">api.open-meteo.com</domain>
-        <domain includeSubdomains="true">satellite-api.open-meteo.com</domain>
-        <domain includeSubdomains="true">dumitriualx-lang.github.io</domain>\n        <domain includeSubdomains=\"true\">nominatim.openstreetmap.org</domain>
-    </domain-config>
-</network-security-config>
-""")
-
-write(os.path.join(RES, "values", "strings.xml"), """<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">%s</string>
-    <color name="colorPrimary">#%s</color>
-    <string name="asset_statements">[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"web","site":"https://dumitriualx-lang.github.io"}}]</string>
-</resources>
-""" % (APP_NAME, COLOR_HEX))
-
-write(os.path.join(WRAP, "gradle-wrapper.properties"), """distributionBase=GRADLE_USER_HOME
-distributionPath=wrapper/dists
-distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-all.zip
-zipStoreBase=GRADLE_USER_HOME
-zipStorePath=wrapper/dists
-""")
-
-print("All project files written OK")
-
-# Icons embedded as base64
-ICON_MASKABLE_B64 = "iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAANaElEQVR4nO2dP28kSxXFz6yex8FqnTiBlfWkFUJavcCZRULCNyAgISHgA6xIyAj5AMgfgICEhICYhIQEbbYBWongSU+jheQlfnqBbaQl6KmZ6upb//pv3arzk6we97Q9PVXn3HurumZ6h8K4uLr5vPU5rMHT/eH0eP/uZsMzWZfnh8Nu63Ow+WLLF29F7OSM1OdbmmJ1A1D0xMXWxNpmeLHWC11c3Xym+GXscqh11tbJ4hmAoh9Cwccxulk6IyxmAAqfzMHSRpjdABQ+WYKljDDrGIDiHw/LojTm1tgsGYDCJ2syZzaYnAEo/jwY6edjDu1NMgDFPy80Rz5TNTjaABQ/KYUpWhxVQ1H8eTzdH/b2r5HDT8fu393EjiUWY8YE2X9A8ftxhG5zedx+l/BvXlmPH6UDaAw/uSbIOpji7yMI/lI88BzVv03819fmJTzP94xBQ/TJMUHygRR/R0T0sQzwKfFlXh+3YgZA3xg0g0CqCZIOovgHwveJ3pcBzP6vE1/uzXHrM4C9XzQDjZBmgugBpYn/6f6w6gdILOGnil4ywSWAjxkv+/a4lQzg7guaYU0jrN03KcRMoM4AwHm+fMnGFoTvE32KAfYAPmSewi3kMUDIAJIZFjfCGv0xlpgBgkshShS/zRIRJ1H4IQNI4wBfaRRizN8YHt3zMO9rbiOUfvHu4urmc8gE3ic0iN9mqhECwpfEHhr4+kqgMaSUQNIYQMoKs2aEudt/aXwm2PQzwXMyJQ0fxT9W+KljgKV5El7n0ffaT/eH/RgTlB7xcxFdUXr0N/g6I9UECVHf3aaMA3xjgDHExgBJ9b+wHZUNprb31khZoJoMYJOSDRzxpwo/RfRzjQHW4jGWDWqL+jYDR2iJ/oaUznGNECh5coSfcy1gqTHAqPr/uB0855pgTNuWjpsF1BsASO8oT8kTivoh4edcC5jLACnXAHxGCJVFg5KoRvEDEQNoFD+QnaJfQS55powD4oJ/++Wfck4SH7/5lbDXZ4Cx9b/0XMqCPQA6DQD0TVCFAYBRdeprhKP+2HIoX+ypDE2RW/aYrfRc6jolAHrFD/QNcBoEaxb/SD6hW3PjGwTnCX8p0dvYr9GZIXnaM/B8tvi1Y18c29k7tzuleZgwW3GLtEFwf7uG6FM4Z4akaU+cy5/c5RkAdEd/gzFAldOgmdxhKH4dwjeY85HHDS52FrgD8H6hs1LBDqgj+hsys8DdcesrecoWvg85I4QGwckmqCH6G54fDrsaM8Ae8c/dAn7xD6O+FuEb+hlBqvvtZROPSM8EqW2rhtW+Hbow7LLHlDyu+LsfbeK36c7dfp/A8P2anzvpX9ROVQawrvBeRw711ft9sWgWv+H8HobvT854Pq4BXAY++K+SasYAwvIG3wfQf3rcSuLvHtcgfIlzSQQMxwXm8T88f32NwLIJjTw/HHa7isQPnEVtBO1+BtcufdoSvyFugkcMxwNvrOdOZqnBBDWVQLb4JULi11/vpzIcF7jlUGg8EGtjdag3gFX6uGt0LtFd4ALi4q+j3k9FHhcAsgnci4Sn42oYD6g2gFP3A8MOBYYXujD4vSXxG/rv2dc+d8K+3nHaTaDaABZ25MrZ10bZ4+NcDgHDDJmzTy1qDeApfWDtcyPacF/L4jf0TQCktx9QQSmk1gAOUnq29w8jGMV/pj8wNkgZFPC3tUpUGsCJ/mJUwrCTquq4hYi1mzfbas0CKg0gYHdQyBAdjP5D5EFxqLysIpCoM0Ak+hv8HUjx+xmOB4C44FVnAXUGEAhFf/t5ij8FeQGdTVVZQJUBAjM/NjFDkDxSBa8yC6gygIM7OAuXQ4z+6cizQjauKdQGGjUGSIwsjP7LkFX2aMoCagxwJDfyMPqPJZ4FDKmZuEhq+Eikawg10UchUtuqXhKtIgOMSKmc+ZmD+IyQFy1lkKYMIJU/6lJuZYTa3neDv6LQZIAQriFUz0wUiK8tVYg8hIoSaDQsf6ZTeRsWb4DEpQ+kHFQtjdBYAvnKHRpkHWJtrKosKj4DjICzP3OTfk1AHTUagJBkaADSNDQAaZqiDSDMAMUGwFXWqQWR0wcqZoKKNkAE/9d5cwA8P+E2VXuTDU3ToE3dx0oh7u2WYt/QXQTFZoDjnV7MbTt93/RMyuVbdH2XdM/hrSgqA5TcUGQadt+WdJulTQ1AwbeJ2+9bGmJVA1DwRGJLQyxqAAqejGFNQyxqAPfEaQiSQjUZwIWGIBLNjAFcaIg24SyQB7thaIa6KEn0NsVeCDs22B7AKyi5qkh6XKPru32p4gcKNoDAa3S363yL883vZLpbgZI5ibfpLbq+eYOur1RQtAGO96G1701r36v2FsN719r3vSXz4/aBeXwLuY+Kv6F20QYgZGloANI0NABpmhoN0NWgHAjPR9eWVY6viroOkEisE/iRyGXxTUqoNEjxGUCYCSJlo2YGCFBggEmwDJpO5W2osQSS8GUGlkPzUEW5I6HJAKEGp9C3ITQeUIGKEmhELXnukMpT+KL0Z3+yRK2h/gd0ZQAfUkMX/WVMipGivWpUZACL3HU/zAJjSZ/7V1v+AIoMkJhS1XZE4WQNfrWUP4AiAwikRh5mgVzi0b+aFbiqDOBcFPPBLDAvqdFfzcUvG1UG8BATPGeEcojP/FR1LUCdARKXRvhmKWiCEGfx28TErmrpg4s6A3gIZYFhB9IEQ/pt4g8gFUV/QKkBIlnANzhTP2BbgVi7eQ2hMfoDSg0g4BO31HEcD7jIsz6+SF9VIFFrgMCMkJQZ5H00gVT3p7YfoDz6A4oN4CBFq5R9bZugL35/tozvU4tqA1hZwJBa+3NQLA963d+j+zRHf0C5AQBvKWRHqQ/CPvv3rkNbMsH5vbqidjPkB2Hf6Tjt4gcqMICFVKd+PG7fW8f4TNBGOTS80OUTv2mzj9Zfx66/qKMKAziRyDd7Yd/KUzJB97hmE8g1PzAUtXvb00HdX0P0B4DdxdXN561PYi6cG2v77ix5h/MnyMyx5rG9v577DfdLHrOVxP8I/z1/r1FR6WOoIgMYEhfLvUe/w+VyCKhjXCDX+7niPx1bk/iBygxg8V3keWMCO7W7YtA/LpAXtrnv1/zE7vYea1OV1PCRSJfUCPUeXTlkhHEp/O0lbBNoKYniJY+7LyZ+Q1XRH6jTADm4JjDshX0o3giy8O2tm+WAdPFXSW2D4LF/egtpENwfIA+3pRghTfju/kecr5FkUfIdX3JpPQO8wXkmyI34piQyz10OjrHHB2ubYXgl197aj+Xp3o63x8dfL3GKGqgmA4yI/q8hR3w52g+zgXRMx1JmGA7IU4XvbqXnPuWcSi1ZoAoDZIr/FeTSJq3s6X/nkGwA6Zvqck0hzz65WUoyQEj47vPSc8mzPTWYoJkSaP/uxlwocxmWNmnPyQNl3/8ZN53qE7z0u0/45nFqRtjv3908tXKbWvUZIKWjhBty26WO/0pwetkjZQVE9qUgGUwSvb0/tRwaPOde5BrTttqoOgP4OucY4WzRpkbzUEZYAum1JNH7HqeUQ4+AvLbHtF/N2UB1BvB1TGpUskwwpf4PPT6dUtIJCaco7IuJ3v67pGnR1OUNU9u7RNQaYM7OCJREcB5LZU98ALxcCWT/nl0OjVnXU5sJqimBpnSAUBLZSGWPtGxiCVIMMGocMHZRW21lkcoMYDf+3JEnUBbZ+0Ilj2+mKXfJgbREA5C/BMB97C2H5l7NuWRfrIFaA7z83c+2Pg1i8f3v/67SAOqWQz/dH1Q2dO0cr7NsfRrZqMwAAHBx9eOtT4FYPD/8e+tTGEUVg+Avrn646uv97+E/PAfPOWhDXQlEyJzQAKRpaADSNDQAaRoagDQNDUCahgYgTUMDkKahAUjT0ACkaWgA0jRVrAUqYU0Kz0EnzACkaWgA0jQ0AGkaGoA0TRWD4BI+CFLbObz+40/w6df/zD4HbTADkKahAciAlOhfCzQAaRoagPRoKfoDNABpHBqAnGgt+gM0AGkcGoAA6KJ/i9AA5ERr5Q9AAxC0G/0BGoAcaTH6A/x26Ob58i8/F/d/84u/Zv0frd8OzQxABuSKXzM0QMP4on9LqC2BCJkDZgBy4kd/++3Wp7A6OwBgFiAt8vxw2DEDEABtRn+AGYA0zPPDYaf+M8E/+MMvtz4F9bz86gbf/2v8LU7/+5s/z3g266K6BKL452GK+AHd/fAC6FLB1ieSi+ZGL4mXX81z03Ft/WE0rzoDkOlMjf7aUWsAzXVnKcwV/QG9/dErfTTOBmlLvTWiTfx2ya/eAITkYhvghe8JQmrE1bjaMQAhczAwALMAqRVJ28wApGlEAzALkNrwaZoZgDSN1wDMAqQWQloOZgCagGgnpmGWQKRpogZgFiBaSdFuUgagCYg2UjWbXALRBEQLOVrNGgPQBKR0cjWaPQimCUipjNHmqFkgmoCUxlhNjp4GpQlIKUzR4qTrADQB2ZqpGpx8IYwmIFsxh/ZmFS8/UknWYM6gO+tSCGYDsjRza2wxwTIbkDlZKrguHrFpBDKFpauK1UoWGoHksFY5vXrNTiOQEGuPIzcdtNIMBNh28qS4WRuaom5Kmyn8P0E2Js6G7co/AAAAAElFTkSuQmCC"
-ICON_ANY_B64      = "iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAANaElEQVR4nO2dP28kSxXFz6yex8FqnTiBlfWkFUJavcCZRULCNyAgISHgA6xIyAj5AMgfgICEhICYhIQEbbYBWongSU+jheQlfnqBbaQl6KmZ6upb//pv3arzk6we97Q9PVXn3HurumZ6h8K4uLr5vPU5rMHT/eH0eP/uZsMzWZfnh8Nu63Ow+WLLF29F7OSM1OdbmmJ1A1D0xMXWxNpmeLHWC11c3Xym+GXscqh11tbJ4hmAoh9Cwccxulk6IyxmAAqfzMHSRpjdABQ+WYKljDDrGIDiHw/LojTm1tgsGYDCJ2syZzaYnAEo/jwY6edjDu1NMgDFPy80Rz5TNTjaABQ/KYUpWhxVQ1H8eTzdH/b2r5HDT8fu393EjiUWY8YE2X9A8ftxhG5zedx+l/BvXlmPH6UDaAw/uSbIOpji7yMI/lI88BzVv03819fmJTzP94xBQ/TJMUHygRR/R0T0sQzwKfFlXh+3YgZA3xg0g0CqCZIOovgHwveJ3pcBzP6vE1/uzXHrM4C9XzQDjZBmgugBpYn/6f6w6gdILOGnil4ywSWAjxkv+/a4lQzg7guaYU0jrN03KcRMoM4AwHm+fMnGFoTvE32KAfYAPmSewi3kMUDIAJIZFjfCGv0xlpgBgkshShS/zRIRJ1H4IQNI4wBfaRRizN8YHt3zMO9rbiOUfvHu4urmc8gE3ic0iN9mqhECwpfEHhr4+kqgMaSUQNIYQMoKs2aEudt/aXwm2PQzwXMyJQ0fxT9W+KljgKV5El7n0ffaT/eH/RgTlB7xcxFdUXr0N/g6I9UECVHf3aaMA3xjgDHExgBJ9b+wHZUNprb31khZoJoMYJOSDRzxpwo/RfRzjQHW4jGWDWqL+jYDR2iJ/oaUznGNECh5coSfcy1gqTHAqPr/uB0855pgTNuWjpsF1BsASO8oT8kTivoh4edcC5jLACnXAHxGCJVFg5KoRvEDEQNoFD+QnaJfQS55powD4oJ/++Wfck4SH7/5lbDXZ4Cx9b/0XMqCPQA6DQD0TVCFAYBRdeprhKP+2HIoX+ypDE2RW/aYrfRc6jolAHrFD/QNcBoEaxb/SD6hW3PjGwTnCX8p0dvYr9GZIXnaM/B8tvi1Y18c29k7tzuleZgwW3GLtEFwf7uG6FM4Z4akaU+cy5/c5RkAdEd/gzFAldOgmdxhKH4dwjeY85HHDS52FrgD8H6hs1LBDqgj+hsys8DdcesrecoWvg85I4QGwckmqCH6G54fDrsaM8Ae8c/dAn7xD6O+FuEb+hlBqvvtZROPSM8EqW2rhtW+Hbow7LLHlDyu+LsfbeK36c7dfp/A8P2anzvpX9ROVQawrvBeRw711ft9sWgWv+H8HobvT854Pq4BXAY++K+SasYAwvIG3wfQf3rcSuLvHtcgfIlzSQQMxwXm8T88f32NwLIJjTw/HHa7isQPnEVtBO1+BtcufdoSvyFugkcMxwNvrOdOZqnBBDWVQLb4JULi11/vpzIcF7jlUGg8EGtjdag3gFX6uGt0LtFd4ALi4q+j3k9FHhcAsgnci4Sn42oYD6g2gFP3A8MOBYYXujD4vSXxG/rv2dc+d8K+3nHaTaDaABZ25MrZ10bZ4+NcDgHDDJmzTy1qDeApfWDtcyPacF/L4jf0TQCktx9QQSmk1gAOUnq29w8jGMV/pj8wNkgZFPC3tUpUGsCJ/mJUwrCTquq4hYi1mzfbas0CKg0gYHdQyBAdjP5D5EFxqLysIpCoM0Ak+hv8HUjx+xmOB4C44FVnAXUGEAhFf/t5ij8FeQGdTVVZQJUBAjM/NjFDkDxSBa8yC6gygIM7OAuXQ4z+6cizQjauKdQGGjUGSIwsjP7LkFX2aMoCagxwJDfyMPqPJZ4FDKmZuEhq+Eikawg10UchUtuqXhKtIgOMSKmc+ZmD+IyQFy1lkKYMIJU/6lJuZYTa3neDv6LQZIAQriFUz0wUiK8tVYg8hIoSaDQsf6ZTeRsWb4DEpQ+kHFQtjdBYAvnKHRpkHWJtrKosKj4DjICzP3OTfk1AHTUagJBkaADSNDQAaZqiDSDMAMUGwFXWqQWR0wcqZoKKNkAE/9d5cwA8P+E2VXuTDU3ToE3dx0oh7u2WYt/QXQTFZoDjnV7MbTt93/RMyuVbdH2XdM/hrSgqA5TcUGQadt+WdJulTQ1AwbeJ2+9bGmJVA1DwRGJLQyxqAAqejGFNQyxqAPfEaQiSQjUZwIWGIBLNjAFcaIg24SyQB7thaIa6KEn0NsVeCDs22B7AKyi5qkh6XKPru32p4gcKNoDAa3S363yL883vZLpbgZI5ibfpLbq+eYOur1RQtAGO96G1701r36v2FsN719r3vSXz4/aBeXwLuY+Kv6F20QYgZGloANI0NABpmhoN0NWgHAjPR9eWVY6viroOkEisE/iRyGXxTUqoNEjxGUCYCSJlo2YGCFBggEmwDJpO5W2osQSS8GUGlkPzUEW5I6HJAKEGp9C3ITQeUIGKEmhELXnukMpT+KL0Z3+yRK2h/gd0ZQAfUkMX/WVMipGivWpUZACL3HU/zAJjSZ/7V1v+AIoMkJhS1XZE4WQNfrWUP4AiAwikRh5mgVzi0b+aFbiqDOBcFPPBLDAvqdFfzcUvG1UG8BATPGeEcojP/FR1LUCdARKXRvhmKWiCEGfx28TErmrpg4s6A3gIZYFhB9IEQ/pt4g8gFUV/QKkBIlnANzhTP2BbgVi7eQ2hMfoDSg0g4BO31HEcD7jIsz6+SF9VIFFrgMCMkJQZ5H00gVT3p7YfoDz6A4oN4CBFq5R9bZugL35/tozvU4tqA1hZwJBa+3NQLA963d+j+zRHf0C5AQBvKWRHqQ/CPvv3rkNbMsH5vbqidjPkB2Hf6Tjt4gcqMICFVKd+PG7fW8f4TNBGOTS80OUTv2mzj9Zfx66/qKMKAziRyDd7Yd/KUzJB97hmE8g1PzAUtXvb00HdX0P0B4DdxdXN561PYi6cG2v77ix5h/MnyMyx5rG9v577DfdLHrOVxP8I/z1/r1FR6WOoIgMYEhfLvUe/w+VyCKhjXCDX+7niPx1bk/iBygxg8V3keWMCO7W7YtA/LpAXtrnv1/zE7vYea1OV1PCRSJfUCPUeXTlkhHEp/O0lbBNoKYniJY+7LyZ+Q1XRH6jTADm4JjDshX0o3giy8O2tm+WAdPFXSW2D4LF/egtpENwfIA+3pRghTfju/kecr5FkUfIdX3JpPQO8wXkmyI34piQyz10OjrHHB2ubYXgl197aj+Xp3o63x8dfL3GKGqgmA4yI/q8hR3w52g+zgXRMx1JmGA7IU4XvbqXnPuWcSi1ZoAoDZIr/FeTSJq3s6X/nkGwA6Zvqck0hzz65WUoyQEj47vPSc8mzPTWYoJkSaP/uxlwocxmWNmnPyQNl3/8ZN53qE7z0u0/45nFqRtjv3908tXKbWvUZIKWjhBty26WO/0pwetkjZQVE9qUgGUwSvb0/tRwaPOde5BrTttqoOgP4OucY4WzRpkbzUEZYAum1JNH7HqeUQ4+AvLbHtF/N2UB1BvB1TGpUskwwpf4PPT6dUtIJCaco7IuJ3v67pGnR1OUNU9u7RNQaYM7OCJREcB5LZU98ALxcCWT/nl0OjVnXU5sJqimBpnSAUBLZSGWPtGxiCVIMMGocMHZRW21lkcoMYDf+3JEnUBbZ+0Ilj2+mKXfJgbREA5C/BMB97C2H5l7NuWRfrIFaA7z83c+2Pg1i8f3v/67SAOqWQz/dH1Q2dO0cr7NsfRrZqMwAAHBx9eOtT4FYPD/8e+tTGEUVg+Avrn646uv97+E/PAfPOWhDXQlEyJzQAKRpaADSNDQAaRoagDQNDUCahgYgTUMDkKahAUjT0ACkaWgA0jRVrAUqYU0Kz0EnzACkaWgA0jQ0AGkaGoA0TRWD4BI+CFLbObz+40/w6df/zD4HbTADkKahAciAlOhfCzQAaRoagPRoKfoDNABpHBqAnGgt+gM0AGkcGoAA6KJ/i9AA5ERr5Q9AAxC0G/0BGoAcaTH6A/x26Ob58i8/F/d/84u/Zv0frd8OzQxABuSKXzM0QMP4on9LqC2BCJkDZgBy4kd/++3Wp7A6OwBgFiAt8vxw2DEDEABtRn+AGYA0zPPDYaf+M8E/+MMvtz4F9bz86gbf/2v8LU7/+5s/z3g266K6BKL452GK+AHd/fAC6FLB1ieSi+ZGL4mXX81z03Ft/WE0rzoDkOlMjf7aUWsAzXVnKcwV/QG9/dErfTTOBmlLvTWiTfx2ya/eAITkYhvghe8JQmrE1bjaMQAhczAwALMAqRVJ28wApGlEAzALkNrwaZoZgDSN1wDMAqQWQloOZgCagGgnpmGWQKRpogZgFiBaSdFuUgagCYg2UjWbXALRBEQLOVrNGgPQBKR0cjWaPQimCUipjNHmqFkgmoCUxlhNjp4GpQlIKUzR4qTrADQB2ZqpGpx8IYwmIFsxh/ZmFS8/UknWYM6gO+tSCGYDsjRza2wxwTIbkDlZKrguHrFpBDKFpauK1UoWGoHksFY5vXrNTiOQEGuPIzcdtNIMBNh28qS4WRuaom5Kmyn8P0E2Js6G7co/AAAAAElFTkSuQmCC"
-
-def write_icon(b64_data, path, size):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    img = Image.open(io.BytesIO(base64.b64decode(b64_data)))
-    img = img.resize((size, size), Image.LANCZOS)
-    img.save(path, "PNG")
-    print("  icon " + os.path.basename(os.path.dirname(path)) + " " + str(size) + "x" + str(size) + " OK")
-
-density_sizes = {
-    "mipmap-mdpi":    48,
-    "mipmap-hdpi":    72,
-    "mipmap-xhdpi":   96,
-    "mipmap-xxhdpi":  144,
-    "mipmap-xxxhdpi": 192,
-}
-for density, size in density_sizes.items():
-    write_icon(ICON_MASKABLE_B64, os.path.join(RES, density, "ic_launcher.png"), size)
-    write_icon(ICON_ANY_B64,      os.path.join(RES, density, "ic_launcher_round.png"), size)
-
-print("Icons written OK")
-print("Build script complete")
+    // Clear pvKw history — buffer holds stale values from before backgrounding.
+    // Without this, the drop detector sees a false "2.7 kW → 0.2 kW" drop on resume.
+    ST._pvHistory = [];
+    fetchWeather();
+    checkForUpdate();
+  }
+});
+
+applyAutoConsumption();
+
+</script>
+
+<div class="page" id="pgFaq" style="padding:14px;padding-bottom:90px">
+  <div class="card">
+    <div>
+    <p style="font-size:14px;line-height:1.7;color:var(--tx);margin:0 0 12px">
+      This dashboard estimates your solar panel production in real time using weather data
+      from Open-Meteo and your system configuration. It combines live solar irradiance,
+      panel tilt, temperature derating and your inverter efficiency to calculate AC output.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--g);margin-bottom:6px">⚡ Solar production</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      Calculated from Direct Normal Irradiance (DNI), Diffuse Horizontal Irradiance (DHI)
+      and your panel angle (Plane of Array model). Temperature derating is applied using
+      NOCT 45°C and a −0.37%/°C coefficient. Inverter efficiency is configured in your
+      system settings.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--am);margin-bottom:6px">⚠️ Consumption — fixed daily profile</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 8px">
+      <strong style="color:var(--tx)">The app cannot read your household consumption from your meter directly.</strong>
+      Instead, you set a fixed daily profile in System Configuration — six time slots covering the full 24-hour cycle,
+      each with a kW value that reflects your typical household draw at that time of day.
+    </p>
+    <div style="background:var(--gl);border-radius:var(--rs);padding:10px 12px;margin:0 0 14px">
+      <div style="font-size:13px;font-weight:700;color:#00c882;margin-bottom:5px">📊 How the profile works</div>
+      <p style="font-size:12px;line-height:1.7;color:#00c882;margin:0">
+        The six time slots (Night, Morning, Midday, Afternoon, Evening, Late night) each have a kW slider.
+        Set each slot to your typical consumption at that time — check your solar panel app or smart meter for reference values.<br><br>
+        The app reads the current hour, picks the matching slot, and uses that value automatically for all calculations:
+        battery flow, grid import/export, forecast accuracy, and alerts. Set the profile once — no daily input needed.
+      </p>
+      <div style="font-size:12px;color:#00c882;margin-top:8px">
+        <strong>Tip:</strong> Your average daily consumption divided by 24 gives a rough starting kW per slot.
+        Adjust evening higher (cooking, TV, lighting) and night lower (standby only).
+        The <strong>Log tab</strong> shows your cumulative energy summary — produced, consumed, self-sufficiency
+        and daily average — calculated automatically from all recorded snapshots. Use it to validate and
+        refine your consumption profile over time.
+      </div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;color:var(--bl);margin-bottom:6px">🔋 Battery</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      The battery SOC you enter maps to the usable range: 10% = empty (reserve floor),
+      90% = full (charge ceiling). Enter the SOC shown in your solar panel application.
+      The app evolves SOC over time based on calculated charge/discharge flows.
+      Battery priority: Solar → Home → Battery → Grid.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--g);margin-bottom:6px">📅 Forecast</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      7-day hourly forecast uses Open-Meteo weather data. Daily yield is estimated
+      from cloud cover and irradiance forecast. Tap any day in the strip to see
+      its hourly generation curve.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:6px">🔔 Notifications</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      Smart alerts check every 15 minutes and send one combined notification.
+      When solar surplus covers appliances you get: "Run appliances now — +1.8 kW surplus"
+      listing all devices that can run. When production is not yet sufficient you get:
+      "Best solar window at 13:00" with the next good hour. Battery and grid alerts
+      fire separately when the system switches between states.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:6px">📡 Data sources</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 14px">
+      Weather &amp; irradiance: <strong style="color:var(--tx)">Open-Meteo</strong> (free, no API key, updates every 5 min).<br>
+      Location: device GPS.<br>
+      All calculations run locally on your device — no data is sent anywhere.
+    </p>
+
+    <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:6px">🚀 App updates</div>
+    <p style="font-size:13px;line-height:1.6;color:var(--t2);margin:0 0 10px">
+      Updates are checked automatically on launch. Tap below to go directly to the Play Store.
+    </p>
+    <button onclick="openPlayStore()"
+      style="background:rgba(0,180,230,.12);color:var(--bl);border:1px solid rgba(0,180,230,.35);border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.05em">
+      ↗ Open Play Store
+    </button>
+    <div style="margin-bottom:80px"></div>
+  </div>
+</div>
+
+</body>
+</html>
