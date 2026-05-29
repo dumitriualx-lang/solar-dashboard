@@ -2424,6 +2424,11 @@ function calibrateProduction() {
   if (ST.pvKwBase > 0) {
     ST.pvKw = +(ST.pvKwBase * newFactor).toFixed(3);
   }
+  // Persist the factor so it survives page reload / app restart. Without this
+  // line the calibration only lasted the current session — on next launch the
+  // factor would revert to 1.0 (or to whatever onCfgChange last wrote, which
+  // is irrelevant unless the user happens to edit a config field afterwards).
+  try { saveCfg({ ...loadCfg(), pvCalibFactor: newFactor }); } catch(e) {}
 
   document.getElementById('cfgCalibReal').value = '';
   setMsg('✅ Reading saved · ' + h.length + ' total · now showing ' + f(ST.pvKw,2) + ' kW', 'var(--g)');
@@ -2438,6 +2443,8 @@ function resetCalibration() {
   try { localStorage.removeItem('socCorrHistory'); } catch(e) {}
   SYS.pvCalibFactor = 1.0;
   ST.pvKwBase = 0;
+  // Also persist the reset so the factor doesn't revive from old cfg on reload
+  try { saveCfg({ ...loadCfg(), pvCalibFactor: 1.0 }); } catch(e) {}
   const msg = document.getElementById('cfgCalibMsg');
   if(msg){ msg.textContent = 'All learning data cleared.'; msg.style.color = 'var(--t2)'; }
   setTimeout(() => { if(msg) msg.textContent = ''; }, 3000);
@@ -4376,6 +4383,19 @@ initNotifBar();
 // One-shot migration of legacy GPS users to the new locked-panel-location model
 migrateGpsToPanelLocation();
 updateCurrentPanelLocDisplay();
+// Reconcile calibration factor from history. If readings exist but the saved
+// factor is the default 1.0 (e.g. legacy data from before persistence was
+// fixed), derive the factor from history so previous calibration work isn't
+// silently discarded on launch.
+try {
+  const h = JSON.parse(localStorage.getItem(CALIB_STORE) || '[]');
+  if (h.length > 0) {
+    const derived = getLearnedFactor(0);
+    if (derived && Math.abs(derived - 1.0) > 0.01 && Math.abs(SYS.pvCalibFactor - 1.0) < 0.01) {
+      SYS.pvCalibFactor = derived;
+    }
+  }
+} catch(e) {}
 
 (function() {
   if (window.AppBridge && AppBridge.loadSoc) {
