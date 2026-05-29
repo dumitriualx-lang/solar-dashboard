@@ -806,8 +806,14 @@ const socToInternal = (userPct) =>
   Math.max(0, Math.min(100,
     ((+userPct - SOC_FLOOR) / (SOC_CEIL - SOC_FLOOR)) * 100
   ));
-const socToDisplay = (internalPct) =>
-  +(SOC_FLOOR + (internalPct / 100) * (SOC_CEIL - SOC_FLOOR)).toFixed(1);
+// Returns the user-facing battery percentage (10-100) from the internal 0-100
+// scale, or null when the internal value is null/undefined (fresh install
+// with no real SOC yet). Callers that format the result must check for null
+// and render "--" rather than coercing it to a number.
+const socToDisplay = (internalPct) => {
+  if (internalPct == null || isNaN(internalPct)) return null;
+  return +(SOC_FLOOR + (internalPct / 100) * (SOC_CEIL - SOC_FLOOR)).toFixed(1);
+};
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -827,8 +833,10 @@ let ST = {
   tempFactor: 1.0,        // temperature derating factor (calculated in irrToKw)
   apiOk: false, lastFetch: null,
 
-  // Battery — derived from energy balance, SOC evolves over time
-  battSoc: savedCfg.battSoc ? Math.max(0,Math.min(100,((savedCfg.battSoc-10)/90)*100)) : 50,
+  // Battery — derived from energy balance, SOC evolves over time.
+  // Default is null (no fake initial value); renders as "--" until the user
+  // sets SOC manually or it's computed from real measurements.
+  battSoc: savedCfg.battSoc ? Math.max(0,Math.min(100,((savedCfg.battSoc-10)/90)*100)) : null,
 
   // Consumption — only manual input
   consKw: savedCfg.consKw || 0,
@@ -1688,7 +1696,10 @@ function processOpenMeteo(d) {
     const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
     const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
     const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
-    ST.pvKw   = +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp)).toFixed(3);
+    // Without a configured panel, the fallback "5 kW" was producing a fake
+    // production reading on fresh install. Gate on isSysConfigured() so the
+    // header shows "--" until the user enters real specs.
+    ST.pvKw   = !isSysConfigured() ? 0 : +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp)).toFixed(3);
     ST.poaWm2 = +poaCur.toFixed(1);
   }
 
@@ -1761,7 +1772,8 @@ function processOpenMeteo(d) {
     } else {
       const rain = day.precipitation_probability_max?.[i] || 0;
       const cf_d = Math.max(0, 1 - 0.75 * Math.pow(rain / 100, 3.4));
-      yieldKwh   = +((SYS.panelKw || 5) * 5 * cf_d).toFixed(2);
+      // 0 kWh when no real panel size — avoids a fake forecast bar on fresh install
+      yieldKwh   = isSysConfigured() ? +(SYS.panelKw * 5 * cf_d).toFixed(2) : 0;
     }
     FORECAST.push({
       d: dayName, yieldKwh,
@@ -2060,6 +2072,14 @@ function calcFlow() {
 
 // Evolve battery SOC based on calculated flow over elapsed time
 function evolveSoc() {
+  // Don't evolve a null/unset SOC. We wait until the user enters one via
+  // "Edit SOC" or the Java background service provides a real reading.
+  // Without this guard, JS arithmetic would coerce null to 0, silently
+  // initialising SOC to the 10% reserve floor and hiding the "--" indicator.
+  if (!isSysConfigured() || ST.battSoc == null) {
+    lastFlowT = Date.now();
+    return;
+  }
   const fl  = calcFlow();
   const now = Date.now();
   const dtH = (now - lastFlowT) / 3600000;   // hours elapsed
@@ -2371,7 +2391,7 @@ function calibrateProduction() {
     pvReal:  +real.toFixed(3),
     factor:  +rawFactor.toFixed(4), // absolute: pvReal / pvKwBase
     consKw:  +(ST.consKw || 0),
-    battSoc: +socToDisplay(ST.battSoc).toFixed(1),
+    battSoc: ST.battSoc != null ? +socToDisplay(ST.battSoc).toFixed(1) : null,
     migrated: true,                 // mark as new-format so migration skips it
   });
   if (h.length > CALIB_MAX) h.splice(0, h.length - CALIB_MAX);
@@ -2439,7 +2459,11 @@ function openSocEdit() {
   const row = document.getElementById('socEditRow');
   const inp = document.getElementById('socEditInput');
   if (!row || !inp) return;
-  inp.value = Math.round(socToDisplay(ST.battSoc));
+  // Prefill with current SOC if known; leave blank on fresh install so the
+  // user enters their real battery percentage rather than confirming a fake.
+  const d = socToDisplay(ST.battSoc);
+  inp.value = d != null ? Math.round(d) : '';
+  inp.placeholder = '10-90';
   row.style.display = 'flex';
   inp.focus(); inp.select();
 }
@@ -2453,38 +2477,38 @@ function applySocEdit() {
   const displayPct = Math.min(90, Math.max(10, parseFloat(inp.value) || 50));
 
   // ── Record SOC correction for cross-variable learning ─────────────
+  // Skip the drift recording when there's no prior SOC (fresh install).
   const appDisplaySoc = socToDisplay(ST.battSoc);
-  const socDrift      = displayPct - appDisplaySoc;  // +ve = app underestimated
   const hourNow       = new Date().getHours();
   const isPvOff       = ST.pvKw < 0.1;
+  if (appDisplaySoc != null) {
+    const socDrift = displayPct - appDisplaySoc;
+    try {
+      const socH = safeJson('socCorrHistory', []);
+      const entry = {
+        ts: Date.now(), hour: hourNow,
+        appSoc: +appDisplaySoc.toFixed(1), realSoc: displayPct,
+        drift: +socDrift.toFixed(1),
+        pvKw: +ST.pvKw.toFixed(3),
+        consKw: +(ST.consKw || 0).toFixed(3),
+        battUsable: +(SYS.battUse || 9).toFixed(2),
+      };
 
-  try {
-    const socH = safeJson('socCorrHistory', []);
-    const entry = {
-      ts: Date.now(), hour: hourNow,
-      appSoc: +appDisplaySoc.toFixed(1), realSoc: displayPct,
-      drift: +socDrift.toFixed(1),
-      pvKw: +ST.pvKw.toFixed(3),
-      consKw: +(ST.consKw || 0).toFixed(3),
-      battUsable: +(SYS.battUse || 9).toFixed(2),
-    };
-
-    // If no sun and drift is significant, derive actual consumption from SOC drop (log only)
-    if (isPvOff && Math.abs(socDrift) > 3 && socCorrHistory_lastTs) {
-      const hoursElapsed = (Date.now() - socCorrHistory_lastTs) / 3600000;
-      if (hoursElapsed > 1 && hoursElapsed < 16) {
-        const actualConsKw = Math.abs(socDrift) / 100 * (SYS.battUse || 9) / hoursElapsed;
-        entry.derivedConsKw = +actualConsKw.toFixed(3);
-        // Do NOT override ST.consKw — profile is the authority.
-        // Background service death makes SOC stale, corrupting derived consumption.
+      // If no sun and drift is significant, derive actual consumption from SOC drop (log only)
+      if (isPvOff && Math.abs(socDrift) > 3 && socCorrHistory_lastTs) {
+        const hoursElapsed = (Date.now() - socCorrHistory_lastTs) / 3600000;
+        if (hoursElapsed > 1 && hoursElapsed < 16) {
+          const actualConsKw = Math.abs(socDrift) / 100 * (SYS.battUse || 9) / hoursElapsed;
+          entry.derivedConsKw = +actualConsKw.toFixed(3);
+        }
       }
-    }
 
-    socH.push(entry);
-    if (socH.length > 30) socH.splice(0, socH.length - 30);
-    localStorage.setItem('socCorrHistory', JSON.stringify(socH));
-  } catch(e) {}
-  socCorrHistory_lastTs = Date.now();
+      socH.push(entry);
+      if (socH.length > 30) socH.splice(0, socH.length - 30);
+      localStorage.setItem('socCorrHistory', JSON.stringify(socH));
+    } catch(e) {}
+    socCorrHistory_lastTs = Date.now();
+  }
 
   // ── Apply SOC ──────────────────────────────────────────────────────
   ST.battSoc = socToInternal(displayPct);
@@ -2566,12 +2590,23 @@ function renderMetrics() {
   const battEl = document.getElementById('hdrBatt');
   const wxEl   = document.getElementById('hdrWx');
   const gridEl = document.getElementById('hdrGrid');
-  if (pvEl)   pvEl.textContent   = '☀️ ' + f(ST.pvKw, 2) + ' kW';
-  if (battEl) battEl.textContent = '🔋 ' + Math.round(socToDisplay(ST.battSoc)) + '%';
+  const cfgOk  = isSysConfigured();
+  // Production: only show a kW value once panel is configured. Without
+  // panelKw the calculation has no real basis, so we display "--".
+  if (pvEl)   pvEl.textContent   = cfgOk ? ('☀️ ' + f(ST.pvKw, 2) + ' kW') : '☀️ -- kW';
+  // Battery: needs both system configured AND a real SOC value. ST.battSoc
+  // defaults to null on fresh install so the dashboard doesn't show a fake
+  // 55% percentage that the user mistakes for a real reading.
+  if (battEl) {
+    battEl.textContent = (cfgOk && ST.battSoc != null)
+      ? ('🔋 ' + Math.round(socToDisplay(ST.battSoc)) + '%')
+      : '🔋 --%';
+  }
   if (wxEl)   wxEl.textContent   = '🌡️ ' + (ST.wxTempC != null ? f(ST.wxTempC, 0) + '°C' : '--°C');
   const fl = calcFlow();
   if (gridEl) {
-    if (fl.gridExport > 0.05)      gridEl.textContent = '⚡ +' + f(fl.gridExport, 2) + ' kW';
+    if (!cfgOk)                    gridEl.textContent = '⚡ --';
+    else if (fl.gridExport > 0.05) gridEl.textContent = '⚡ +' + f(fl.gridExport, 2) + ' kW';
     else if (fl.gridImport > 0.05) gridEl.textContent = '⚡ -'  + f(fl.gridImport, 2) + ' kW';
     else                           gridEl.textContent = '⚡ 0 kW';
   }
@@ -2625,7 +2660,34 @@ function renderBattery() {
     const warnEl = document.getElementById('socStaleWarn');
     if (warnEl) warnEl.style.display = 'none';
   }
-  const fl  = calcFlow(), soc = Math.round(ST.battSoc), st = stored(), dispSoc = socToDisplay(ST.battSoc);
+  // SOC is null on a fresh install — render dashes and bail before any
+  // arithmetic that would mask the "not set yet" state with a fake number.
+  const battKnown = isSysConfigured() && ST.battSoc != null;
+  const fl  = calcFlow();
+  const dispSoc = battKnown ? socToDisplay(ST.battSoc) : null;
+  if (!battKnown) {
+    const bPctEl = document.getElementById('bPct');
+    if (bPctEl) { bPctEl.textContent = '--%'; bPctEl.style.color = ''; }
+    const kwhEl = document.getElementById('battKwhLbl');
+    if (kwhEl) kwhEl.textContent = '-- / -- kWh';
+    const tEl = document.getElementById('battTimeLabel');
+    if (tEl) tEl.textContent = 'Set SOC to begin';
+    const bEl = document.getElementById('battBackupLbl');
+    if (bEl) bEl.textContent = '-- h backup';
+    const mEl = document.getElementById('battMaxLabel');
+    if (mEl) mEl.textContent = isSysConfigured() ? f(SYS.battUse,1) + ' kWh usable' : '-- kWh usable';
+    const fillEl = document.getElementById('bFill');
+    if (fillEl) { fillEl.style.width = '0%'; }
+    const pill = document.getElementById('bPill');
+    if (pill) { pill.textContent = isSysConfigured() ? 'Tap Edit SOC' : 'Configure system first'; pill.className='pill p-info'; }
+    const flowFill = document.getElementById('bFlowFill');
+    if (flowFill) flowFill.style.width = '0%';
+    const flowLbl = document.getElementById('bFlowLabel');
+    if (flowLbl) flowLbl.textContent = '';
+    return;
+  }
+  const soc = Math.round(ST.battSoc);
+  const st  = stored();
   const chr = fl.battFlow > 0.01, dis = fl.battFlow < -0.01;
   const bkp = f(st / Math.max(0.01, ST.consKw), 1);
   const col = soc > 60 ? '#00c882' : soc > 30 ? '#d4a820' : '#e03030';
