@@ -469,8 +469,10 @@ body::before{
       </div>
     </div>
 
-    <div class="cfg-grid" style="margin-top:14px;display:none"><!-- calibration section hidden -->
+    <!-- ─── Production calibration: teach the app by entering real inverter kW ─── -->
+    <div class="cfg-grid" style="margin-top:14px">
       <div class="cfg-group" style="grid-column:span 2">
+        <div class="cfg-lbl">⚙️ Production calibration <span style="color:var(--t2);font-size:11px;margin-left:6px">(optional — improves accuracy)</span></div>
         <!-- Learning status bar -->
         <div id="cfgCalibStatus" style="margin:6px 0 8px;padding:8px 10px;border-radius:var(--rs);
           background:rgba(0,28,75,.5);border:1px solid var(--br2);font-size:11px">
@@ -1445,19 +1447,31 @@ function applySatelliteRadiation(sat) {
     ghi * 0.20 * (1 - Math.cos(tiltR)) / 2
   );
 
-  const panelKw = SYS.panelKw || 5;
-  const tempC   = ST.wxTempC || 20;
-  const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(0, poa);
+  const panelKw = SYS.panelKw;
+  if (!isSysConfigured()) {
+    // No panel configured — leave everything at 0
+    ST.pvKwBase = 0; ST.pvKw = 0;
+    ST._satLastMs = Date.now();
+    ST.irrWm2 = sat.swr;
+    ST.poaWm2 = +poa.toFixed(1);
+    return;
+  }
+  const tempC   = ST.wxTempC  || 20;
+  const windMs  = ST.wxWindMs || 0;
+  // Wind cooling on cell temp — matches calcPV
+  const windCool = Math.min(8, windMs * 1.8) * Math.min(1, poa / 800);
+  const cellT   = tempC + (SYS.noct - 20) / 800 * Math.max(0, poa) - windCool;
   const tFac    = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT - 25));
-  const acMax   = SYS.acMax || panelKw * 0.984;
-  // PR = acMax × 0.97 × learned calibration factor for current GHI conditions
-  // Raw formula output — no calibration factor applied.
-  // Self-calibration was removed: it introduced compounding errors when
-  // background service died (stale pvApp values corrupted the learned factor).
-  ST.pvKwBase = +Math.max(0, Math.min(acMax, (poa / 1000) * acMax * 0.97 * tFac)).toFixed(3);
-  let pvKw    = +ST.pvKwBase.toFixed(3);
-
-  ST.pvKw      = pvKw;
+  // Match calcPV formula exactly: dcKw = pkw × (POA/1000) × tFac; ac = min(dc × invEff, acMax)
+  // Removed the legacy "×0.97" extra loss that was double-counting inverter losses
+  // and underestimating production by ~3% relative to the canonical formula.
+  const dcKw    = panelKw * (poa / 1000) * tFac;
+  const acMax   = SYS.acMax || panelKw * SYS.invEff;
+  ST.pvKwBase = +Math.min(dcKw * SYS.invEff, acMax).toFixed(3);
+  // ST.pvKw applies the user calibration multiplier so manual "Reading" entries
+  // take effect immediately and survive recalculation.
+  const cal     = +(SYS.pvCalibFactor || 1);
+  ST.pvKw      = +(ST.pvKwBase * cal).toFixed(3);
   ST._satLastMs = Date.now();
   ST.irrWm2    = sat.swr;
   ST.poaWm2    = +poa.toFixed(1);
@@ -1490,7 +1504,7 @@ async function fetchWeather() {
       + '&longitude=' + f(ST.lon,4)
       + '&tilt=' + tiltDeg + '&azimuth=' + azMeteo
       + '&models=best_match'
-      + '&current=temperature_2m,cloud_cover,weathercode,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,global_tilted_irradiance'
+      + '&current=temperature_2m,cloud_cover,weathercode,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,global_tilted_irradiance,wind_speed_10m'
       + '&hourly=shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,global_tilted_irradiance,cloud_cover,cloud_cover_low,temperature_2m,wind_speed_10m,precipitation_probability,weathercode,is_day'
       + '&daily=weathercode,temperature_2m_max,precipitation_probability_max'
       + '&timezone=auto&forecast_days=7';
@@ -1593,7 +1607,12 @@ function calcPV(poaWm2) {
   const tCell   = tempC + (SYS.noct - 20) / 800 * poaWm2 - windCool;
   const tFactor = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, tCell - 25));
   const dcKw    = pkw * (poaWm2 / 1000) * tFactor;
-  return +Math.min(dcKw * SYS.invEff, SYS.acMax || pkw * SYS.invEff).toFixed(3);
+  const acKw    = Math.min(dcKw * SYS.invEff, SYS.acMax || pkw * SYS.invEff);
+  // Apply user calibration multiplier so the "Reading" button has effect.
+  // Default 1.0 = no change; user enters real inverter kW and the multiplier
+  // is learned from the ratio (real / model).
+  const cal     = +(SYS.pvCalibFactor || 1);
+  return +(acKw * cal).toFixed(3);
 }
 
 // Clear-sky irradiance model (Bird & Hulstrom) + cloud correction
@@ -1624,6 +1643,7 @@ function processOpenMeteo(d) {
   if (!ST.lat || !ST.lon) return;
 
   ST.wxTempC   = +(cur.temperature_2m || 15);
+  ST.wxWindMs  = +(cur.wind_speed_10m || 0);  // m/s — used by calcPV for cell-temp wind cooling
   ST.wxCond    = wxLabel(cur.weathercode || 0);
   ST.wxIcon    = wxIcon(cur.weathercode  || 0, ST.wxTempC);
   ST.wxCode    = cur.weathercode || 0;  // raw WMO code for rain cap
@@ -1693,13 +1713,13 @@ function processOpenMeteo(d) {
       rawDHInwp * (1 + Math.cos(tiltRnwp)) / 2 +
       ghi * 0.20 * (1 - Math.cos(tiltRnwp)) / 2
     );
-    const acMax_nwp = SYS.acMax || (SYS.panelKw || 5) * 0.984;
-    const cellT_nwp = (ST.wxTempC || 25) + (SYS.noct - 20) / 800 * Math.max(0, poaCur);
-    const tFac_nwp  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_nwp - 25));
-    // Without a configured panel, the fallback "5 kW" was producing a fake
-    // production reading on fresh install. Gate on isSysConfigured() so the
-    // header shows "--" until the user enters real specs.
-    ST.pvKw   = !isSysConfigured() ? 0 : +Math.max(0, Math.min(acMax_nwp, (poaCur / 1000) * acMax_nwp * 0.97 * tFac_nwp)).toFixed(3);
+    const acMax_nwp = SYS.acMax || SYS.panelKw * SYS.invEff;
+    // Use calcPV(poaCur) — the single source of truth for PV math.
+    // The old NWP path had a spurious 0.97 factor and didn't use wind cooling,
+    // causing ~5-7% underestimation vs the canonical formula. By delegating to
+    // calcPV we get consistent results across all paths and pick up the user
+    // calibration multiplier automatically.
+    ST.pvKw   = !isSysConfigured() ? 0 : calcPV(poaCur);
     ST.poaWm2 = +poaCur.toFixed(1);
   }
 
@@ -1750,11 +1770,12 @@ function processOpenMeteo(d) {
     const cellT_h = tmp_h + (SYS.noct - 20) / 800 * Math.max(0, poa_h) - windCool * Math.min(1, poa_h/800);
     const tFac_h  = Math.max(0.80, 1 - SYS.tempCoeff * Math.max(0, cellT_h - 25));
     const pkw = SYS.panelKw;
-    const acMax = SYS.acMax || (pkw||5) * 0.984;
-    const pvKw    = !isSysConfigured() ? 0 : +Math.max(0, Math.min(
+    const acMax = SYS.acMax || pkw * SYS.invEff;
+    const cal = +(SYS.pvCalibFactor || 1);
+    const pvKw    = !isSysConfigured() ? 0 : +(Math.max(0, Math.min(
       acMax,
       (poa_h / 1000) * pkw * (SYS.invEff || 0.97) * tFac_h
-    )).toFixed(3);
+    )) * cal).toFixed(3);
 
     ST.todayH.push({ hour: localHour, pvKw, ghi: swr_h, dni: dni_h, dhi: dhi_h });
   });
