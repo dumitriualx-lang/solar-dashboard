@@ -342,12 +342,11 @@ body::before{
     <button class="gps-btn" id="gpsBtnEl" onclick="onGpsBtnClick()" style="background:rgba(0,180,230,.12);border:1px solid rgba(0,180,230,.4);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:#00b4e6;letter-spacing:.5px;white-space:nowrap">Allow GPS</button>
   </div>
 
-  <!-- API STATUS BAR -->
-  <div class="api-load" id="apiBar" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;margin-bottom:10px">
-    <div id="apiIcon" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:radial-gradient(circle at 35% 35%,rgba(0,180,230,.25),rgba(0,180,230,.06));border:1.5px solid rgba(0,180,230,.5);box-shadow:0 0 14px rgba(0,180,230,.2)">🛰️</div>
-    <span id="apiMsg" style="flex:1;font-size:12px;color:rgba(200,224,255,.75);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⏳ Waiting for location before fetching irradiance...</span>
-    <button class="api-refresh" onclick="onRefreshClick()" style="background:rgba(0,180,230,.12);border:1px solid rgba(0,180,230,.4);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:#00b4e6;letter-spacing:.5px;flex-shrink:0">↻</button>
-  </div>
+  <!-- API status bar removed — the locked location bar above is the single
+       source of location truth, and the per-minute interval handles refresh.
+       The element is replaced with a hidden stub so setApi() calls don't NPE.
+       Error messages still surface in the console for diagnostics. -->
+  <div id="apiBar" style="display:none"><span id="apiMsg"></span></div>
 
   <!-- PUSH NOTIFICATION BAR -->
   <div id="notifBar" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;border:1px solid rgba(212,176,32,.25);background:linear-gradient(135deg,rgba(212,176,32,.07),rgba(0,8,25,.9));margin-bottom:10px">
