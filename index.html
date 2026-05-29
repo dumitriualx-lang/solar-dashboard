@@ -328,7 +328,7 @@ body::before{
     </div>
     <div style="display:flex;gap:8px">
       <div style="flex:1;display:flex;align-items:center;padding:8px 12px;border-radius:8px;background:rgba(0,28,75,.5);border:1px solid rgba(0,180,230,.3)">
-        <input id="locSearchInput" type="text" placeholder="Search city (e.g. Pantelimon)..." oninput="onPanelLocSearch(this.value)" autocomplete="off" style="width:100%;background:transparent;border:none;font-family:inherit;font-size:14px;color:var(--tx);outline:none">
+        <input id="locSearchInput" type="text" placeholder="Search city (e.g. New York)..." oninput="onPanelLocSearch(this.value)" autocomplete="off" style="width:100%;background:transparent;border:none;font-family:inherit;font-size:14px;color:var(--tx);outline:none">
       </div>
       <button onclick="setLocationFromSearch()" style="background:rgba(0,180,230,.15);border:1px solid rgba(0,180,230,.5);border-radius:8px;padding:0 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:#00b4e6;letter-spacing:.5px;white-space:nowrap">Set</button>
     </div>
@@ -2429,6 +2429,12 @@ function calibrateProduction() {
   // factor would revert to 1.0 (or to whatever onCfgChange last wrote, which
   // is irrelevant unless the user happens to edit a config field afterwards).
   try { saveCfg({ ...loadCfg(), pvCalibFactor: newFactor }); } catch(e) {}
+  // Also push it over the AppBridge so the Java background services use the
+  // same multiplier — otherwise the notification reading would be 5-15% below
+  // the dashboard reading for the same instant.
+  if (window.AppBridge && AppBridge.savePvCalibFactor) {
+    try { AppBridge.savePvCalibFactor(newFactor); } catch(e) {}
+  }
 
   document.getElementById('cfgCalibReal').value = '';
   setMsg('✅ Reading saved · ' + h.length + ' total · now showing ' + f(ST.pvKw,2) + ' kW', 'var(--g)');
@@ -2445,6 +2451,9 @@ function resetCalibration() {
   ST.pvKwBase = 0;
   // Also persist the reset so the factor doesn't revive from old cfg on reload
   try { saveCfg({ ...loadCfg(), pvCalibFactor: 1.0 }); } catch(e) {}
+  if (window.AppBridge && AppBridge.savePvCalibFactor) {
+    try { AppBridge.savePvCalibFactor(1.0); } catch(e) {}
+  }
   const msg = document.getElementById('cfgCalibMsg');
   if(msg){ msg.textContent = 'All learning data cleared.'; msg.style.color = 'var(--t2)'; }
   setTimeout(() => { if(msg) msg.textContent = ''; }, 3000);
@@ -3949,6 +3958,7 @@ function saveCfgAndApply() {
   const calib = getLearnedFactor(ST.irrWm2 || 0);
   SYS.pvCalibFactor = calib;
   saveCfg({
+    ...loadCfg(),                                                       // ← preserve panelLat/Lon/Name and any other fields not managed by this form
     panelKw: panel, battGross: gross, battRes: res,
     battMaxC: maxC, battMaxD: maxD,
     battSoc: !isNaN(soc) && soc >= 0 && soc <= 100 ? soc : loadCfg().battSoc,
@@ -4201,33 +4211,52 @@ function renderSmartSched() {
     '<div style="height:6px;border-radius:3px;background:var(--sf2);overflow:hidden">' +
     '<div style="height:100%;width:' + barPct + '%;background:' + barCol + ';border-radius:3px;transition:width .6s ease"></div>' +
     '</div>';
-  const firstRunnable = APPLIANCES.find(app => surplus >= SURPLUS_TRIGGER && surplus >= app.kw);
+  // ── Multi-appliance scheduling ─────────────────────────────────────────
+  // Pick the OPTIMAL combination of appliances to run simultaneously using
+  // duty-cycle-averaged power (avgKw), not peak rated power. At 2 kW surplus
+  // you can realistically run washer (0.7 avg) + dishwasher (0.7) + heater
+  // (0.6), even though their peak rated kW each says "2 kW". The old logic
+  // only ever flagged one appliance for "Run now", missing this stacking.
+  // Order by priority so high-priority loads claim surplus first.
+  const surplusOk = surplus >= SURPLUS_TRIGGER && !battDischarging && !lowSolar;
+  const runnableSet = new Set();
+  if (surplusOk) {
+    const byPriority = [...APPLIANCES].sort((a, b) => a.priority - b.priority);
+    let remaining = surplus;
+    // Leave a small headroom buffer so a transient cloud doesn't immediately
+    // force imports from the grid right after starting multiple appliances.
+    const HEADROOM_KW = 0.15;
+    for (const a of byPriority) {
+      if (remaining - a.avgKw >= -HEADROOM_KW) {
+        runnableSet.add(a.id);
+        remaining -= a.avgKw;
+      }
+    }
+  }
+  const firstRunnable = APPLIANCES.find(app => runnableSet.has(app.id));
   const rows = APPLIANCES.map(app => {
-    const canRun    = surplus >= SURPLUS_TRIGGER && surplus >= app.kw && !battDischarging && !lowSolar;
-    const partial   = !canRun && surplus > 0 && surplus >= app.kw * 0.4;
+    const canRun    = runnableSet.has(app.id);
+    const partial   = !canRun && surplus > 0 && surplus >= app.avgKw * 0.4;
     const battCovers= !canRun && !partial && stored() > app.kw * 0.5;
     const deficit   = !canRun && !partial && !battCovers;
     let statusCls, statusTxt, statusDot;
     const isFirst = firstRunnable && app.id === firstRunnable.id;
-    if      (canRun && isFirst){ statusCls='sb-b'; statusTxt='Run now ✓'; statusDot='#00c882'; }
-    else if (canRun && !isFirst){ statusCls='sb-o'; statusTxt='Queue';    statusDot='#d4a820'; }
+    if      (canRun)      { statusCls='sb-b'; statusTxt='Run now ✓'; statusDot='#00c882'; }
     else if (partial)     { statusCls='sb-o'; statusTxt='Partial';   statusDot='#d4a820'; }
     else if (battCovers)  { statusCls='sb-o'; statusTxt='Batt only'; statusDot='#378ADD'; }
     else                  { statusCls='sb-a'; statusTxt='Wait';      statusDot='#e05a28'; }
     applianceState[app.id] = canRun;
-    const needed = app.kw - Math.max(0, surplus);
-    const extraInfo = canRun && isFirst
-      ? 'Solar covers it · ' + f(surplus - app.kw, 2) + ' kW left after'
-      : canRun && !isFirst
-      ? 'Queue after current · surplus ' + f(surplus,2) + ' kW'
+    const needed = app.avgKw - Math.max(0, surplus);
+    const extraInfo = canRun
+      ? 'Solar covers it · ' + f(app.avgKw, 2) + ' kW avg use'
       : partial
       ? 'Need ' + f(needed,2) + ' kW more solar · battery makes up rest'
       : 'Need ' + f(needed,2) + ' kW more solar · wait for peak';
     const reminded = applianceReminders.has(app.id);
     const remindLbl = reminded ? ('🔔 ' + _reminderLabel(app.id)) : '🔕';
-    // Bell only on Queue (solar covers it but another appliance goes first)
-    // and Partial (not quite enough solar but close) — not on Batt only or Wait
-    const showBell = (canRun && !isFirst) || partial;
+    // Bell only when "Partial" — not enough solar yet but close. Remind user
+    // to retry when surplus rises. Not shown for items already running or far off.
+    const showBell = partial;
     const remindBtn = showBell
       ? '<button class="sr-btn' + (reminded ? ' sr-on' : '') + '" ' +
         'onclick="toggleApplianceReminder(\'' + app.id + '\')" ' +
@@ -4396,6 +4425,11 @@ try {
     }
   }
 } catch(e) {}
+// Mirror current calibration factor to Java background services at every
+// launch so they stay in sync without waiting for the next user action.
+if (window.AppBridge && AppBridge.savePvCalibFactor) {
+  try { AppBridge.savePvCalibFactor(SYS.pvCalibFactor || 1.0); } catch(e) {}
+}
 
 (function() {
   if (window.AppBridge && AppBridge.loadSoc) {
