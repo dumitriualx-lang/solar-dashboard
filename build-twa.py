@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 16   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 17   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -317,6 +317,19 @@ public class MainActivity extends Activity {
                 .putFloat("panel_azimuth",   panelAzimuth)
                 .putLong ("soc_saved_at_ms", System.currentTimeMillis())
                 .putBoolean("soc_confirmed",  true)
+                .apply();
+        }
+
+        // savePvCalibFactor — pushes the JS-side production calibration multiplier
+        // to Java so background SOC updates use the same calibrated kW as the
+        // dashboard. Without this, the notification reading would be 5-15% below
+        // the dashboard for the same instant.
+        @JavascriptInterface
+        public void savePvCalibFactor(float factor) {
+            if (factor <= 0.1f || factor > 5.0f) return;  // sanity bounds
+            getSharedPreferences("SolarDashboard", android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putFloat("pv_calib_factor", factor)
                 .apply();
         }
 
@@ -1179,8 +1192,11 @@ public class SolarForegroundService extends Service {
                 double poa_in   = poaBeam + poaSky + poaGnd;
                 double cellT    = tempC + (45.0 - 20.0) * (poa_in / 800.0);
                 double tFac     = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
+                // Apply user PV calibration multiplier so background SOC tracks
+                // the same calibrated production value as the JS dashboard.
+                float calib = prefs.getFloat("pv_calib_factor", 1.0f);
                 pvKw = Math.max(0, Math.min(panelKw * 0.984,
-                    (poa_in / 1000.0) * panelKw * 0.984 * tFac));
+                    (poa_in / 1000.0) * panelKw * 0.984 * tFac)) * calib;
             } else {
                 pvKw = 0; // sun below horizon
             }
@@ -1606,7 +1622,8 @@ public class SolarAlarmReceiver extends BroadcastReceiver {
                 double poa_in   = poaBeam + poaSky + poaGnd;
                 double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
                 double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
-                pvKw = Math.max(0, Math.min(panelKw * 0.984, (poa_in / 1000.0) * panelKw * 0.984 * tFac));
+                float calib = prefs.getFloat("pv_calib_factor", 1.0f);
+                pvKw = Math.max(0, Math.min(panelKw * 0.984, (poa_in / 1000.0) * panelKw * 0.984 * tFac)) * calib;
             } else {
                 pvKw = 0; // sun below horizon
             }
@@ -1970,8 +1987,9 @@ public class SolarWorker extends Worker {
                 double poa_in   = poaBeam + poaSky + poaGnd;
             double cellT  = tempC + (45.0 - 20.0) * (poa_in / 800.0);
             double tFac   = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
+            float calib = prefs.getFloat("pv_calib_factor", 1.0f);
             pvKw = Math.max(0, Math.min(panelKw * 0.984,
-                (poa_in / 1000.0) * panelKw * 0.984 * tFac));
+                (poa_in / 1000.0) * panelKw * 0.984 * tFac)) * calib;
         }
 
         // ── Energy flow model (mirrors JS calcFlow) ──────────────────────────
