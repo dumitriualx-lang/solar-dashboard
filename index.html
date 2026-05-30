@@ -722,8 +722,11 @@ body::before{
       <span id="logChevron" style="font-size:14px;transition:transform .25s;color:var(--t2)">▼</span>
     </div>
     <div id="logBody" style="display:none">
-    <p style="font-size:12px;color:var(--t2);margin:8px 0 10px">Automatic snapshots every 30 seconds.</p>
-    <div id="logBodyInner"><div class="empty-log">No readings yet.<br>The app logs automatically every 30 seconds when solar is active.</div></div>
+    <p style="font-size:12px;color:var(--t2);margin:8px 0 10px">
+      Captured every 30 sec while the app is open; once per ~30 min when in background.
+      Rolling buffer of the last 288 readings (~2.4 hours of foreground time).
+    </p>
+    <div id="logBodyInner"><div class="empty-log">No readings yet.<br>The app starts logging when you open it and solar is producing.</div></div>
   </div>
 </div>
 </div><!-- /pgLog -->
@@ -2650,13 +2653,67 @@ function snap() {
   rlog.push({ t:new Date().toISOString(), pvKw:ST.pvKw,
     batt:fl.battFlow, soc:ST.battSoc, irr:ST.irrWm2,
     grd:+(fl.gridExport-fl.gridImport).toFixed(3),
-    lat:ST.lat, lon:ST.lon, loc:ST.locName });
-  if (rlog.length>288) rlog.shift();
+    lat:ST.lat, lon:ST.lon, loc:ST.locName,
+    src:'fg' });
+  // Cap at 2000 entries (~12 days of mixed foreground + background data).
+  // Old value was 288 (~2.4 hours of foreground only) — too small once
+  // background entries from FGS merge in.
+  if (rlog.length>2000) rlog.shift();
   _saveRlogDebounced();
   document.getElementById('logPill').textContent = rlog.length + ' entries';
   renderLogTable();
   // Trigger consumption-profile learning every 6 hours
   maybeRunLearning();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MERGE BACKGROUND LOG — pulls Java FGS entries into the JS log
+// ═══════════════════════════════════════════════════════════════
+// The JS rlog only captures while the app is in foreground (every 30 sec).
+// The Java FGS appends an entry to bg_log_v1 in SharedPreferences on every
+// background check (~once per 30 min). This function fetches those entries,
+// merges them into rlog deduping by timestamp, re-sorts chronologically, and
+// persists. Then it clears the Java-side buffer so the same entries don't
+// get re-merged on the next launch.
+//
+// Effect on the UI: the Reading Log shows the entire day's data even if the
+// app was closed for hours — instead of just the last hour of foreground time.
+function mergeBackgroundLog() {
+  if (!window.AppBridge || typeof AppBridge.getBackgroundLog !== 'function') return 0;
+  let added = 0;
+  try {
+    const raw = AppBridge.getBackgroundLog();
+    if (!raw || raw === '[]') return 0;
+    const bgEntries = JSON.parse(raw);
+    if (!Array.isArray(bgEntries) || !bgEntries.length) return 0;
+    // Dedupe by exact timestamp string — Java emits ISO format, JS does too,
+    // so an exact match means same instant. Foreground entries (30 sec apart)
+    // never collide with background entries (30 min apart).
+    const existingTs = new Set(rlog.map(r => r.t));
+    for (const e of bgEntries) {
+      if (e && e.t && !existingTs.has(e.t)) {
+        rlog.push(e);
+        existingTs.add(e.t);
+        added++;
+      }
+    }
+    if (added > 0) {
+      // Re-sort by timestamp so oldest comes first (rlog convention)
+      rlog.sort((a, b) => new Date(a.t) - new Date(b.t));
+      // Cap at 2000 to prevent unbounded growth. At 48 bg entries + ~120
+      // foreground entries per day, that's ~12 days of history.
+      while (rlog.length > 2000) rlog.shift();
+      try { localStorage.setItem('solarLog4', JSON.stringify(rlog)); } catch(e) {}
+      console.log('[bg-log] merged ' + added + ' background entries (total rlog: ' + rlog.length + ')');
+      // Clear Java buffer so we don't re-merge next time
+      if (typeof AppBridge.clearBackgroundLog === 'function') {
+        try { AppBridge.clearBackgroundLog(); } catch(e) {}
+      }
+    }
+  } catch (e) {
+    console.error('[bg-log] merge failed:', e);
+  }
+  return added;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3335,8 +3392,23 @@ function renderLogStats() {
   const selfSuff  = consumed > 0 ? Math.min(100, fromSolar / consumed * 100) : 0;
 
   const lbl = document.getElementById('logDaysLbl');
-  const src = ST.pvKwhToday > 0 ? 'background data' : Math.round(logMinutes) + ' min logged';
-  if (lbl) lbl.textContent = 'Today · ' + src;
+  // Be honest about what this total represents. It's NOT all-day production —
+  // the JS log only captures when the app is in foreground (every 30 sec), and
+  // the background service only writes once per ~30 min. So the total reflects
+  // "captured production today" not "real total today". Showing the coverage
+  // explicitly so the user can read it against their inverter's true value.
+  const hasBg = ST.pvKwhToday > 0;
+  let scopeMsg;
+  if (hasBg && logMinutes > 0) {
+    scopeMsg = 'Today · background + ' + Math.round(logMinutes) + ' min in app';
+  } else if (hasBg) {
+    scopeMsg = 'Today · background data only';
+  } else if (logMinutes > 0) {
+    scopeMsg = 'Today · ' + Math.round(logMinutes) + ' min tracked (app open)';
+  } else {
+    scopeMsg = 'No data yet — open the app to start tracking';
+  }
+  if (lbl) lbl.textContent = scopeMsg;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set('statProduced',  f(produced,  2) + ' kWh');
   set('statConsumed',  f(consumed,  2) + ' kWh');
@@ -3350,7 +3422,23 @@ function renderLogStats() {
 function renderLogTable() {
   document.getElementById('logPill').textContent=rlog.length+' entries';
   renderLogStats();
-  if(!rlog.length){document.getElementById('logBodyInner').innerHTML='<div class="empty-log">No readings yet.<br>The app logs automatically every 30 seconds when solar is producing.</div>';return;}
+  if(!rlog.length){document.getElementById('logBodyInner').innerHTML='<div class="empty-log">No readings yet.<br>The app starts logging when you open it and solar is producing.</div>';return;}
+  // Header strip: time range + average pvKw across ALL entries in the buffer.
+  // The table itself only renders the latest 50 rows, but the energy-summary
+  // totals integrate every entry — so without this strip the user sees small
+  // total kWh while the visible rows show much higher kW and assumes a bug.
+  const firstTs = new Date(rlog[0].t);
+  const lastTs  = new Date(rlog[rlog.length-1].t);
+  const fmt = d => d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const avgPv = rlog.reduce((s,r) => s + (+r.pvKw || 0), 0) / rlog.length;
+  const minPv = Math.min(...rlog.map(r => +r.pvKw || 0));
+  const maxPv = Math.max(...rlog.map(r => +r.pvKw || 0));
+  const headerStrip = '<div style="font-size:11px;color:var(--t2);background:var(--sf2);' +
+    'border-radius:var(--rs);padding:8px 10px;margin-bottom:8px;line-height:1.5">' +
+    '<b>' + rlog.length + ' entries</b> from ' + fmt(firstTs) + ' to ' + fmt(lastTs) +
+    '<br>Avg ' + avgPv.toFixed(2) + ' kW · range ' + minPv.toFixed(2) + '–' + maxPv.toFixed(2) + ' kW' +
+    (rlog.length > 50 ? '<br><span style="color:var(--am)">Showing latest 50 — earlier entries still count in totals above</span>' : '') +
+    '</div>';
   const rows=[...rlog].reverse().slice(0,50).map((r,i)=>{
     const d=new Date(r.t), t=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     return '<tr><td>'+t+'</td><td style="color:var(--g)">'+f(r.pvKw,2)+'</td>'+
@@ -3359,7 +3447,8 @@ function renderLogTable() {
       '<td style="color:'+(r.grd>=0?'#00c882':'#e03030')+'">'+(r.grd>0?'+':'')+f(r.grd,2)+'</td>'+
       '<td><button onclick="deleteLog('+i+')" style="background:none;border:none;color:var(--rd);font-size:14px;cursor:pointer;padding:2px 6px" title="Delete entry">✕</button></td></tr>';
   }).join('');
-  document.getElementById('logBodyInner').innerHTML='<table class="log-table"><thead><tr><th>Time</th><th>☀️kW</th><th>🔋kW</th><th>SOC</th><th>W/m²</th><th>Grid kW</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+  document.getElementById('logBodyInner').innerHTML = headerStrip +
+    '<table class="log-table"><thead><tr><th>Time</th><th>☀️kW</th><th>🔋kW</th><th>SOC</th><th>W/m²</th><th>Grid kW</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -4480,6 +4569,20 @@ if (window.AppBridge && typeof AppBridge.savePvCalibFactor === 'function') {
 if (window.AppBridge && AppBridge.savePvCalibFactor) {
   try { AppBridge.savePvCalibFactor(SYS.pvCalibFactor || 1.0); } catch(e) {}
 }
+
+// Merge any background log entries Java wrote while the app was closed.
+// This fills the "gaps" in the reading log so the energy summary reflects
+// the whole day, not just the foreground time. Idempotent — Java clears its
+// buffer after a successful merge.
+try { mergeBackgroundLog(); } catch(e) { console.error('mergeBackgroundLog:', e); }
+// Also re-merge whenever the user returns to the app from background. The
+// FGS may have written new entries while the WebView was suspended; this
+// catches them without requiring a full app relaunch.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    try { mergeBackgroundLog(); } catch(e) {}
+  }
+});
 
 (function() {
   if (window.AppBridge && AppBridge.loadSoc) {
