@@ -2429,6 +2429,14 @@ function calibrateProduction() {
   // factor would revert to 1.0 (or to whatever onCfgChange last wrote, which
   // is irrelevant unless the user happens to edit a config field afterwards).
   try { saveCfg({ ...loadCfg(), pvCalibFactor: newFactor }); } catch(e) {}
+  // Mirror the factor to Java so background services (FGS / AlarmReceiver /
+  // Worker) produce the same calibrated kW value as the JS dashboard. Without
+  // this push, the notification shows the uncalibrated raw model value while
+  // the dashboard shows the calibrated value — exactly the discrepancy users
+  // see when a notification says e.g. 3.36 kW and the app shows 4.38 kW.
+  if (window.AppBridge && typeof AppBridge.savePvCalibFactor === 'function') {
+    try { AppBridge.savePvCalibFactor(+newFactor); } catch(e) {}
+  }
   // Also push it over the AppBridge so the Java background services use the
   // same multiplier — otherwise the notification reading would be 5-15% below
   // the dashboard reading for the same instant.
@@ -2451,6 +2459,10 @@ function resetCalibration() {
   ST.pvKwBase = 0;
   // Also persist the reset so the factor doesn't revive from old cfg on reload
   try { saveCfg({ ...loadCfg(), pvCalibFactor: 1.0 }); } catch(e) {}
+  // Mirror the reset to Java so background services stop applying the old factor
+  if (window.AppBridge && typeof AppBridge.savePvCalibFactor === 'function') {
+    try { AppBridge.savePvCalibFactor(1.0); } catch(e) {}
+  }
   if (window.AppBridge && AppBridge.savePvCalibFactor) {
     try { AppBridge.savePvCalibFactor(1.0); } catch(e) {}
   }
@@ -4425,6 +4437,12 @@ try {
     }
   }
 } catch(e) {}
+// Push the current factor to Java so background services use the same value
+// as the dashboard. Done on every startup so the Java pref stays in sync even
+// if calibration was performed in an older app version that didn't push it.
+if (window.AppBridge && typeof AppBridge.savePvCalibFactor === 'function') {
+  try { AppBridge.savePvCalibFactor(+SYS.pvCalibFactor); } catch(e) {}
+}
 // Mirror current calibration factor to Java background services at every
 // launch so they stay in sync without waiting for the next user action.
 if (window.AppBridge && AppBridge.savePvCalibFactor) {
