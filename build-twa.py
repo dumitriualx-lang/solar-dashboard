@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 17   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 18   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -1332,6 +1332,51 @@ public class SolarForegroundService extends Service {
                         (int) dispSoc, storedKwh, pvKw);
                     sendAlert(ALERT_ID_BATT_LOW, "Battery very low", body);
                     prefs.edit().putLong("notif_last_batt_low", nowMs).apply();
+                }
+
+                // RULE E: PRODUCTION DROP (daytime, fires when pv was high but
+                // dropped sharply — e.g. unexpected rain shower that the forecast
+                // missed). Useful to remind the user to stop large appliances
+                // before they drain the battery / pull from grid.
+                //
+                // Logic: track the rolling peak observed today (high water mark).
+                // If current pvKw is below 1.0 kW AND below 30% of today's
+                // observed peak AND it was previously high in the last 2 hours
+                // (so we don't fire all morning on a cloudy day from sunrise),
+                // emit the alert. 60-min cooldown to avoid spam.
+                float observedPeakToday = prefs.getFloat("observed_peak_today", 0f);
+                long  observedPeakDate  = prefs.getLong("observed_peak_date", 0);
+                long  todayMs = nowMs - (nowMs % (24L * 60 * 60 * 1000));
+                if (observedPeakDate != todayMs) {
+                    // New day - reset the high-water mark
+                    observedPeakToday = 0f;
+                    prefs.edit()
+                        .putFloat("observed_peak_today", 0f)
+                        .putLong("observed_peak_date", todayMs)
+                        .apply();
+                }
+                if (pvKw > observedPeakToday) {
+                    observedPeakToday = (float) pvKw;
+                    prefs.edit().putFloat("observed_peak_today", observedPeakToday).apply();
+                    prefs.edit().putLong("last_high_pv_ms", nowMs).apply();
+                } else if (pvKw > observedPeakToday * 0.5) {
+                    // Still reasonably high — refresh the "was high" marker
+                    prefs.edit().putLong("last_high_pv_ms", nowMs).apply();
+                }
+                long  lastHighMs   = prefs.getLong("last_high_pv_ms", 0);
+                long  lastDropNotif= prefs.getLong("notif_last_pv_drop", 0);
+                if (hourNow >= 8 && hourNow < 20
+                        && pvKw < 1.0
+                        && observedPeakToday >= 1.5
+                        && pvKw < observedPeakToday * 0.30
+                        && (nowMs - lastHighMs)    < 2L * 60 * 60 * 1000
+                        && (nowMs - lastDropNotif) > 60L * 60 * 1000) {
+                    String body = String.format(
+                        "Production dropped to %.2f kW (peak today %.1f kW). " +
+                        "Battery %d%% — consider postponing large appliances.",
+                        pvKw, observedPeakToday, (int) dispSoc);
+                    sendAlert(ALERT_ID_PV_DROP, "Production dropped", body);
+                    prefs.edit().putLong("notif_last_pv_drop", nowMs).apply();
                 }
             }  // end night-time gate
 
