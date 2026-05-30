@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 18   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 9   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -338,6 +338,38 @@ public class MainActivity extends Activity {
                 .putFloat("pv_calib_factor", clamped)
                 .apply();
             android.util.Log.d("AppBridge", "Calibration factor saved: " + clamped);
+        }
+
+        @JavascriptInterface
+        public String getBackgroundLog() {
+            // Returns the JSON array of log entries written by FGS on every
+            // background check (~once per 30 min). JS calls this at startup to
+            // merge background entries into its rolling rlog buffer, so the
+            // Reading Log page shows continuous coverage of the entire day
+            // instead of only the periods when the app was foreground.
+            try {
+                return getSharedPreferences("solar_prefs", MODE_PRIVATE)
+                    .getString("bg_log_v1", "[]");
+            } catch (Exception e) {
+                android.util.Log.e("AppBridge", "getBackgroundLog: " + e.getMessage());
+                return "[]";
+            }
+        }
+
+        @JavascriptInterface
+        public void clearBackgroundLog() {
+            // Called by JS after merging entries into rlog and persisting to
+            // localStorage. Prevents re-merging the same entries on every
+            // launch. Safe because the JS-side localStorage is the durable
+            // store once entries cross the bridge.
+            try {
+                getSharedPreferences("solar_prefs", MODE_PRIVATE)
+                    .edit()
+                    .putString("bg_log_v1", "[]")
+                    .apply();
+            } catch (Exception e) {
+                android.util.Log.e("AppBridge", "clearBackgroundLog: " + e.getMessage());
+            }
         }
 
         @JavascriptInterface
@@ -1147,6 +1179,12 @@ public class SolarForegroundService extends Service {
         // Use last known pvKw when offline; weather fetch overwrites if successful
         double pvKw = prefs.getFloat("pv_kw", 0f);
         double gridImport = 0, battFlow = 0;
+        // Hoisted from inside the hasWeather block so the background-log entry
+        // below (after the prefs commit) can read them even when weather fetch
+        // was successful. Without this, the log append failed to compile because
+        // poa_in/gridExport were out of scope.
+        double poa_in    = 0;
+        double gridExport = 0;
         double newSoc = soc;
         double battUse = battGross > 0 ? battGross * (1.0 - battRes) : 4.5;
 
@@ -1196,7 +1234,7 @@ public class SolarForegroundService extends Service {
                 double poaBeam  = Math.max(0, cosAOI) * Math.max(0, directRad);
                 double poaSky   = Math.max(0, diffuseRad) * (1 + Math.cos(tiltR)) / 2.0;
                 double poaGnd   = (directRad + diffuseRad) * 0.20 * (1 - Math.cos(tiltR)) / 2.0;
-                double poa_in   = poaBeam + poaSky + poaGnd;
+                poa_in          = poaBeam + poaSky + poaGnd;
                 double cellT    = tempC + (45.0 - 20.0) * (poa_in / 800.0);
                 double tFac     = Math.max(0.80, 1.0 - Math.max(0, cellT - 25.0) * 0.0037);
                 // Apply user PV calibration multiplier so background SOC tracks
@@ -1221,7 +1259,7 @@ public class SolarForegroundService extends Service {
             else                     bD = Math.min(hD, battMaxD);
             battFlow   = bC - bD;
             gridImport = Math.max(0, hD - bD);
-            double gridExport = Math.max(0, pvS - bC);
+            gridExport = Math.max(0, pvS - bC);
 
             // ── Evolve SOC ────────────────────────────────────────────────────
             // Huawei Luna 2000 round-trip efficiency = 0.92
@@ -1250,6 +1288,39 @@ public class SolarForegroundService extends Service {
                  .putString("grid_date",      todayStr)
                  .putLong ("soc_saved_at_ms", nowMs)
                  .apply();
+
+            // ── Append a structured log entry for the JS-side reading log ────
+            // The JS rlog only captures while the app is foreground (every 30 sec).
+            // Without this Java-side log, the energy summary only reflected the
+            // time the user was actively looking at the app. By writing one
+            // entry per FGS run (~every 30 min in background) the log can show
+            // continuous coverage of the whole day when JS merges these at
+            // startup via AppBridge.getBackgroundLog().
+            try {
+                String existing = prefs.getString("bg_log_v1", "[]");
+                org.json.JSONArray arr = new org.json.JSONArray(existing);
+                org.json.JSONObject entry = new org.json.JSONObject();
+                java.text.SimpleDateFormat iso = new java.text.SimpleDateFormat(
+                    "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US);
+                iso.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+                entry.put("t",     iso.format(new java.util.Date(nowMs)));
+                entry.put("pvKw",  +String.format(java.util.Locale.US, "%.3f", pvKw));
+                entry.put("batt",  +String.format(java.util.Locale.US, "%.3f", battFlow));
+                entry.put("soc",   (float) newSoc);
+                entry.put("irr",   (float) poa_in);
+                // grd: positive = export to grid, negative = import (matches JS sign convention)
+                double gridFlow = gridExport - gridImport;
+                entry.put("grd",   +String.format(java.util.Locale.US, "%.3f", gridFlow));
+                entry.put("lat",   (float) lat);
+                entry.put("lon",   (float) lon);
+                entry.put("src",   "bg");   // mark so JS can distinguish foreground vs background
+                arr.put(entry);
+                // Keep last 500 entries (~10 days at 48/day) to prevent unbounded growth
+                while (arr.length() > 500) arr.remove(0);
+                prefs.edit().putString("bg_log_v1", arr.toString()).apply();
+            } catch (Exception logE) {
+                android.util.Log.e("SolarFGS", "bg log append failed: " + logE.getMessage());
+            }
 
             // Update the foreground notification with live values
             String status = String.format("☀️ %.2fkW · 🏠 %.2fkW · 🔋 %.0f%%",
