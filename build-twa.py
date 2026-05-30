@@ -1304,15 +1304,19 @@ public class SolarForegroundService extends Service {
                     "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US);
                 iso.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
                 entry.put("t",     iso.format(new java.util.Date(nowMs)));
-                entry.put("pvKw",  +String.format(java.util.Locale.US, "%.3f", pvKw));
-                entry.put("batt",  +String.format(java.util.Locale.US, "%.3f", battFlow));
-                entry.put("soc",   (float) newSoc);
-                entry.put("irr",   (float) poa_in);
+                // Round to 3 decimal places. Math.round(x*1000)/1000 is the
+                // canonical Java idiom — DO NOT use +String.format() since Java's
+                // unary '+' does not coerce String to number (that's a JS idiom
+                // and previously caused a compile failure here).
+                entry.put("pvKw",  Math.round(pvKw     * 1000.0) / 1000.0);
+                entry.put("batt",  Math.round(battFlow * 1000.0) / 1000.0);
+                entry.put("soc",   Math.round(newSoc   * 10.0)   / 10.0);
+                entry.put("irr",   (int) Math.round(poa_in));
                 // grd: positive = export to grid, negative = import (matches JS sign convention)
                 double gridFlow = gridExport - gridImport;
-                entry.put("grd",   +String.format(java.util.Locale.US, "%.3f", gridFlow));
-                entry.put("lat",   (float) lat);
-                entry.put("lon",   (float) lon);
+                entry.put("grd",   Math.round(gridFlow * 1000.0) / 1000.0);
+                entry.put("lat",   (double) lat);
+                entry.put("lon",   (double) lon);
                 entry.put("src",   "bg");   // mark so JS can distinguish foreground vs background
                 arr.put(entry);
                 // Keep last 500 entries (~10 days at 48/day) to prevent unbounded growth
