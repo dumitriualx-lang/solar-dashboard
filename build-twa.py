@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 19   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 20   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -1262,9 +1262,17 @@ public class SolarForegroundService extends Service {
             gridExport = Math.max(0, pvS - bC);
 
             // ── Evolve SOC ────────────────────────────────────────────────────
-            // Huawei Luna 2000 round-trip efficiency = 0.92
-            double battEff = 0.95;
-            double effFlow = battFlow > 0 ? battFlow * battEff : battFlow; // discharge: no penalty
+            // Huawei Luna 2000 round-trip efficiency ≈ 0.92.
+            // Split symmetrically: each direction has sqrt(0.92) ≈ 0.96 efficiency.
+            // Charging at 1 kW → battery stores 0.96 kW worth (rest is heat).
+            // Discharging 1 kW to home → battery cell drains 1/0.96 = 1.042 kW
+            // (need to draw MORE from the cell to deliver 1 kW to the load).
+            // The old code applied the penalty only on charge ("discharge: no
+            // penalty") which made SOC fall ~5% slower than reality vs the
+            // FusionSolar app — exactly the discrepancy the user reported.
+            double battEff = 0.96;
+            double effFlow = battFlow > 0 ? battFlow * battEff
+                                          : battFlow / battEff;
             newSoc = soc + (effFlow / battUse) * dtH * 100.0;
             newSoc = Math.max(hardFlr, Math.min(100.0, newSoc));
 
@@ -1354,16 +1362,22 @@ public class SolarForegroundService extends Service {
                 // RULE A: MORNING "Production started" (once per day, 7-12h)
                 if (hourNow >= 7 && hourNow < 12 && pvKw > 0.3
                         && !todayKey.equals(morningSentDate)) {
-                    float  peakKw   = prefs.getFloat("peak_kw", (float) pvKw);
-                    int    peakHr   = prefs.getInt("peak_hour", 12);
+                    // saveForecast() is called by JS after every weather fetch.
+                    // If user opened the app today, peak_kw is fresh. If they
+                    // didn't, we fall back to "today's PV so far" rather than
+                    // claiming a peak we don't know — better honest than wrong.
+                    float  peakKw   = prefs.getFloat("peak_kw", 0f);
+                    int    peakHr   = prefs.getInt  ("peak_hour", -1);
                     float  todayKwh = prefs.getFloat("forecast_today_kwh", 0f);
                     String body;
-                    if (peakKw > 0 && peakHr > 0) {
+                    if (peakKw > 0.5f && peakHr >= 0 && peakHr <= 23) {
                         body = String.format(
-                            "Now: %.2f kW. Peak ~%.1f kW at %02d:00. Battery %d%%. Forecast: %.1f kWh today.",
+                            "Now %.2f kW. Peak ~%.1f kW at %02d:00. Battery %d%%. Forecast %.1f kWh today.",
                             pvKw, peakKw, peakHr, (int) dispSoc, todayKwh);
                     } else {
-                        body = String.format("Production started \u2014 %.2f kW. Battery %d%%.", pvKw, (int) dispSoc);
+                        body = String.format(
+                            "Production started \u2014 %.2f kW. Battery %d%%. Open the app for the day's forecast.",
+                            pvKw, (int) dispSoc);
                     }
                     sendAlert(ALERT_ID_MORNING, "Production started", body);
                     prefs.edit().putString("morning_sent_date", todayKey).apply();
@@ -1378,9 +1392,26 @@ public class SolarForegroundService extends Service {
                 // the background check happens to run.
                 if (hourNow >= 8 && hourNow < 20 && pvKw > 0.3
                         && (nowMs - lastHourly) > 55L * 60 * 1000) {
-                    String body = String.format(
-                        "Current %.2f kW. Battery %d%% (%.1f kWh stored).",
-                        pvKw, (int) dispSoc, storedKwh);
+                    // Include peak info if we have a fresh forecast — otherwise
+                    // the user gets the same "Current X kW" message all day
+                    // without ever knowing when the peak will hit.
+                    float peakKwH = prefs.getFloat("peak_kw", 0f);
+                    int   peakHrH = prefs.getInt  ("peak_hour", -1);
+                    String body;
+                    if (peakKwH > 0.5f && peakHrH >= 0 && peakHrH <= 23 && peakHrH != hourNow) {
+                        body = String.format(
+                            "Current %.2f kW. Peak ~%.1f kW at %02d:00. Battery %d%% (%.1f kWh stored).",
+                            pvKw, peakKwH, peakHrH, (int) dispSoc, storedKwh);
+                    } else if (peakKwH > 0.5f && peakHrH == hourNow) {
+                        // We're at peak time right now — different wording
+                        body = String.format(
+                            "Current %.2f kW \u2014 peak window. Battery %d%% (%.1f kWh stored).",
+                            pvKw, (int) dispSoc, storedKwh);
+                    } else {
+                        body = String.format(
+                            "Current %.2f kW. Battery %d%% (%.1f kWh stored).",
+                            pvKw, (int) dispSoc, storedKwh);
+                    }
                     sendAlert(ALERT_ID_HOURLY, "Solar update", body);
                     prefs.edit().putLong("notif_last_hourly", nowMs).apply();
                 }
@@ -2372,4 +2403,34 @@ for density, size in density_sizes.items():
     write_icon(ICON_ANY_B64,      os.path.join(RES, density, "ic_launcher_round.png"), size)
 
 print("Icons written OK")
+
+# ── version.json for the in-app update popup ──────────────────────────────────
+# The JS checkForUpdate() fetches this file from GitHub Pages and compares
+# its versionCode against the installed APK's versionCode. When this file
+# reports a higher versionCode than what's installed, the "Update available"
+# dialog fires on next app launch.
+#
+# IMPORTANT: this file MUST be deployed to the same GitHub Pages repo as
+# index.html (i.e. dumitriualx-lang/solar-dashboard). The build script can't
+# push it for you — copy the file from build output to the repo manually,
+# or wire it into your deploy CI alongside index.html. Without it, the popup
+# silently fails because the fetch returns 404 → catch block → no dialog.
+import json as _json
+_version_json = {
+    "versionCode":  VERSION_CODE,
+    "versionName":  VERSION_NAME,
+    "storeUrl":     "https://play.google.com/store/apps/details?id=" + PKG,
+    "releaseNotes": "Latest improvements and bug fixes.",
+}
+# Write to /mnt/user-data/outputs so it's surfaced for manual deploy
+_OUT_DIR = "/mnt/user-data/outputs"
+try:
+    os.makedirs(_OUT_DIR, exist_ok=True)
+    with open(os.path.join(_OUT_DIR, "version.json"), "w") as _f:
+        _json.dump(_version_json, _f, indent=2)
+    print(f"  emitted version.json (versionCode={VERSION_CODE}, name={VERSION_NAME})")
+    print(f"  → deploy /mnt/user-data/outputs/version.json to GitHub Pages alongside index.html")
+except Exception as _e:
+    print(f"  WARN: could not write version.json: {_e}")
+
 print("Build script complete")
