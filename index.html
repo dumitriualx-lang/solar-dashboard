@@ -2135,8 +2135,9 @@ function evolveSoc() {
   // Charging (battFlow > 0): only 95% of solar energy gets stored → apply ×0.95
   // Discharging (battFlow < 0): consKw IS the real draw — no penalty needed
   // Applying /0.95 on discharge caused ~8% SOC drift over 30h vs FusionSolar
-  const battEff = 0.95;
-  const effFlow = fl.battFlow > 0 ? fl.battFlow * battEff : fl.battFlow;
+  const battEff = 0.96;
+  const effFlow = fl.battFlow > 0 ? fl.battFlow * battEff
+                                  : fl.battFlow / battEff;
   ST.battSoc = Math.max(hardFlr, Math.min(100,
     ST.battSoc + (effFlow / (SYS.battUse || 4.5)) * dtH * 100
   ));
@@ -2311,19 +2312,38 @@ function openPlayStore() {
 
 async function checkForUpdate() {
   try {
-    const res = await fetch('https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now());
-    if (!res.ok) return;
+    const url = 'https://dumitriualx-lang.github.io/solar-dashboard/version.json?t=' + Date.now();
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn('[update] version.json fetch failed:', res.status, res.statusText);
+      console.warn('[update] check that version.json exists at', url);
+      return;
+    }
     const data = await res.json();
+    console.log('[update] version.json:', JSON.stringify(data));
+    if (typeof data.versionCode !== 'number' || data.versionCode <= 0) {
+      console.warn('[update] version.json has no valid versionCode — popup suppressed');
+      return;
+    }
     const lastDismissed = parseInt(localStorage.getItem('updDismissed') || '0');
-    if (data.versionCode <= lastDismissed) return;
+    if (data.versionCode <= lastDismissed) {
+      console.log('[update] versionCode', data.versionCode, '<= dismissed', lastDismissed, '— popup suppressed');
+      return;
+    }
     if (window.AppBridge && typeof AppBridge.getVersionCode === 'function') {
       const installed = AppBridge.getVersionCode();
-      if (installed && data.versionCode <= installed) return;
+      console.log('[update] installed APK versionCode:', installed);
+      if (installed && data.versionCode <= installed) {
+        console.log('[update] version.json (', data.versionCode, ') <= installed (', installed, ') — popup suppressed (you are up to date)');
+        return;
+      }
     }
-    // Use hardcoded URL as fallback if version.json storeUrl is missing/wrong
+    console.log('[update] firing popup for version', data.versionName, '(', data.versionCode, ')');
     const storeUrl = (data.storeUrl && data.storeUrl.includes('play.google.com')) ? data.storeUrl : STORE_URL;
     showUpdateDialog(data.versionName, storeUrl, data.versionCode);
-  } catch(e) {}
+  } catch(e) {
+    console.error('[update] checkForUpdate failed:', e);
+  }
 }
 
 function showUpdateDialog(versionName, storeUrl, versionCode) {
@@ -4807,8 +4827,9 @@ document.addEventListener('visibilitychange', () => {
         const fl = calcFlow();
         ST.pvKw = savedPvKw;
         const hardFlr = Math.round((SYS.battRes || 0.1) * 50);
-        const battEff = 0.95;
-        const effFlow = fl.battFlow > 0 ? fl.battFlow * battEff : fl.battFlow;
+        const battEff = 0.96;
+        const effFlow = fl.battFlow > 0 ? fl.battFlow * battEff
+                                        : fl.battFlow / battEff;
         ST.battSoc = Math.max(hardFlr, Math.min(100,
           ST.battSoc + (effFlow / (SYS.battUse || 4.5)) * bgGapH * 100
         ));
