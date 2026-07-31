@@ -7,7 +7,7 @@ from PIL import Image
 # every run — no files, no manual editing, never resets).
 # BASE_VERSION_CODE is set so run #1 produces code 10 (above Play Store v9).
 # Every subsequent run produces 11, 12, 13 ... automatically.
-BASE_VERSION_CODE = 20   # offset: run N → version code (BASE + N)
+BASE_VERSION_CODE = 21   # offset: run N → version code (BASE + N)
 VERSION_NAME      = "1.2.0"
 _run = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
 VERSION_CODE = BASE_VERSION_CODE + _run
@@ -52,15 +52,17 @@ org.gradle.jvmargs=-Xmx2048m
 """)
 
 write(os.path.join(APP, "build.gradle"), """plugins {
-    id 'com.android.application' version '8.3.2' apply true
+    // AGP 8.9.2 is the minimum line that officially supports compileSdk 36
+    // (8.3.x tops out at compileSdk 35 and warns/fails on the API-36 build).
+    id 'com.android.application' version '8.9.2' apply true
 }
 android {
     namespace "%s"
-    compileSdk 35
+    compileSdk 36
     defaultConfig {
         applicationId "%s"
         minSdk 21
-        targetSdk 35
+        targetSdk 36
         versionCode 4
         versionName "1.2.0"
         manifestPlaceholders = [
@@ -119,6 +121,7 @@ write(os.path.join(MAIN, "AndroidManifest.xml"), """<?xml version="1.0" encoding
         android:allowBackup="true"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="false"
         android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
@@ -586,6 +589,24 @@ public class MainActivity extends Activity {
         webView = new WebView(this);
         webView.setBackgroundColor(Color.parseColor("#1D9E75"));
         setContentView(webView);
+
+        // ── Android 16 edge-to-edge handling ─────────────────────────────────
+        // Apps targeting API 36 are drawn edge-to-edge with NO opt-out (the
+        // windowOptOutEdgeToEdgeEnforcement attribute from API 35 is ignored).
+        // Without this listener the WebView content extends under the gesture
+        // navigation bar and (if visible) the status bar, cutting off the
+        // bottom tab bar of the dashboard. Pad the WebView by the system-bar
+        // insets so the page keeps its full visible area on Android 15/16
+        // devices while remaining a no-op on older versions.
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            webView.setOnApplyWindowInsetsListener((v, insets) -> {
+                android.graphics.Insets bars = insets.getInsets(
+                    android.view.WindowInsets.Type.systemBars()
+                    | android.view.WindowInsets.Type.displayCutout());
+                v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                return android.view.WindowInsets.CONSUMED;
+            });
+        }
 
         // Clear cache on every launch so the latest GitHub Pages index.html
         // is always fetched. Without this, stale JS with old bugs persists
@@ -2373,7 +2394,7 @@ write(os.path.join(RES, "values", "strings.xml"), """<?xml version="1.0" encodin
 
 write(os.path.join(WRAP, "gradle-wrapper.properties"), """distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
-distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-all.zip
+distributionUrl=https\\://services.gradle.org/distributions/gradle-8.11.1-all.zip
 zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 """)
