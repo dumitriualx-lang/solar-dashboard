@@ -1,109 +1,98 @@
-# GitHub Actions workflow — Solar Dashboard APK/AAB build
-# Place at: .github/workflows/build-apk.yml
-#
-# WHAT CHANGED vs your old workflow (the API-36 fixes):
-#   1. Gradle pinned to 8.11.1  (was 8.7 — AGP 8.9.2 requires >= 8.11.1)
-#   2. JDK explicitly 17        (AGP 8.9.x requires JDK 17+)
-#   3. Android platform 36 installed explicitly (compileSdk 36)
-#
-# If your existing workflow already handles the keystore secret and artifact
-# upload differently, keep YOUR steps and only port items 1-3.
+# Solar Dashboard build — YOUR original workflow, with exactly 3 changes
+# required by the API 36 / AGP 8.9.2 upgrade (marked with "API36 CHANGE"):
+#   1. Gradle 8.7  -> 8.11.1   (AGP 8.9.2 requires >= 8.11.1)
+#   2. platform 34 -> 36       (compileSdk 36)
+#   3. Collect version.json    (emitted by build-twa.py for the update popup)
+# Everything else — secret name SIGNING_KEY_BASE64, script name build-twa.py,
+# keystore verification steps, artifact layout — is unchanged from yours.
 
 name: Build Solar Dashboard
-
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
-
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-
-      # ── CHANGE 2: JDK 17 (required by AGP 8.9.x) ─────────────────────────
-      - name: Set up JDK 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-
-      # ── CHANGE 1: Gradle 8.11.1 (required by AGP 8.9.2) ──────────────────
-      # This was the cause of your build failure: the workflow provided
-      # Gradle 8.7 while AGP 8.9.2 requires >= 8.11.1.
-      - name: Set up Gradle 8.11.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
-
-      # ── CHANGE 3: make sure Android platform 36 is present ───────────────
-      # ubuntu-latest images usually lag one platform behind; installing
-      # explicitly costs ~20s and removes the guesswork.
-      - name: Install Android SDK platform 36
+          java-version: "17"
+      # API36 CHANGE 1: Gradle 8.11.1 (AGP 8.9.2 minimum). Was 8.7.
+      - name: Install Gradle 8.11.1
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-36" "build-tools;36.0.0" > /dev/null
-
-      # ── Keystore: decode from repo secret to the path build.gradle expects
-      # The emitted build.gradle hardcodes storeFile $HOME/solar.keystore.
-      # Assumes you have a base64-encoded keystore in secrets.KEYSTORE_B64.
-      # If your existing workflow restores the keystore differently
-      # (different secret name, actions/download, etc.), KEEP YOUR VERSION.
-      - name: Restore signing keystore
-        run: echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > "$HOME/solar.keystore"
-
-      # ── Python dependency for the build script ───────────────────────────
-      # The script uses Pillow (PIL) to generate launcher icons. This is its
-      # ONLY third-party Python dependency (everything else is stdlib:
-      # os, io, base64, re, json).
-      - name: Install Python dependencies
-        run: pip install --quiet Pillow
-
-      # ── Generate the Android project (Python emits Java/Gradle to ~/twa) ─
-      # GITHUB_RUN_NUMBER is read by the script for versionCode auto-increment.
-      # The glob tolerates any variant of the script's filename in the repo
-      # (build-twa.py, build_twa.py, build-twa__14_.py, ...). Fails loudly if
-      # no matching file is found.
-      - name: Generate project from build script
+          wget -q https://services.gradle.org/distributions/gradle-8.11.1-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt/
+          sudo ln -sf /opt/gradle-8.11.1/bin/gradle /usr/local/bin/gradle
+          gradle --version | head -3
+      # API36 CHANGE 2: platform/build-tools 36 (compileSdk 36). Was 34.
+      - name: Install Android SDK platforms
         run: |
-          SCRIPT=$(ls build*twa*.py build_twa*.py twa*.py 2>/dev/null | head -1)
-          if [ -z "$SCRIPT" ]; then
-            echo "ERROR: no build script found in repo root. Files present:"
-            ls -la
-            exit 1
-          fi
-          echo "Using build script: $SCRIPT"
-          python3 "$SCRIPT"
-
-      # ── Build. bundleRelease produces the AAB Play Console requires. ─────
-      # assembleRelease additionally produces an APK for sideload testing.
-      - name: Build release AAB + APK
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-36" "build-tools;36.0.0" --channel=0 2>&1 | tail -3
+          echo "SDK ready"
+      - name: Install Pillow
+        run: pip install Pillow --break-system-packages -q
+      - name: Prepare Keystore from secret
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
         run: |
-          cd "$HOME/twa"
-          gradle bundleRelease assembleRelease --no-daemon
-
-      # ── Surface the artifacts ────────────────────────────────────────────
-      - name: Upload AAB (for Play Console)
+          echo "$SIGNING_KEY_BASE64" | base64 -d > $HOME/solar.keystore
+          echo "Keystore size: $(wc -c < $HOME/solar.keystore) bytes"
+          echo "=== All aliases ==="
+          keytool -list -keystore $HOME/solar.keystore -storepass solar2024 2>&1
+          echo "=== SHA256 solar-key alias ==="
+          keytool -list -v -keystore $HOME/solar.keystore -alias solar-key -storepass solar2024 2>&1 | grep -E "SHA256:|Alias" || echo "solar-key not found"
+          echo "================================================"
+      - name: Generate Android project
+        run: python3 $GITHUB_WORKSPACE/build-twa.py
+      - name: Verify keystore before build
+        run: |
+          echo "=== KEYSTORE SHA BEFORE BUILD ==="
+          keytool -list -v -keystore $HOME/solar.keystore -storepass solar2024 2>&1 | grep "SHA256:" || echo "MISSING"
+          ls -la $HOME/solar.keystore
+      - name: Build APK
+        run: |
+          cd $HOME/twa
+          gradle assembleRelease --no-daemon 2>&1
+          echo "APK exit: $?"
+      - name: Verify keystore after build
+        run: |
+          echo "=== KEYSTORE SHA AFTER BUILD ==="
+          keytool -list -v -keystore $HOME/solar.keystore -storepass solar2024 2>&1 | grep "SHA256:" || echo "MISSING"
+          ls -la $HOME/solar.keystore
+      - name: Build AAB
+        if: success()
+        run: |
+          cd $HOME/twa
+          gradle bundleRelease --no-daemon 2>&1 | tail -10
+          echo "AAB exit: $?"
+      - name: List outputs
+        if: always()
+        run: |
+          echo "=== APK ===" && find $HOME/twa -name "*.apk" 2>/dev/null || echo "none"
+          echo "=== AAB ===" && find $HOME/twa -name "*.aab" 2>/dev/null || echo "none"
+      - name: Collect outputs
+        if: always()
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/output
+          find $HOME/twa -name "*.apk" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
+          find $HOME/twa -name "*.aab" -exec cp {} $GITHUB_WORKSPACE/output/ \; 2>/dev/null || true
+          # API36 CHANGE 3: build-twa.py now emits version.json (update popup).
+          # Deploy it to GitHub Pages next to index.html after each release.
+          cp $HOME/twa/version.json $GITHUB_WORKSPACE/output/ 2>/dev/null || true
+          cp $HOME/solar.keystore $GITHUB_WORKSPACE/output/ 2>/dev/null || true
+          base64 -w 0 $HOME/solar.keystore > $GITHUB_WORKSPACE/output/solar.keystore.b64 2>/dev/null || true
+          echo "=== Output files ==="
+          ls -lh $GITHUB_WORKSPACE/output/
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: solar-dashboard-aab
-          path: ~/twa/app/build/outputs/bundle/release/app-release.aab
-
-      - name: Upload APK (for direct install / testing)
-        uses: actions/upload-artifact@v4
-        with:
-          name: solar-dashboard-apk
-          path: ~/twa/app/build/outputs/apk/release/app-release.apk
-
-      # ── version.json is emitted by the build script for the update popup ─
-      # Deploy this to GitHub Pages alongside index.html after the release.
-      - name: Upload version.json
-        uses: actions/upload-artifact@v4
-        with:
-          name: version-json
-          path: ~/twa/version.json
-          if-no-files-found: ignore
+          name: solar-dashboard-android
+          path: output/
+          retention-days: 30
