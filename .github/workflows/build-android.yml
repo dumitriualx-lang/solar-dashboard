@@ -56,6 +56,13 @@ jobs:
       - name: Restore signing keystore
         run: echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > "$HOME/solar.keystore"
 
+      # ── Python dependency for the build script ───────────────────────────
+      # The script uses Pillow (PIL) to generate launcher icons. This is its
+      # ONLY third-party Python dependency (everything else is stdlib:
+      # os, io, base64, re, json).
+      - name: Install Python dependencies
+        run: pip install --quiet Pillow
+
       # ── Generate the Android project (Python emits Java/Gradle to ~/twa) ─
       # GITHUB_RUN_NUMBER is read by the script for versionCode auto-increment.
       # The glob tolerates any variant of the script's filename in the repo
