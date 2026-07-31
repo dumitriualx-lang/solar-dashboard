@@ -1272,20 +1272,20 @@ function updateCurrentPanelLocDisplay() {
 // location is set but a saved GPS exists, treat the saved GPS as the panel
 // location. User can change it later via the search if their panels are elsewhere.
 function migrateGpsToPanelLocation() {
-  if (SYS.panelLat && SYS.panelLon) return;  // already set
-  try {
-    const saved = JSON.parse(localStorage.getItem('solarGps') || 'null');
-    if (saved && saved.lat && saved.lon) {
-      SYS.panelLat = saved.lat;
-      SYS.panelLon = saved.lon;
-      SYS.panelLocName = saved.name || '';
-      saveCfg({ ...loadCfg(), panelLat: saved.lat, panelLon: saved.lon, panelLocName: saved.name || '' });
-      if (window.AppBridge && AppBridge.savePanelLocation) {
-        try { AppBridge.savePanelLocation(saved.lat, saved.lon, saved.name || ''); } catch(e) {}
-      }
-      console.log('[migration] Existing GPS coords migrated to panel location lock:', saved.name);
-    }
-  } catch(e) {}
+  // DISABLED — this auto-adoption was the root cause of the "location lock
+  // changed itself to Bucharest" bug. Sequence: localStorage wipe (app data
+  // clear / reinstall / WebView eviction) loses the panel lock → the auto-GPS
+  // fallback saves the PHONE's position to solarGps → next launch, this
+  // migration silently adopted the phone's city as the LOCKED panel location
+  // and pushed it to Java. The user saw "🔒 Bucharest" (their phone's city)
+  // replacing the panel site they had explicitly set.
+  //
+  // The one-shot migration for legacy pre-lock users served its purpose long
+  // ago. A fresh/wiped install must now ask the user to Set the location —
+  // the locBar already prompts: "No panel location set. Search your panel
+  // city below and tap Set." Silently locking the phone's city is worse than
+  // asking once.
+  return;
 }
 
 function applyPosition(pos) {
@@ -4695,6 +4695,14 @@ document.addEventListener('visibilitychange', () => {
       }
     } catch(e) {}
   }
+  // PANEL LOCATION LOCK: when the panel site is locked, it always wins over
+  // whatever Java's GPS store or solarGps contain (both hold PHONE positions).
+  // Without this, the first weather fetch after launch ran for the phone's
+  // location until the 60-second interval corrected it — wrong forecast and
+  // wrong live production for up to a minute, plus a phone-city flash in the UI.
+  if (SYS.panelLat && SYS.panelLon) {
+    lat = SYS.panelLat; lon = SYS.panelLon; name = SYS.panelLocName || '';
+  }
   if (lat && lon) {
     ST.lat = lat; ST.lon = lon;
     ST.locName = (name && !name.includes('°')) ? name : 'Locating...';
@@ -4853,7 +4861,16 @@ document.addEventListener('visibilitychange', () => {
         }
       } catch(e) {}
     }
-    if (window.AppBridge && AppBridge.loadGps) {
+    // PANEL LOCATION LOCK: on resume, never restore phone GPS from Java's
+    // store when the panel site is locked. Java's saved GPS is the PHONE's
+    // position — restoring it here silently switched the weather/production
+    // coords to wherever the phone was until the next 60-second tick.
+    if (SYS.panelLat && SYS.panelLon) {
+      ST.lat = SYS.panelLat;
+      ST.lon = SYS.panelLon;
+      ST.locName = SYS.panelLocName || ST.locName;
+      ST.gpsOk = true;
+    } else if (window.AppBridge && AppBridge.loadGps) {
       try {
         const gpsStr = AppBridge.loadGps();
         if (gpsStr) {
