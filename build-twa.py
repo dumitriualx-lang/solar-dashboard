@@ -2443,15 +2443,26 @@ _version_json = {
     "storeUrl":     "https://play.google.com/store/apps/details?id=" + PKG,
     "releaseNotes": "Latest improvements and bug fixes.",
 }
-# Write to /mnt/user-data/outputs so it's surfaced for manual deploy
-_OUT_DIR = "/mnt/user-data/outputs"
+# Write version.json into the generated project dir (~/twa) — a path that
+# exists on ANY machine including GitHub runners. The previous location
+# (/mnt/user-data/outputs) only exists in the development sandbox and made
+# CI silently skip emission.
+_primary = os.path.join(ROOT, "version.json")
 try:
-    os.makedirs(_OUT_DIR, exist_ok=True)
-    with open(os.path.join(_OUT_DIR, "version.json"), "w") as _f:
+    with open(_primary, "w") as _f:
         _json.dump(_version_json, _f, indent=2)
-    print(f"  emitted version.json (versionCode={VERSION_CODE}, name={VERSION_NAME})")
-    print(f"  → deploy /mnt/user-data/outputs/version.json to GitHub Pages alongside index.html")
+    print(f"  emitted {_primary} (versionCode={VERSION_CODE}, name={VERSION_NAME})")
+    print(f"  -> deploy version.json to GitHub Pages alongside index.html")
 except Exception as _e:
     print(f"  WARN: could not write version.json: {_e}")
+# Secondary copy for the development sandbox (ignored on CI where the
+# directory doesn't exist)
+try:
+    _sandbox = "/mnt/user-data/outputs"
+    if os.path.isdir(_sandbox):
+        with open(os.path.join(_sandbox, "version.json"), "w") as _f:
+            _json.dump(_version_json, _f, indent=2)
+except Exception:
+    pass
 
 print("Build script complete")
