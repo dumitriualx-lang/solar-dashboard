@@ -58,8 +58,19 @@ jobs:
 
       # ── Generate the Android project (Python emits Java/Gradle to ~/twa) ─
       # GITHUB_RUN_NUMBER is read by the script for versionCode auto-increment.
+      # The glob tolerates any variant of the script's filename in the repo
+      # (build-twa.py, build_twa.py, build-twa__14_.py, ...). Fails loudly if
+      # no matching file is found.
       - name: Generate project from build script
-        run: python3 build-twa__14_.py
+        run: |
+          SCRIPT=$(ls build*twa*.py build_twa*.py twa*.py 2>/dev/null | head -1)
+          if [ -z "$SCRIPT" ]; then
+            echo "ERROR: no build script found in repo root. Files present:"
+            ls -la
+            exit 1
+          fi
+          echo "Using build script: $SCRIPT"
+          python3 "$SCRIPT"
 
       # ── Build. bundleRelease produces the AAB Play Console requires. ─────
       # assembleRelease additionally produces an APK for sideload testing.
